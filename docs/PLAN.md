@@ -123,9 +123,7 @@ pagares-webApi-demo/
 │   ├── emails/                 # plantillas React Email (§16)
 │   └── config-{eslint,ts,tailwind}/
 ├── docker/                     # compose de referencia: postgres, minio, mailpit
-├── docs/{PLAN.md, openapi.yaml, adr/}
-├── .claude/{skills/, settings.json}
-└── CLAUDE.md
+└── docs/{PLAN.md, openapi.yaml, adr/}
 ```
 
 **pnpm workspaces + Turborepo** · Node 22 LTS · TypeScript strict con `noUncheckedIndexedAccess`.
@@ -1132,40 +1130,43 @@ Cobrar con pasarela · calcular cuotas o amortizaciones · gestionar roles y per
 
 ---
 
-## 20. Equipo, hooks y CI
+## 20. Disciplina de trabajo y CI
 
-### 20.1 Skills del proyecto (`.claude/skills/`)
+### 20.1 Roles de revisión
 
-Sin subagentes, por decisión tuya. Cada skill es un rol con checklist propio.
+Cada cambio pasa por las mismas comprobaciones, en este orden. No son fases de un proceso
+formal: son las preguntas que hay que contestar antes de dar algo por hecho.
 
-| Skill | Rol | Qué hace | Globales que invoca |
-|---|---|---|---|
-| `arquitecto-modulo` | Arquitecto | Genera el módulo completo de §3.4 y verifica la regla de dependencias | `superpowers:brainstorming`, `writing-plans` |
-| `caso-de-uso` | Backend | Caso de uso sobre `BaseUseCase` + schema en `contracts` + test primero | `superpowers:test-driven-development` |
-| `contrato-api` | API design | Edita `openapi.yaml` y los schemas **antes** del código; verifica compatibilidad | — |
-| `dominio-cobranza` | Negocio | Interés, aging, tramos, etapas y reglas de recordatorio; verifica que nada de esto viva fuera de `domain-rules` | `superpowers:test-driven-development` |
-| `guardian-owasp` | Seguridad | Checklist de §9 sobre el diff; exige test negativo BOLA/BFLA por endpoint nuevo | `security-review`, `claude-security:scan` |
-| `qa-pagares` | QA | Dominio, e2e con supertest, N+1, k6, saturación del pool | `nextjs-qa-elite`, `verification-before-completion` |
-| `dashboard-ui` | Frontend | Pantallas de §19 con design system, a11y y estados vacío/carga/error | `frontend-design`, `ui-ux-pro-max`, MCP **stitch** |
-| `email-designer` | Correo | Plantillas de §16 sobre `BaseEmailLayout`, preview y snapshot | `frontend-design` |
-| `perf-escala` | Rendimiento | Índices, cursor, caché, colas, presupuesto de bundle | `nextjs-prisma-elite` |
-| `revisor-limpio` | Reviewer | Caza duplicación, God services, lógica en controlador, `any`, catch silencioso | `pr-review-toolkit:code-reviewer`, `code-simplifier` |
-| `adr` | Escriba | Registra decisiones en `docs/adr/NNNN-*.md` | — |
+| Rol | Qué revisa |
+|---|---|
+| Arquitecto | El módulo sigue la estructura de §3.4 y respeta la regla de dependencias |
+| Backend | El caso de uso cuelga de `BaseUseCase`, su schema vive en `contracts` y el test se escribió primero |
+| Contrato | `openapi.yaml` y los schemas se editan **antes** del código, y el cambio es compatible hacia atrás |
+| Negocio | Interés, aging, tramos y reglas de recordatorio viven en `domain-rules` y en ningún otro sitio |
+| Seguridad | El checklist de §9 sobre el diff, con test negativo BOLA/BFLA por endpoint nuevo |
+| QA | Dominio, extremo a extremo, N+1, carga y saturación del pool |
+| Frontend | Las pantallas de §19 con su design system, accesibilidad y estados vacío, carga y error |
+| Rendimiento | Índices, paginación por cursor, caché y presupuesto de bundle |
+| Revisión final | Duplicación, servicios "God", lógica en controladores, `any`, catch silencioso |
 
-### 20.2 Hooks (`.claude/settings.json`)
+Las decisiones que cambian el plan o un límite de seguridad se registran en
+`docs/adr/NNNN-*.md`, una por archivo.
 
-| Hook | Disparo | Acción |
-|---|---|---|
-| `PreToolUse` Bash `git commit` | Antes del commit | `gitleaks protect --staged`; aborta si hay secreto |
-| `PostToolUse` Edit/Write `*.ts` | Tras editar | `eslint --fix` + `prettier` del archivo |
-| `PostToolUse` Edit `schema.prisma` | Tras editar | Recuerda migración + `prisma generate` |
-| `Stop` | Fin de turno | Recuerda `pnpm test` si cambió `apps/api/src` |
+### 20.2 Comprobaciones automáticas antes de commitear
+
+| Cuándo | Qué corre |
+|---|---|
+| Antes del commit | `gitleaks protect --staged`; aborta si hay un secreto |
+| Al editar un `.ts` | `eslint --fix` y `prettier` sobre el archivo |
+| Al editar `schema.prisma` | Recordatorio de migración y `prisma generate` |
+| Al terminar un cambio en `apps/api/src` | `pnpm test` |
 
 ### 20.3 CI
 
 `lint` → `typecheck` → test unitario → **test de arquitectura** (`dependency-cruiser`, §7) → e2e con Postgres + MinIO → `pnpm audit` → presupuesto de bundle → build.
 
-**CLAUDE.md** recoge el mapa del repo, los comandos, las reglas de §1 como reglas duras y el cierre obligatorio: lint + test + arquitectura + gitleaks antes de dar nada por terminado.
+El cierre obligatorio de cualquier cambio es el mismo: lint, test, arquitectura y gitleaks
+antes de dar nada por terminado.
 
 ---
 
@@ -1173,7 +1174,7 @@ Sin subagentes, por decisión tuya. Cada skill es un rol con checklist propio.
 
 | Fase | Entregable | Criterio de "hecho" |
 |---|---|---|
-| **F0 · Andamiaje** | Workspace, Turborepo, configs, servicios locales por Homebrew (Postgres, MinIO, Mailpit), `.env.example`, CLAUDE.md, skills, hooks | Servicios arriba; `pnpm verify` en verde |
+| **F0 · Andamiaje** | Workspace, Turborepo, configs, servicios locales por Homebrew (Postgres, MinIO, Mailpit), `.env.example` y las comprobaciones automáticas de §20.2 | Servicios arriba; `pnpm verify` en verde |
 | **F1 · Contrato** | `openapi.yaml` + `packages/contracts`: todo §15 y el catálogo de errores de §14.4 | Aprobado por ti; genera tipos para api y web |
 | **F2 · Núcleo base** | `packages/api-core` con las ocho bases de §5, filtro problem+json, interceptors, cola, **outbox/inbox (§3.3)** e **idempotencia completa (§12.4)** | Matar el proceso entre el commit y la publicación **no** pierde el evento; misma clave con otro cuerpo devuelve 422 |
 | **F3 · Dominio del pagaré** | Entidad, VOs, `NoteStatus` con la matriz de §11.3, `amountToWords`, calendario de negocio — **sin Nest** | Cada regla de §11 y §12 con su test |

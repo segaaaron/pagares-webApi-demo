@@ -5,8 +5,10 @@ node_modules
 **/.next
 **/.turbo
 .git
+# Configuración local del editor, nunca entra en la imagen
 .claude
 CLAUDE.md
+.cursor
 .env
 .env.*
 !.env.example

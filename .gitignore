@@ -38,6 +38,7 @@ next-env.d.ts
 # monorepo
 node_modules/
 dist/
+*.js.map
 .turbo/
 apps/*/dist/
 apps/web/.next/
@@ -52,9 +53,11 @@ packages/*/dist/
 docker/data/
 *.log
 
-# Configuración local de Claude Code — nunca se sube
+# Configuración local de las herramientas del editor — nunca se sube
 .claude/
 CLAUDE.md
+.cursor/
+.windsurf/
 
 # datos de servicios locales
 .local/
