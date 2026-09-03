@@ -135,7 +135,7 @@ Desde la terminal del contenedor de la API, después de cada despliegue que trai
 migraciones nuevas:
 
 ```
-node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
+./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 ```
 
 A mano y nunca al arrancar el contenedor: si algún día hay dos réplicas, ambas migrarían a

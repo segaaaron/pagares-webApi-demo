@@ -304,7 +304,7 @@ pnpm admin:create --email tu@correo.com --name "Tu Nombre"   # una sola vez
 ```
 
 En el servidor, esos dos últimos pasos se hacen desde la terminal del contenedor de la API:
-`node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma` y
+`./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma` y
 `node tools/create-admin.js --email … --name "…"`.
 
 ---
