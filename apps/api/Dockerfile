@@ -30,6 +30,13 @@ RUN pnpm --filter @pagares/contracts --filter @pagares/domain-rules \
          --filter @pagares/api-core --filter @pagares/emails build
 RUN pnpm --filter @pagares/api exec prisma generate
 RUN pnpm --filter @pagares/api build
+# El alta del primer administrador (§25.1) se hace en el servidor, así que su
+# script viaja compilado: en la imagen final no hay TypeScript que lo ejecute.
+# Se compila antes de podar, mientras el árbol de dependencias sigue completo.
+RUN pnpm --filter @pagares/api exec tsc scripts/create-admin.ts \
+      --outDir /tools --module nodenext --moduleResolution nodenext \
+      --target es2022 --skipLibCheck
+
 # Poda lo que sólo servía para compilar.
 RUN pnpm --filter @pagares/api --prod --legacy deploy /out
 # El cliente de Prisma se genera dentro del árbol podado: el generado en la
@@ -37,11 +44,6 @@ RUN pnpm --filter @pagares/api --prod --legacy deploy /out
 RUN cp -r apps/api/prisma /out/prisma \
  && cd /out \
  && /app/apps/api/node_modules/.bin/prisma generate --schema=/out/prisma/schema.prisma
-# El alta del primer administrador (§25.1) se hace en el servidor, así que su
-# script viaja compilado: en la imagen final no hay TypeScript que lo ejecute.
-RUN pnpm --filter @pagares/api exec tsc scripts/create-admin.ts \
-      --outDir /out/tools --module nodenext --moduleResolution nodenext \
-      --target es2022 --skipLibCheck
 
 # ── Ejecución ─────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
@@ -51,7 +53,7 @@ WORKDIR /app
 COPY --from=build --chown=app:app /out/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/apps/api/dist ./dist
 COPY --from=build --chown=app:app /app/apps/api/prisma ./prisma
-COPY --from=build --chown=app:app /out/tools ./tools
+COPY --from=build --chown=app:app /tools ./tools
 
 # Carpeta de los archivos. En Dokploy se monta aquí un volumen para que las
 # firmas y los escaneos sobrevivan a los despliegues (§8).
