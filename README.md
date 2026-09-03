@@ -299,9 +299,13 @@ Variables, migraciones, memoria y rotación de logs en [`docs/DEPLOY.md`](docs/D
 
 ```bash
 pnpm build          # compilar
-pnpm db:deploy      # migrar (paso previo al arranque, nunca dentro del contenedor)
+pnpm db:deploy      # migrar
 pnpm admin:create --email tu@correo.com --name "Tu Nombre"   # una sola vez
 ```
+
+En el servidor, esos dos últimos pasos se hacen desde la terminal del contenedor de la API:
+`node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma` y
+`node tools/create-admin.js --email … --name "…"`.
 
 ---
 

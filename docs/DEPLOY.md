@@ -131,20 +131,22 @@ La web habla con la API por la red interna de Docker, no por internet: no hace f
 
 ## 4. Migraciones
 
-En la configuración de la API, como **comando previo al despliegue**:
+Desde la terminal del contenedor de la API, después de cada despliegue que traiga
+migraciones nuevas:
 
 ```
-pnpm db:deploy
+node node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 ```
 
-Nunca al arrancar el contenedor. Si algún día hay dos réplicas, ambas migrarían a la vez y romperían la base.
+A mano y nunca al arrancar el contenedor: si algún día hay dos réplicas, ambas migrarían a
+la vez y romperían la base.
 
 ## 5. Primer administrador
 
 Una sola vez, desde la terminal del contenedor de la API:
 
 ```
-pnpm admin:create --email tu@correo.com --name "Tu Nombre"
+node tools/create-admin.js --email tu@correo.com --name "Tu Nombre"
 ```
 
 Imprime la contraseña una vez y falla si ya existe un administrador, para que no quede como puerta trasera. Cámbiala al entrar.

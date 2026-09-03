@@ -37,6 +37,11 @@ RUN pnpm --filter @pagares/api --prod --legacy deploy /out
 RUN cp -r apps/api/prisma /out/prisma \
  && cd /out \
  && /app/apps/api/node_modules/.bin/prisma generate --schema=/out/prisma/schema.prisma
+# El alta del primer administrador (§25.1) se hace en el servidor, así que su
+# script viaja compilado: en la imagen final no hay TypeScript que lo ejecute.
+RUN cd apps/api && node_modules/.bin/tsc scripts/create-admin.ts \
+      --outDir /out/tools --module nodenext --moduleResolution nodenext \
+      --target es2022 --skipLibCheck
 
 # ── Ejecución ─────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
@@ -46,6 +51,7 @@ WORKDIR /app
 COPY --from=build --chown=app:app /out/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/apps/api/dist ./dist
 COPY --from=build --chown=app:app /app/apps/api/prisma ./prisma
+COPY --from=build --chown=app:app /out/tools ./tools
 
 # Carpeta de los archivos. En Dokploy se monta aquí un volumen para que las
 # firmas y los escaneos sobrevivan a los despliegues (§8).
