@@ -1,0 +1,16 @@
+# Lo que nunca debe entrar en la imagen: pesa, o es secreto.
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+.git
+.claude
+CLAUDE.md
+.env
+.env.*
+!.env.example
+.local
+docker/data
+docs
+*.log

@@ -34,3 +34,27 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# monorepo
+node_modules/
+dist/
+.turbo/
+apps/*/dist/
+apps/web/.next/
+packages/*/dist/
+
+# entorno
+.env
+.env.*
+!.env.example
+
+# datos locales
+docker/data/
+*.log
+
+# Configuración local de Claude Code — nunca se sube
+.claude/
+CLAUDE.md
+
+# datos de servicios locales
+.local/

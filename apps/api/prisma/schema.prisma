@@ -1,0 +1,726 @@
+// Esquema del dominio — docs/PLAN.md §14.
+// Reglas que este archivo hace cumplir:
+//   · Dinero en BigInt de centavos. Nunca Float (§12.1).
+//   · Fechas civiles con @db.Date; instantes en UTC.
+//   · Nada se borra: los finales son marcas y los abonos se reversan (§12.2).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────── identidad (§10)
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+model User {
+  id                    String     @id @default(uuid())
+  email                 String     @unique
+  fullName              String
+  phone                 String?
+  role                  UserRole   @default(CLIENT)
+  status                UserStatus @default(PENDING_ACTIVATION)
+
+  passwordHash          String
+  pwdVersion            Int        @default(1) // invalida access tokens al cambiar (§10.4)
+  mustChangePassword    Boolean    @default(true)
+  tempPasswordExpiresAt DateTime?
+  passwordUpdatedAt     DateTime?
+
+  failedLoginCount      Int        @default(0)
+  lockedUntil           DateTime?  // 5 fallos → +5 h (§10.2)
+  lastLoginAt           DateTime?
+
+  createdByAdminId      String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  identities            Identity[]
+  refreshTokens         RefreshToken[]
+  otpChallenges         OtpChallenge[]
+  passwordChanges       PasswordChangeLog[]
+  passwordHistory       PasswordHistory[]
+  deviceTokens          DeviceToken[]
+  debtorProfile         Debtor?
+  ownedNotes            PromissoryNote[]   @relation("NoteOwner")
+
+  @@index([status, createdAt])
+  @@index([role, status])
+}
+
+// Apple/Google: sólo el esquema, sin endpoints hasta que exista la app (§26, punto 9).
+model Identity {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  provider  String
+  subject   String
+  createdAt DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  familyId     String // rotación con detección de reutilización (§10.4)
+  deviceId     String?
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+}
+
+enum OtpPurpose {
+  PASSWORD_CHANGE
+  PASSWORD_RESET
+}
+
+model OtpChallenge {
+  id         String     @id @default(uuid())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  purpose    OtpPurpose
+  codeHash   String // hash del código, jamás el código
+  expiresAt  DateTime
+  attempts   Int        @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, purpose, expiresAt])
+}
+
+enum ChangeReason {
+  INITIAL
+  SELF_CHANGE
+  FORGOT
+  ADMIN_RESET
+}
+
+model PasswordChangeLog {
+  id        String       @id @default(uuid())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  reason    ChangeReason // ADMIN_RESET no consume la cuota de 3/semana (§10.2)
+  ip        String?
+  createdAt DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model PasswordHistory {
+  id           String   @id @default(uuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// El token de push viaja en login/refresh, no en un endpoint propio (§24.3).
+model DeviceToken {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  token      String   @unique
+  platform   String   @default("ios")
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────────────────── deudor (§25.2)
+
+// Debtor es la persona que debe; User es su acceso a la app. La relación es opcional:
+// se puede emitir un pagaré a alguien sin correo, que firmará presencialmente.
+model Debtor {
+  id        String   @id @default(uuid())
+  fullName  String
+  address   String
+  phone     String // obligatorio: sin correo, es el único canal
+  email     String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?  @unique
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  promissoryNotes PromissoryNote[]
+
+  @@index([fullName])
+  @@index([phone])
+}
+
+// ─────────────────────────────────────────────────────────── pagaré (§11, §14)
+
+/** Cómo se pacta la tasa moratoria: por mes o por año (§12.3). */
+enum InterestPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum NoteStatus {
+  PENDING_SIGNATURE
+  PROCESSING_SIGNATURE
+  ISSUED
+  PARTIALLY_PAID
+  OVERDUE
+  PAID
+  RESTRUCTURED
+  RENEWED
+  WRITTEN_OFF
+  VOID
+}
+
+enum PortfolioClass {
+  VIGENTE
+  VENCIDA
+}
+enum AgingBucket {
+  CURRENT
+  D1_30
+  D31_60
+  D61_90
+  D91_120
+  D120_PLUS
+}
+enum CollectionStage {
+  PREVENTIVA
+  ADMINISTRATIVA
+  EXTRAJUDICIAL
+  JUDICIAL
+  CASTIGO
+}
+enum SignatureMode {
+  REMOTE
+  IN_PERSON
+  /**
+   * Firmado en papel antes de existir el sistema, o fuera de él (§24.5).
+   * No hay trazo digital ni certificado de evidencia: fingirlo destruiría el
+   * valor probatorio de los que sí lo tienen (§24.1).
+   */
+  PAPER
+}
+
+model PromissoryNote {
+  id          String @id @default(uuid())
+  folio       String @unique // lo genera numbering, nunca el cliente (§25.3)
+  publicToken String @unique // 128 bits: consultable, no enumerable
+
+  // Estado y clasificación: derivados, nunca tecleados (§11.2)
+  status          NoteStatus      @default(PENDING_SIGNATURE)
+  portfolioClass  PortfolioClass  @default(VIGENTE)
+  agingBucket     AgingBucket     @default(CURRENT)
+  collectionStage CollectionStage @default(PREVENTIVA)
+  stageFrozen     Boolean         @default(false)
+  daysOverdue     Int             @default(0)
+
+  // Requisitos del art. 170 LGTOC
+  issuePlace    String
+  issueDate     DateTime @db.Date
+  paymentPlace  String
+  dueDate       DateTime @db.Date
+  creditorName  String
+  amountCents   BigInt
+  currency      String   @db.Char(3) @default("MXN")
+  amountInWords String // derivado en el servidor; si discrepa, el documento es impugnable
+  observations  String?
+
+  // Interés moratorio, art. 174. null ≠ 0 (§12.3)
+  interestRateAnnualPct Decimal? @db.Decimal(5, 2)
+  // Cómo se pactó en el papel. El cálculo usa siempre la anual; esto es para
+  // que el documento diga "3% mensual" si eso fue lo que se firmó (§12.3).
+  interestPeriod        InterestPeriod @default(ANNUAL)
+
+  // Saldo denormalizado, con reconciliación semanal (§12.2)
+  paidCents BigInt @default(0)
+
+  debtor   Debtor @relation(fields: [debtorId], references: [id])
+  debtorId String
+  owner    User?  @relation("NoteOwner", fields: [ownerId], references: [id])
+  ownerId  String? // null si el deudor no tiene cuenta (§25.2)
+
+  requiresGuarantors Int            @default(0) // 0, 1 o 2 (§25.15)
+  signatureMode      SignatureMode?
+  acceptedAt         DateTime?
+  scrolledToEndAt    DateTime? // evidencia de lectura (§24.1)
+
+  prescribesOn             DateTime? @db.Date // dueDate + plazo de settings (§25.13)
+  inLitigation             Boolean   @default(false)
+  physicalDocumentLocation String?
+
+  renewedFrom   PromissoryNote?  @relation("Renewal", fields: [renewedFromId], references: [id])
+  renewedFromId String?          @unique
+  renewedBy     PromissoryNote?  @relation("Renewal")
+
+  voidedAt     DateTime?
+  voidReason   String?
+  voidedBy     String?
+  writtenOffAt DateTime?
+  writeOffReason String?
+  writtenOffBy String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  signature   Signature?
+  guarantors  Guarantor[]
+  payments    Payment[]
+  settlements Settlement[]
+  extensions  NoteExtension[]
+  activities  CollectionActivity[]
+  reminders   ReminderLog[]
+  legalCase   LegalCase?
+
+  @@index([status, dueDate])
+  @@index([portfolioClass, agingBucket])
+  @@index([ownerId, createdAt])
+  @@index([debtorId, status])
+  @@index([prescribesOn])
+}
+
+model NoteExtension {
+  id           String   @id @default(uuid())
+  note         PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId       String
+  previousDue  DateTime @db.Date
+  newDue       DateTime @db.Date
+  reason       String
+  authorizedBy String
+  createdAt    DateTime @default(now())
+
+  @@index([noteId, createdAt])
+}
+
+model Guarantor {
+  id       String @id @default(uuid())
+  note     PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId   String
+  position Int // 1 o 2, como el formulario impreso
+  fullName String
+  address  String
+  phone    String
+
+  signature GuarantorSignature?
+
+  @@unique([noteId, position])
+}
+
+// ───────────────────────────────────────────────────── firma y medios (§8, §14)
+
+model MediaAsset {
+  id          String   @id @default(uuid())
+  profile     String // signature | signature-vector | document-scan | legal-exhibit
+  storageKey  String   @unique
+  contentType String
+  byteSize    Int
+  width       Int?
+  height      Int?
+  sha256      String
+  createdAt   DateTime @default(now())
+
+  @@index([profile, createdAt])
+}
+
+model Signature {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String         @unique
+
+  assetId       String // WebP comprimido
+  thumbAssetId  String?
+  vectorAssetId String? // .pkdrawing: permite re-render a cualquier resolución
+
+  sha256   String
+  width    Int
+  height   Int
+  byteSize Int
+
+  // Evidencia de aceptación (§24.1). Sin esto es una imagen; con esto es prueba.
+  capturedAt  DateTime
+  strokeCount Int?
+  durationMs  Int?
+  inputType   String? // pencil | finger
+  deviceModel String?
+  osVersion   String?
+  appVersion  String?
+  ipAddress   String?
+  mode        SignatureMode @default(REMOTE)
+  enabledBy   String? // qué admin habilitó el modo presencial
+
+  createdAt DateTime @default(now())
+}
+
+model GuarantorSignature {
+  id          String    @id @default(uuid())
+  guarantor   Guarantor @relation(fields: [guarantorId], references: [id], onDelete: Cascade)
+  guarantorId String    @unique
+
+  assetId     String
+  sha256      String
+  capturedAt  DateTime
+  mode        SignatureMode @default(REMOTE)
+  ipAddress   String?
+  deviceModel String?
+  createdAt   DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────────────────────── abonos (§12.2)
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CHECK
+  OTHER
+}
+
+// Libro sólo de anexar: un abono nunca se modifica ni se borra. Anular es asentar
+// una fila de reversa con importe negativo que apunta al original.
+model Payment {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+
+  amountCents             BigInt // negativo en las reversas
+  interestAccruedCents    BigInt @default(0) // snapshot al abonar (§12.3)
+  appliedToInterestCents  BigInt @default(0)
+  appliedToPrincipalCents BigInt @default(0)
+  isRecovery              Boolean @default(false) // abono sobre pagaré castigado
+
+  paidOn    DateTime      @db.Date
+  method    PaymentMethod
+  reference String?
+  memo      String?
+
+  /**
+   * Folio del recibo (§17.1). Se asigna la primera vez que se genera el PDF y
+   * no cambia: un recibo reimpreso tiene que ser el mismo documento, y sacar un
+   * folio nuevo en cada descarga infla la secuencia y descuadra la contabilidad.
+   */
+  receiptFolio String? @unique
+
+  reversalOf     Payment? @relation("Reversal", fields: [reversalOfId], references: [id])
+  reversalOfId   String?  @unique
+  reversedBy     Payment? @relation("Reversal")
+  reversalReason String?
+
+  registeredBy String
+  createdAt    DateTime @default(now())
+
+  @@index([noteId, paidOn])
+  @@index([noteId, createdAt])
+}
+
+// ───────────────────────────────────────────────────────── convenios (§13.4)
+
+enum SettlementStatus {
+  ACTIVE
+  FULFILLED
+  BROKEN
+}
+
+model Settlement {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+
+  agreedCents   BigInt
+  forgivenCents BigInt           @default(0) // quita otorgada
+  dueOn         DateTime         @db.Date
+  terms         String?
+  status        SettlementStatus @default(ACTIVE)
+
+  authorizedBy String
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([noteId, status])
+  @@index([status, dueOn])
+}
+
+// ─────────────────────────────────────────────────────────── cobranza (§13)
+
+enum Channel {
+  EMAIL
+  PUSH
+  WHATSAPP
+  SMS
+}
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
+
+model ReminderRule {
+  id         String   @id @default(uuid())
+  offsetDays Int // negativo = antes del vencimiento
+  channel    Channel  @default(EMAIL)
+  templateId String
+  condition  Json?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  logs ReminderLog[]
+
+  @@unique([offsetDays, channel])
+}
+
+// La clave única hace idempotente al job: correrlo dos veces no manda dos correos.
+model ReminderLog {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+  rule   ReminderRule   @relation(fields: [ruleId], references: [id])
+  ruleId String
+
+  sentOn    DateTime       @db.Date
+  channel   Channel
+  status    DeliveryStatus @default(QUEUED)
+  messageId String?
+  error     String?
+  createdAt DateTime       @default(now())
+
+  @@unique([noteId, ruleId, sentOn])
+  @@index([status, createdAt])
+}
+
+enum ActivityType {
+  CALL
+  WHATSAPP
+  EMAIL
+  VISIT
+  OTHER
+}
+enum ActivityOutcome {
+  NO_ANSWER
+  PROMISED
+  REFUSED
+  PAID
+  DISPUTED
+}
+
+model CollectionActivity {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+
+  type    ActivityType
+  outcome ActivityOutcome
+
+  promisedOn  DateTime? @db.Date // promesa de pago
+  promiseKept Boolean?
+  notes       String?
+
+  registeredBy String
+  createdAt    DateTime @default(now())
+
+  @@index([noteId, createdAt])
+  @@index([promisedOn])
+}
+
+// ──────────────────────────────────────────────────────────── legal (§13.6)
+
+model LegalCase {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String         @unique
+
+  courtName    String?
+  fileNumber   String?
+  lawyerName   String?
+  lawyerPhone  String?
+  openedOn     DateTime  @db.Date
+  closedOn     DateTime? @db.Date
+  notes        String?
+  openedBy     String
+  createdAt    DateTime  @default(now())
+
+  actions LegalAction[]
+}
+
+model LegalAction {
+  id     String    @id @default(uuid())
+  case   LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  caseId String
+
+  occurredOn   DateTime @db.Date
+  description  String
+  assetIds     String[] // escaneos con el perfil legal-exhibit
+  registeredBy String
+  createdAt    DateTime @default(now())
+
+  @@index([caseId, occurredOn])
+}
+
+// ─────────────────────────────────────────────── folios, ajustes, infraestructura
+
+enum SequenceType {
+  NOTE
+  RECEIPT
+  STATEMENT
+}
+
+// Secuencia con bloqueo de fila: sin huecos y sin duplicados bajo concurrencia (§25.3).
+model DocumentSequence {
+  type      SequenceType
+  year      Int
+  lastValue Int          @default(0)
+  updatedAt DateTime     @updatedAt
+
+  @@id([type, year])
+}
+
+// Una sola fila, cacheada e invalidada por evento al guardarse (§13.7).
+model OrganizationSettings {
+  id String @id @default("singleton")
+
+  legalName String
+  address   String
+  phone     String?
+  email     String?
+  logoAssetId String?
+
+  defaultIssuePlace   String
+  defaultPaymentPlace String
+  currency            String  @db.Char(3) @default("MXN")
+  defaultTermDays     Int     @default(30)
+
+  defaultInterestRateAnnualPct Decimal? @db.Decimal(5, 2)
+  interestBasis                Int      @default(360) // 360 o 365
+  defaultInterestPeriod        InterestPeriod @default(MONTHLY) // en México se pacta casi siempre por mes
+  interestWarningThresholdPct  Decimal  @db.Decimal(5, 2) @default(60.00) // avisa, no impide (§25.14)
+  applyPaymentToInterestFirst  Boolean  @default(true)
+
+  prescriptionYears Int    @default(3) // se avisa, no se aplica sola (§25.13)
+  timezone          String @default("America/Mexico_City")
+
+  noteFolioPrefix    String @default("PAG")
+  receiptFolioPrefix String @default("REC")
+  statementPrefix    String @default("EDC")
+
+  // Datos que el cliente ve en la app para poder pagar
+  bankName          String?
+  bankAccount       String?
+  bankClabe         String?
+  paymentReference  String?
+
+  updatedAt DateTime @updatedAt
+}
+
+// Bitácora encadenada: alterar una fila rompe la cadena y el job lo detecta (§24.1).
+model AuditLog {
+  id        String @id @default(uuid())
+  chainIndex Int    @unique @default(autoincrement())
+  prevHash  String?
+  chainHash String
+
+  actorId    String
+  actorRole  String
+  action     String // "note.write_off", "user.reset_password", …
+  targetType String
+  targetId   String
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+enum IdemStatus {
+  IN_FLIGHT
+  COMPLETED
+}
+
+model IdempotencyKey {
+  key          String     @id
+  endpoint     String // la clave sólo colisiona dentro del mismo endpoint
+  actorId      String
+  requestHash  String // misma clave con otro cuerpo = 422 (§12.4)
+  status       IdemStatus @default(IN_FLIGHT)
+  responseCode Int?
+  responseBody Json?
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+
+  @@index([expiresAt])
+}
+
+// Outbox: el cambio y el mensaje se escriben en la misma transacción (§3.3).
+model OutboxMessage {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([publishedAt, createdAt])
+}
+
+/**
+ * Entregas de correo (§16).
+ *
+ * El `messageId` del proveedor es la única forma de casar el webhook con el
+ * correo que salió. Sin esta tabla, "¿le llegó el aviso?" sólo se contesta
+ * abriendo el panel de Resend, y un rebote no se entera nadie (§22.5).
+ */
+model EmailDelivery {
+  id        String @id @default(uuid())
+  messageId String @unique
+
+  to         String
+  subject    String
+  templateId String?
+  noteId     String?
+  userId     String?
+
+  status    DeliveryStatus @default(SENT)
+  error     String?
+  /** Último evento del proveedor, tal como llegó: sirve para depurar. */
+  lastEvent String?
+
+  sentAt      DateTime  @default(now())
+  deliveredAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([noteId, sentAt])
+  @@index([status, sentAt])
+}
+
+// Inbox: hace idempotente a cada handler ante la entrega al-menos-una-vez.
+model ProcessedEvent {
+  eventId   String
+  handler   String
+  createdAt DateTime @default(now())
+
+  @@id([eventId, handler])
+}

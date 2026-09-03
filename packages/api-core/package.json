@@ -1,0 +1,21 @@
+{
+  "name": "@pagares/api-core",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@pagares/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@pagares/config-ts": "workspace:*",
+    "vitest": "^3.0.5",
+    "@types/node": "^22.10.7"
+  }
+}

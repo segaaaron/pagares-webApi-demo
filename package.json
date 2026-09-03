@@ -1,0 +1,37 @@
+{
+  "name": "pagares",
+  "private": true,
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "arch": "depcruise --config .dependency-cruiser.cjs apps packages",
+    "db:migrate": "prisma migrate dev --schema apps/api/prisma/schema.prisma",
+    "perf:k6": "k6 run apps/api/test/load/portfolio.k6.js",
+    "test:e2e": "pnpm --filter @pagares/api test:e2e",
+    "db:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
+    "db:seed": "tsx apps/api/prisma/seed.ts",
+    "admin:create": "tsx apps/api/scripts/create-admin.ts",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm arch",
+    "db:deploy": "prisma migrate deploy --schema apps/api/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema apps/api/prisma/schema.prisma",
+    "services:start": "brew services start postgresql@16 && brew services start redis && brew services start mailpit"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.7.3",
+    "dependency-cruiser": "^16.9.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "eslint": "^9.18.0",
+    "@pagares/config-eslint": "workspace:*",
+    "prisma": "^6.3.0",
+    "dotenv-cli": "^8.0.0"
+  }
+}

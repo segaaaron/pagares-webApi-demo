@@ -1,0 +1,247 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`catálogo de plantillas (§16) > account-statement > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu estado de cuenta al 3 de septiembre de 2026",
+  "text": "Hola Juan Pérez:
+
+Adjuntamos tu estado de cuenta al 3 de septiembre de 2026.
+Saldo total: $15,000.00 MXN en 2 pagarés.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > admin-reset-password > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu contraseña se restableció",
+  "text": "Hola Juan Pérez:
+
+María Ruiz, de Créditos Morelia, restableció tu contraseña y se cerraron tus sesiones.
+
+Contraseña temporal: Xk7mQp2rTv9wLz4n
+Caduca en 72 horas y deberás cambiarla al entrar.
+
+Si no lo pediste, avisa a Créditos Morelia.
+Abrir la aplicación: https://app.ejemplo.mx",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > due-reminder > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu pagaré PAG-2026-000128 vence en 3 días",
+  "text": "Hola Juan Pérez:
+Tu pagaré PAG-2026-000128 vence en 3 días
+Te avisamos con tiempo para que puedas organizarte.
+Saldo: $15,000.00 MXN
+Vence: 30 de septiembre de 2026",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > extension-registered > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Nuevo vencimiento de tu pagaré PAG-2026-000128",
+  "text": "Hola Juan Pérez:
+
+El vencimiento de tu pagaré PAG-2026-000128 pasó del 30 de septiembre de 2026 al 31 de octubre de 2026.
+Motivo: Acuerdo con el cliente",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > note-settled > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Pagaré PAG-2026-000128 liquidado",
+  "text": "Hola Juan Pérez:
+
+Tu pagaré PAG-2026-000128 quedó liquidado en su totalidad.
+Adjuntamos la carta de finiquito.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > note-signed-receipt > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Comprobante de tu pagaré PAG-2026-000128",
+  "text": "Hola Juan Pérez:
+
+Recibimos tu firma el 3 de septiembre de 2026.
+Pagaré PAG-2026-000128 por $25,000.00 MXN, con vencimiento el 30 de septiembre de 2026.
+Adjuntamos el PDF.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > note-to-sign > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tienes un pagaré por firmar · PAG-2026-000128",
+  "text": "Hola Juan Pérez:
+
+Créditos Morelia emitió un pagaré a tu nombre por $25,000.00 MXN, con vencimiento el 30 de septiembre de 2026.
+Folio: PAG-2026-000128
+
+Revísalo y fírmalo en la aplicación: https://app.ejemplo.mx",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > note-voided > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Pagaré PAG-2026-000128 anulado",
+  "text": "Hola Juan Pérez:
+
+El pagaré PAG-2026-000128 fue anulado. No requiere acción de tu parte.
+Motivo: Error de captura",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > otp-password-change > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu código para cambiar la contraseña",
+  "text": "Hola Juan Pérez:
+
+Código para cambiar tu contraseña:
+482913
+
+Caduca en 10 minutos y es de un solo uso.
+Si no fuiste tú, ignora este mensaje.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > otp-password-reset > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Restablece tu contraseña",
+  "text": "Hola Juan Pérez:
+
+Código para restablecer tu contraseña:
+482913
+
+Caduca en 10 minutos y es de un solo uso.
+Si no fuiste tú, ignora este mensaje.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > overdue-notice > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu pagaré PAG-2026-000128 lleva 30 días vencido",
+  "text": "Hola Juan Pérez:
+Tu pagaré PAG-2026-000128 lleva 30 días vencido
+Te pedimos regularizar el adeudo o comunicarte con nosotros para acordar una forma de pago.
+Saldo: $15,000.00 MXN
+Vence: 30 de septiembre de 2026",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > password-changed > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu contraseña se cambió correctamente",
+  "text": "Hola Juan Pérez:
+
+Tu contraseña se cambió el 3 de septiembre de 2026, 14:20.
+
+Si no fuiste tú, comunícate con Créditos Morelia.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > payment-receipt > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Recibo REC-2026-000045 · abono de $10,000.00 MXN",
+  "text": "Hola Juan Pérez:
+
+Recibo REC-2026-000045 por $10,000.00 MXN del 3 de septiembre de 2026.
+Aplicado a interés: $1,200.00 MXN
+Aplicado a capital: $8,800.00 MXN
+Pagaré PAG-2026-000128, saldo $15,000.00 MXN
+
+El recibo va adjunto en PDF.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > payment-registered > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Recibimos tu pago de $10,000.00 MXN",
+  "text": "Hola Juan Pérez:
+Registramos tu pago de $10,000.00 MXN del 3 de septiembre de 2026.
+Saldo pendiente: $15,000.00 MXN
+Vence: 30 de septiembre de 2026",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > promise-reminder > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Mañana vence tu compromiso de pago",
+  "text": "Hola Juan Pérez:
+
+Te recordamos tu compromiso de pago para el 10 de septiembre de 2026.
+Pagaré PAG-2026-000128, saldo $15,000.00 MXN.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > release-letter > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Carta de finiquito del pagaré PAG-2026-000128",
+  "text": "Hola Juan Pérez:
+
+Adjuntamos la carta de finiquito del pagaré PAG-2026-000128, liquidado el 3 de septiembre de 2026.
+No queda adeudo pendiente por este documento.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > security-alert > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu cuenta se bloqueó temporalmente",
+  "text": "Hola Juan Pérez:
+
+Tu cuenta se bloqueó por intentos fallidos el 3 de septiembre de 2026, 14:20.
+
+Si no fuiste tú, cambia tu contraseña: https://app.ejemplo.mx/login/recuperar",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > settlement-broken > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "El convenio del pagaré PAG-2026-000128 venció",
+  "text": "Hola Juan Pérez:
+
+El convenio del pagaré PAG-2026-000128 venció sin completarse y se restablece el saldo original: $15,000.00 MXN.
+
+Comunícate con nosotros para regularizarlo.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > settlement-created > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Convenio de pago del pagaré PAG-2026-000128",
+  "text": "Hola Juan Pérez:
+
+Convenio del pagaré PAG-2026-000128:
+Monto convenido: $12,000.00 MXN
+Descuento: $3,000.00 MXN
+Fecha límite: 31 de octubre de 2026
+
+Si no se cumple, se restablece el saldo original.",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > weekly-admin-digest > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Resumen de la semana · del 1 al 7 de septiembre de 2026",
+  "text": "Resumen de la semana · del 1 al 7 de septiembre de 2026
+
+Saldo por cobrar: $310,000.00 MXN
+Vencido: $62,000.00 MXN
+Cartera vencida (90+): $18,000.00 MXN
+Cobrado: $48,000.00 MXN
+Vencen esta semana: 4
+Promesas incumplidas: 2",
+}
+`;
+
+exports[`catálogo de plantillas (§16) > welcome-credentials > mantiene el asunto y el texto 1`] = `
+{
+  "subject": "Tu acceso a Créditos Morelia",
+  "text": "Hola Juan Pérez:
+
+Créditos Morelia creó tu cuenta para consultar y firmar tus pagarés.
+
+Correo: juan@ejemplo.mx
+Contraseña temporal: Xk7mQp2rTv9wLz4n
+
+Caduca en 72 horas y deberás cambiarla al entrar.
+Abrir la aplicación: https://app.ejemplo.mx",
+}
+`;

@@ -1,0 +1,295 @@
+@import "tailwindcss";
+
+/*
+ * Sistema de diseño (§19.9). Tres decisiones sostienen todo lo demás:
+ * densidad alta con ruido bajo, cifras tabulares, y estado por forma además
+ * de color. El administrador compara cuarenta filas de un vistazo: eso es la
+ * tarea real, y todo aquí sirve a eso.
+ */
+@theme {
+  --color-paper: #f2f5f2;
+  --color-surface: #ffffff;
+  --color-surface-2: #e8ede9;
+  --color-ink: #121b17;
+  --color-ink-2: #39473f;
+  --color-muted: #6a7a71;
+  --color-line: #d2dad4;
+  --color-line-strong: #b6c2ba;
+
+  /* El menú va sobre un verde apenas insinuado: separa sin competir con la tabla. */
+  --color-sidebar: #eef4f0;
+
+  --color-accent: #0b7a5b;
+  --color-accent-ink: #075642;
+  --color-accent-soft: #d6efe4;
+
+  /*
+   * Estados de la cartera: cada uno lleva además forma y texto. Los tonos son
+   * los más vivos que pasan AA sobre blanco (≥4.5:1); el color aquí significa
+   * estado, nunca decoración, así que subirlo más sería ruido.
+   */
+  --color-warn: #9a5205;
+  --color-warn-soft: #fbeacc;
+  --color-crit: #b32218;
+  --color-crit-soft: #fbdedb;
+  --color-ok: #12763f;
+  --color-ok-soft: #d4f0de;
+
+  /* Las tres las sirve Next desde el propio dominio (§19.9): sin petición a
+     Google, sin salto de maquetación al cargar. */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-spectral), Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * Elevación en tres pasos. Las sombras van teñidas del verde de la marca y
+   * no de negro puro: sobre papel cálido, el negro ensucia y el tinte no.
+   * Cada nivel apila un halo corto de contacto y una sombra larga difusa, que
+   * es lo que hace que la tarjeta se lea como un plano y no como un recuadro.
+   */
+  --shadow-card:
+    0 1px 1px -0.5px rgb(16 60 46 / 0.06),
+    0 3px 6px -3px rgb(16 60 46 / 0.08),
+    0 8px 20px -12px rgb(16 60 46 / 0.10);
+  --shadow-card-hover:
+    0 1px 1px -0.5px rgb(16 60 46 / 0.07),
+    0 6px 12px -4px rgb(16 60 46 / 0.10),
+    0 16px 32px -16px rgb(16 60 46 / 0.16);
+  /* Tokens de tarjeta: radio, aire y borde en un sitio (three-tier tokens). */
+  --card-radius: 12px;
+  --card-pad: 1.125rem;
+
+  --shadow-pop:
+    0 2px 4px -2px rgb(16 60 46 / 0.10),
+    0 12px 28px -8px rgb(16 60 46 / 0.18);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /*
+   * Escala tipográfica. Seis pasos y ni uno más: cada tamaño extra es una
+   * decisión que alguien tendrá que tomar mal algún día.
+   *   32 título de página · 20 sección · 16 cuerpo · 14 interfaz · 12 apoyo · 10 etiqueta
+   * Los títulos van en Spectral con el interletrado ligeramente cerrado, que
+   * es como se compone una serif a tamaño grande sin que se abra.
+   */
+  h1 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 1.0625rem;
+    line-height: 1.35;
+    font-weight: 600;
+  }
+  h3 {
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    font-weight: 600;
+  }
+  p,
+  li,
+  td,
+  th {
+    line-height: 1.55;
+  }
+
+  /* Importes, folios y fechas: siempre tabulares para poder comparar columnas. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /*
+   * Superficie elevada. Una sola clase para las 36 tarjetas del dashboard: si
+   * la profundidad cambia, cambia aquí y no en 36 archivos.
+   */
+  .card {
+    /*
+     * El degradado vertical es de un 3 % y hace todo el trabajo: simula la luz
+     * cayendo desde arriba, que es lo que separa una tarjeta con relieve de un
+     * rectángulo blanco. Con el borde claro y la sombra en capas, la tarjeta
+     * se lee como un plano por encima del papel.
+     */
+    background: linear-gradient(180deg, #ffffff 0%, var(--color-surface) 42%, #fcfdfc 100%);
+    border: 1px solid var(--color-line);
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-card);
+  }
+  /* Franja superior del color del estado: identifica la tarjeta sin gritar. */
+  .card-accent {
+    position: relative;
+    overflow: hidden;
+  }
+  .card-accent::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--accent-stripe, var(--color-accent));
+  }
+  /* Sólo las tarjetas que llevan a algún sitio reaccionan al puntero. */
+  a.card:hover,
+  .card-interactive:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--color-line-strong);
+  }
+  /*
+   * Campos de formulario. Altura fija de 38 px en todos —texto, fecha y
+   * select— para que una fila de filtros quede alineada sin trucos.
+   * El foco se ve por borde **y** por halo: sobre fondo claro el borde solo
+   * se pierde.
+   */
+  .input {
+    width: 100%;
+    height: 2.375rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: 0.875rem;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .input::placeholder {
+    color: var(--color-muted);
+  }
+  .input:hover:not(:disabled) {
+    border-color: var(--color-muted);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgb(11 122 91 / 0.16);
+  }
+  .input:disabled {
+    background: var(--color-surface-2);
+    color: var(--color-muted);
+    cursor: not-allowed;
+  }
+  /* Un campo inválido lo dice por borde, halo y texto; nunca sólo por color. */
+  .input[aria-invalid='true'] {
+    border-color: var(--color-crit);
+  }
+  .input[aria-invalid='true']:focus {
+    box-shadow: 0 0 0 3px rgb(179 34 24 / 0.16);
+  }
+
+  /* Botones: misma altura que los campos, para que convivan en una fila. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.375rem;
+    padding: 0 0.875rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  }
+  .btn:disabled,
+  .btn[aria-disabled='true'] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: var(--shadow-card);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-ink);
+    box-shadow: var(--shadow-card-hover);
+  }
+  .btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-ink);
+    border: 1px solid var(--color-line-strong);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--color-surface-2);
+    border-color: var(--color-muted);
+  }
+  .btn-ghost {
+    color: var(--color-ink-2);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+  .btn-danger {
+    background: var(--color-crit);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: var(--shadow-card);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #8f1b13;
+  }
+  .btn-sm {
+    height: 2rem;
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  /*
+   * Chip de estado. El anillo interior le da borde sin sumar tamaño, así que
+   * cuarenta chips en columna siguen midiendo lo mismo.
+   */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    box-shadow: inset 0 0 0 1px rgb(16 60 46 / 0.10);
+  }
+
+  /* Decimales atenuados: el peso está en los pesos, no en los centavos. */
+  .cents {
+    color: var(--color-muted);
+    font-weight: 400;
+  }
+
+  /* Distintivo de variación: flecha + signo, nunca sólo color. */
+  .delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    border-radius: 999px;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.1rem;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

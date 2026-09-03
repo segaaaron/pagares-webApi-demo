@@ -1,0 +1,251 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+
+/**
+ * Recorrido completo contra la API real: emitir, abonar, convenir y castigar.
+ *
+ * Requiere la API levantada con su base de datos. Comprueba lo que las pruebas
+ * unitarias no pueden: que las transacciones, los guards y la derivación de
+ * estado funcionan juntos.
+ */
+const API = process.env.E2E_API_URL ?? 'http://localhost:3001/api/v1';
+const ADMIN = { email: 'admin@pagares.local', password: 'Demo-Pagares-2026' };
+
+let token = '';
+
+async function call(
+  path: string,
+  init: { method?: string; body?: unknown; idempotent?: boolean; auth?: boolean } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (init.auth !== false && token) headers.Authorization = `Bearer ${token}`;
+  if (init.idempotent) headers['Idempotency-Key'] = randomUUID();
+
+  const response = await fetch(`${API}${path}`, {
+    method: init.method ?? 'GET',
+    headers,
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+  });
+
+  const text = await response.text();
+  return { status: response.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : {} };
+}
+
+function futureDate(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+beforeAll(async () => {
+  const login = await call('/auth/login', { method: 'POST', body: ADMIN, auth: false });
+  if (login.status === 429) {
+    // El cupo de §25.7 es por IP y ventana: con la API recién arrancada sobra,
+    // pero tras muchas pasadas seguidas se agota. Decirlo evita perder media
+    // hora buscando el fallo donde no está.
+    throw new Error(
+      'La API está limitando los accesos (429). Reinicia la API o sube RATE_LIMIT_AUTH_PER_15M.',
+    );
+  }
+  expect(login.status).toBe(200);
+  token = String(login.body['accessToken']);
+});
+
+afterAll(() => {
+  token = '';
+});
+
+describe('ciclo de vida del pagaré', () => {
+  let noteId = '';
+  let folio = '';
+
+  it('emite un pagaré con folio e importe en letra generados por el servidor', async () => {
+    const result = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: {
+          fullName: `Cliente E2E ${Date.now()}`,
+          address: 'Calle de prueba 1',
+          phone: '+524430000001',
+        },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        // La tasa viaja como se pacta y el servidor la normaliza a anual
+        // (§12.3): el campo plano dejó de existir al distinguir mensual de anual.
+        interestRate: { value: 2, period: 'MONTHLY' },
+      },
+    });
+
+    expect(result.status).toBe(201);
+    expect(result.body['folio']).toMatch(/^PAG-\d{4}-\d{6}$/);
+    expect(result.body['amountInWords']).toBe('DIEZ MIL PESOS 00/100 M.N.');
+    expect(result.body['status']).toBe('PENDING_SIGNATURE');
+
+    noteId = String(result.body['id']);
+    folio = String(result.body['folio']);
+  });
+
+  it('rechaza un abono antes de la firma', async () => {
+    const result = await call(`/admin/notes/${noteId}/payments`, {
+      method: 'POST',
+      idempotent: true,
+      body: { amountCents: '100000', paidOn: futureDate(0), method: 'CASH' },
+    });
+    expect(result.status).toBe(409);
+  });
+
+  it('rechaza un vencimiento anterior a la expedición', async () => {
+    const result = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: { fullName: 'Cliente inválido', address: 'x', phone: '+524430000002' },
+        issuePlace: 'Morelia',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia',
+        dueDate: futureDate(-10),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '100000',
+      },
+    });
+    expect(result.status).toBe(422);
+  });
+
+  it('recalcular el saldo de un pagaré que cuadra no cambia nada', async () => {
+    /*
+     * La reconciliación de §22.5 tiene que ser idempotente: se ejecuta desde
+     * Ajustes cuando algo salió en rojo, y volver a pulsarla no puede mover el
+     * saldo de un pagaré sano.
+     */
+    const result = await call(`/admin/notes/${noteId}/recalculate-balance`, { method: 'POST', body: {} });
+    expect(result.status).toBe(200);
+    expect(result.body['changed']).toBe(false);
+  });
+
+  it('anula el pagaré con motivo de catálogo y queda cerrado', async () => {
+    const rejected = await call(`/admin/notes/${noteId}/void`, {
+      method: 'POST',
+      idempotent: true,
+      body: { reasonCode: 'motivo_inventado', reasonNote: 'No está en el catálogo' },
+    });
+    expect(rejected.status).toBe(400);
+
+    const accepted = await call(`/admin/notes/${noteId}/void`, {
+      method: 'POST',
+      idempotent: true,
+      body: { reasonCode: 'capture_error', reasonNote: 'Prueba automatizada' },
+    });
+    expect(accepted.status).toBe(201);
+    expect(accepted.body['status']).toBe('VOID');
+
+    const detail = await call(`/admin/notes/${noteId}`);
+    expect(detail.body['status']).toBe('VOID');
+    expect(folio).toBeTruthy();
+  });
+});
+
+describe('controles de acceso', () => {
+  it('rechaza sin token', async () => {
+    const result = await call('/admin/notes', { auth: false });
+    expect(result.status).toBe(401);
+  });
+
+  it('no distingue correo inexistente de contraseña incorrecta', async () => {
+    /*
+     * La cuenta del intento fallido es de usar y tirar, **nunca la del
+     * administrador**: el bloqueo de §10.2 cuenta por cuenta y no se reinicia
+     * salvo con un acceso correcto, así que probar aquí con la cuenta que usa
+     * toda la suite la bloqueaba cinco horas a la quinta ejecución y dejaba las
+     * 37 pruebas en gris sin decir por qué.
+     */
+    const victima = await call('/admin/users', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        email: `enumeracion-${Date.now()}@ejemplo.mx`,
+        fullName: 'Cuenta de prueba de enumeración',
+        role: 'CLIENT',
+      },
+    });
+    expect(victima.status).toBe(201);
+
+    const wrongPassword = await call('/auth/login', {
+      method: 'POST',
+      auth: false,
+      body: { email: String(victima.body['email']), password: 'incorrecta-pero-larga' },
+    });
+    const noUser = await call('/auth/login', {
+      method: 'POST',
+      auth: false,
+      body: { email: `nadie-${Date.now()}@ejemplo.mx`, password: 'incorrecta-pero-larga' },
+    });
+    // Mismo código y mismo mensaje: si difirieran, se podrían enumerar cuentas.
+    expect(wrongPassword.status).toBe(noUser.status);
+    expect(wrongPassword.body['title']).toBe(noUser.body['title']);
+  });
+
+  it('rechaza un campo extra en el cuerpo', async () => {
+    const result = await call('/auth/login', {
+      method: 'POST',
+      auth: false,
+      body: { ...ADMIN, role: 'ADMIN' },
+    });
+    expect(result.status).toBe(422);
+  });
+
+  it('responde 202 al olvido exista o no la cuenta', async () => {
+    const real = await call('/auth/password/forgot', {
+      method: 'POST',
+      auth: false,
+      body: { email: ADMIN.email },
+    });
+    const fake = await call('/auth/password/forgot', {
+      method: 'POST',
+      auth: false,
+      body: { email: `nadie-${Date.now()}@ejemplo.mx` },
+    });
+    expect(real.status).toBe(202);
+    expect(fake.status).toBe(202);
+  });
+});
+
+describe('idempotencia', () => {
+  it('devuelve el mismo resultado con la misma clave', async () => {
+    const key = randomUUID();
+    const body = {
+      debtor: { fullName: `Idem ${Date.now()}`, address: 'x', phone: '+524430000003' },
+      issuePlace: 'Morelia',
+      issueDate: futureDate(-1),
+      paymentPlace: 'Morelia',
+      dueDate: futureDate(30),
+      creditorName: 'Créditos Morelia S.A. de C.V.',
+      amountCents: '500000',
+    };
+
+    const send = async (payload: unknown): Promise<{ status: number; body: Record<string, unknown> }> => {
+      const response = await fetch(`${API}/admin/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Idempotency-Key': key,
+        },
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+    };
+
+    const first = await send(body);
+    const second = await send(body);
+    expect(second.body['folio']).toBe(first.body['folio']);
+
+    // Misma clave con otro cuerpo: es un error del cliente, no un reintento.
+    const different = await send({ ...body, amountCents: '900000' });
+    expect(different.status).toBe(422);
+  });
+});

@@ -1,0 +1,133 @@
+import { listUsers } from '@/features/users/queries';
+import { CreateUserForm, UserActions } from '@/features/users/user-forms';
+import { dateTime } from '@/shared/lib/format';
+import { DataTable, type Column } from '@/shared/ui/data-table';
+import { ListPagination, paginate } from '@/shared/ui/list-pagination';
+import { EmptyState } from '@/shared/ui/empty-state';
+import { PageHeader } from '@/shared/ui/page-header';
+
+export const metadata = { title: 'Accesos' };
+
+const STATUS: Record<string, { label: string; chip: string }> = {
+  PENDING_ACTIVATION: { label: 'Pendiente', chip: 'bg-warn-soft text-warn' },
+  ACTIVE: { label: 'Activa', chip: 'bg-ok-soft text-ok' },
+  SUSPENDED: { label: 'Suspendida', chip: 'bg-crit-soft text-crit' },
+  DISABLED: { label: 'Deshabilitada', chip: 'bg-surface-2 text-muted' },
+};
+
+type UserRow = Awaited<ReturnType<typeof listUsers>>[number];
+
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = new URLSearchParams(
+    Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v] as [string, string]] : [])),
+  );
+  const users = await listUsers();
+  const now = Date.now();
+  const { page, props } = paginate(users, params);
+
+  const isLocked = (user: UserRow): boolean =>
+    user.lockedUntil !== null && Date.parse(user.lockedUntil) > now;
+
+  const columns: Column<UserRow>[] = [
+    {
+      key: 'name',
+      header: 'Nombre',
+      cell: (user) => (
+        <span className="flex items-center gap-2">
+          <span className="font-medium text-ink">{user.fullName}</span>
+          {user.role === 'ADMIN' ? <span className="chip bg-accent-soft text-accent-ink">Admin</span> : null}
+        </span>
+      ),
+    },
+    {
+      key: 'email',
+      header: 'Correo',
+      cell: (user) => <span className="text-ink-2">{user.email}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Estado',
+      width: '13rem',
+      cell: (user) => {
+        const status = STATUS[user.status] ?? STATUS.DISABLED!;
+        return (
+          <span className="block">
+            <span className={`chip ${status.chip}`}>{status.label}</span>
+            {isLocked(user) ? (
+              <span className="mt-1 block text-xs text-crit">
+                Bloqueada hasta {dateTime(user.lockedUntil!)}
+              </span>
+            ) : null}
+            {user.mustChangePassword ? (
+              <span className="mt-1 block text-xs text-muted">Debe cambiar su contraseña</span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'notes',
+      header: 'Pagarés',
+      align: 'right',
+      width: '6rem',
+      cell: (user) => <span className="tnum">{user.notesCount}</span>,
+    },
+    {
+      key: 'last',
+      header: 'Último acceso',
+      width: '11rem',
+      cell: (user) => (
+        <span className="text-xs text-muted">{user.lastLoginAt ? dateTime(user.lastLoginAt) : 'Nunca'}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      align: 'right',
+      width: '17rem',
+      cell: (user) =>
+        user.role === 'ADMIN' ? (
+          // Un admin no se suspende desde aquí: sería la forma más fácil de
+          // quedarse sin ninguno (§10).
+          <span className="text-xs text-muted" title="Las cuentas de administrador no se gestionan desde esta lista">
+            —
+          </span>
+        ) : (
+          <UserActions userId={user.id} status={user.status} locked={isLocked(user)} />
+        ),
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        crumbs={[{ label: 'Accesos' }]}
+        title="Accesos"
+        description="Cuentas de acceso a la aplicación. No hay registro público: sólo se crean desde aquí."
+      />
+
+      <CreateUserForm />
+
+      <DataTable
+        caption="Cuentas de acceso con su estado y su última entrada"
+        columns={columns}
+        rows={page}
+        rowKey={(user) => user.id}
+        empty={<EmptyState title="No hay cuentas todavía" hint="Da de alta la primera con el formulario de arriba." />}
+        footer={
+          <ListPagination
+            basePath="/usuarios"
+            params={params}
+            shown={page.length}
+            noun={['cuenta', 'cuentas']}
+            {...props}
+          />
+        }
+      />
+    </div>
+  );
+}
