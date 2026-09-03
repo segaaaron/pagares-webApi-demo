@@ -42,6 +42,10 @@ ENV TZ=America/Mexico_City
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=256
 ENV PORT=3000
+# El servidor de Next escucha en `HOSTNAME`, que en Docker vale el identificador
+# del contenedor: la comprobación de salud contra 127.0.0.1 no encontraba a
+# nadie y el contenedor se reiniciaba en bucle con la aplicación sana.
+ENV HOSTNAME=0.0.0.0
 EXPOSE 3000
 
 # Se comprueba contra `/login`, no contra `/`: la raíz es del panel y sin sesión
