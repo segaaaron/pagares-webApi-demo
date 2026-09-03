@@ -42,8 +42,15 @@ COPY --from=build --chown=app:app /out/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/apps/api/dist ./dist
 COPY --from=build --chown=app:app /app/apps/api/prisma ./prisma
 
+# Carpeta de los archivos. En Dokploy se monta aquí un volumen para que las
+# firmas y los escaneos sobrevivan a los despliegues (§8).
+RUN mkdir -p /data/storage && chown -R app:app /data
+VOLUME ["/data/storage"]
+
 USER app
 ENV NODE_ENV=production
+ENV STORAGE_DRIVER=local
+ENV STORAGE_LOCAL_DIR=/data/storage
 ENV TZ=America/Mexico_City
 # Techo de heap: sin esto Node reserva según la RAM total de la máquina y en un
 # VPS pequeño se lleva más de lo que necesita.

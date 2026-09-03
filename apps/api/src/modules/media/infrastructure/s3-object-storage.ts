@@ -15,13 +15,27 @@ export class S3ObjectStorage implements ObjectStorage {
   private readonly client: S3Client;
 
   constructor(@Inject(ENV) private readonly env: Env) {
+    /*
+     * Las variables de S3 son opcionales en el esquema porque la instalación por
+     * omisión guarda en disco. Quien elige este adaptador tiene que traerlas
+     * todas: mejor morir al arrancar que descubrirlo cuando alguien firme.
+     */
+    for (const [nombre, valor] of Object.entries({
+      STORAGE_ENDPOINT: env.STORAGE_ENDPOINT,
+      STORAGE_BUCKET: env.STORAGE_BUCKET,
+      STORAGE_ACCESS_KEY: env.STORAGE_ACCESS_KEY,
+      STORAGE_SECRET_KEY: env.STORAGE_SECRET_KEY,
+    })) {
+      if (!valor) throw new Error(`STORAGE_DRIVER=s3 exige ${nombre}`);
+    }
+
     this.client = new S3Client({
-      endpoint: env.STORAGE_ENDPOINT,
+      endpoint: env.STORAGE_ENDPOINT as string,
       region: env.STORAGE_REGION,
       forcePathStyle: env.STORAGE_FORCE_PATH_STYLE,
       credentials: {
-        accessKeyId: env.STORAGE_ACCESS_KEY,
-        secretAccessKey: env.STORAGE_SECRET_KEY,
+        accessKeyId: env.STORAGE_ACCESS_KEY as string,
+        secretAccessKey: env.STORAGE_SECRET_KEY as string,
       },
     });
   }
@@ -29,7 +43,7 @@ export class S3ObjectStorage implements ObjectStorage {
   async put(key: string, body: Buffer, contentType: string): Promise<StoredObject> {
     await this.client.send(
       new PutObjectCommand({
-        Bucket: this.env.STORAGE_BUCKET,
+        Bucket: this.env.STORAGE_BUCKET as string,
         Key: key,
         Body: body,
         ContentType: contentType,
@@ -44,7 +58,7 @@ export class S3ObjectStorage implements ObjectStorage {
 
   async get(key: string): Promise<Buffer> {
     const result = await this.client.send(
-      new GetObjectCommand({ Bucket: this.env.STORAGE_BUCKET, Key: key }),
+      new GetObjectCommand({ Bucket: this.env.STORAGE_BUCKET as string, Key: key }),
     );
     // `transformToByteArray` evita montar el stream a mano y respeta el límite
     // de tamaño del propio SDK.
@@ -71,7 +85,7 @@ export class S3ObjectStorage implements ObjectStorage {
     const url = await getSignedUrl(
       this.client,
       new PutObjectCommand({
-        Bucket: this.env.STORAGE_BUCKET,
+        Bucket: this.env.STORAGE_BUCKET as string,
         Key: input.key,
         ContentType: input.contentType,
       }),
@@ -82,14 +96,14 @@ export class S3ObjectStorage implements ObjectStorage {
 
   async remove(key: string): Promise<void> {
     await this.client.send(
-      new DeleteObjectCommand({ Bucket: this.env.STORAGE_BUCKET, Key: key }),
+      new DeleteObjectCommand({ Bucket: this.env.STORAGE_BUCKET as string, Key: key }),
     );
   }
 
   async signedUrl(key: string, ttlSeconds?: number): Promise<string> {
     return getSignedUrl(
       this.client,
-      new GetObjectCommand({ Bucket: this.env.STORAGE_BUCKET, Key: key }),
+      new GetObjectCommand({ Bucket: this.env.STORAGE_BUCKET as string, Key: key }),
       { expiresIn: ttlSeconds ?? this.env.STORAGE_SIGNED_URL_TTL_SECONDS },
     );
   }

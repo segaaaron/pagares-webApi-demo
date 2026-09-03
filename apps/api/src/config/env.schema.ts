@@ -11,16 +11,31 @@ export const envSchema = z.object({
   WEB_URL: z.string().url().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().transform((v) => v.split(',').map((s) => s.trim())),
   DATABASE_URL: z.string().url(),
-  STORAGE_ENDPOINT: z.string().url(),
-  STORAGE_BUCKET: z.string().min(1),
+  /**
+   * Dónde viven las firmas y los anexos.
+   *
+   * `local` guarda en un volumen del servidor: sin servicio aparte y sin llaves,
+   * que es lo que necesita una instalación de un solo servidor. `s3` usa un
+   * bucket compatible con S3 —MinIO, R2— y hace falta cuando haya más de una
+   * instancia de la API o se quiera delegar la copia de seguridad (§8).
+   */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  /** Carpeta del volumen, sólo para `local`. */
+  STORAGE_LOCAL_DIR: z.string().default('/data/storage'),
+  /** URL pública de la API: los enlaces de archivo son absolutos. */
+  API_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
+  STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+
+  // Sólo con STORAGE_DRIVER=s3. El adaptador comprueba que estén al arrancar.
+  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_BUCKET: z.string().min(1).optional(),
   STORAGE_REGION: z.string().default('auto'),
   STORAGE_FORCE_PATH_STYLE: z
     .string()
     .default('true')
     .transform((v) => v === 'true'),
-  STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-  STORAGE_ACCESS_KEY: z.string().min(1),
-  STORAGE_SECRET_KEY: z.string().min(1),
+  STORAGE_ACCESS_KEY: z.string().min(1).optional(),
+  STORAGE_SECRET_KEY: z.string().min(1).optional(),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   TEMP_PASSWORD_TTL_HOURS: z.coerce.number().int().positive().default(72),

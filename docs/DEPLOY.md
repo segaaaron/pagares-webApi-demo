@@ -1,13 +1,12 @@
 # Despliegue en Dokploy (VPS de Hostinger)
 
-Dos aplicaciones y dos servicios. Nada más.
+Dos aplicaciones y una base de datos. Nada más.
 
 | Componente | Qué es | Dominio |
 |---|---|---|
 | `api` | NestJS, `apps/api/Dockerfile` | `api.tudominio.com` |
 | `web` | Next.js, `apps/web/Dockerfile` | `tudominio.com` |
 | `postgres` | Servicio de Dokploy | interno |
-| `minio` | Servicio de Dokploy | `files.tudominio.com` (opcional) |
 
 El correo sale por Resend, que es externo y no consume nada del VPS.
 
@@ -21,7 +20,6 @@ Con 4 GB alcanza. Cifras **medidas** sobre la compilación de producción, no es
 | Postgres | ~150 MB | 200–400 MB | — |
 | API (`--max-old-space-size=320`) | ~180 MB | ~270 MB | **~355 MB** |
 | Web (`--max-old-space-size=256`) | ~210 MB | ~230 MB | — |
-| MinIO | ~100 MB | — | — |
 | **Total** | | | **~1.5–2 GB** |
 
 **De dónde sale el pico de la API.** De los zips: el paquete legal (§24.5) puede llevar
@@ -50,7 +48,9 @@ escaneos en el perfil `legal-exhibit` (§8.3), que hoy admite 20 MB por archivo.
 
 **Postgres.** Créalo desde Dokploy. Anota usuario, contraseña y nombre de base; la URL interna que te da es la que va en `DATABASE_URL`.
 
-**MinIO.** Créalo, entra a su consola y haz dos cosas: un bucket `pagares-media` y una pareja de llaves de acceso para la aplicación. **El bucket queda privado**: los archivos se sirven con URL firmada de 15 minutos, así que no debe tener lectura anónima.
+**Almacenamiento de archivos.** No hace falta ningún servicio: la API guarda las firmas y los anexos en un volumen. En la aplicación de la API, **añade un volumen montado en `/data/storage`**. Es lo único que hay que hacer, y es lo que impide que un despliegue borre las firmas.
+
+Si algún día hace falta más de una instancia de la API, o quieres delegar las copias de seguridad, se cambia `STORAGE_DRIVER=s3` y se rellenan las variables del bucket. El código no cambia.
 
 ## 2. Aplicaciones
 
@@ -71,13 +71,12 @@ CORS_ORIGINS=https://tudominio.com
 
 DATABASE_URL=postgresql://usuario:clave@postgres:5432/pagares?schema=public&connection_limit=10
 
-STORAGE_ENDPOINT=http://minio:9000
-STORAGE_REGION=auto
-STORAGE_BUCKET=pagares-media
-STORAGE_ACCESS_KEY=...
-STORAGE_SECRET_KEY=...
-STORAGE_FORCE_PATH_STYLE=true
+# Los archivos van a un volumen montado en /data/storage
+STORAGE_DRIVER=local
+STORAGE_LOCAL_DIR=/data/storage
 STORAGE_SIGNED_URL_TTL_SECONDS=900
+# Los enlaces de archivo son absolutos: URL pública de la API
+API_PUBLIC_URL=https://api.tudominio.com
 
 MAIL_DRIVER=resend
 MAIL_FROM="Pagarés <no-reply@tudominio.com>"

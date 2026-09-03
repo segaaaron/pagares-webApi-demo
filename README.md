@@ -13,7 +13,7 @@ control del cobro.
 |---|---|
 | **Runtime** | Node 22 · TypeScript strict |
 | **Datos** | PostgreSQL 16 · Prisma 6 |
-| **Archivos** | S3 compatible (MinIO en local, R2/S3 en producción) |
+| **Archivos** | Volumen del servidor, o cualquier S3 compatible |
 | **Correo** | Resend en producción · Mailpit en local |
 | **Push** | APNs (opcional; apagado si no se configura) |
 | **Gestor** | pnpm 11 + Turborepo |
@@ -42,12 +42,11 @@ control del cobro.
 | Node | 22 |
 | pnpm | 11.4 |
 | PostgreSQL | 16 |
-| MinIO | cualquiera |
 | Mailpit | cualquiera |
 
 ```bash
 # macOS
-brew install node pnpm postgresql@16 minio mailpit
+brew install node pnpm postgresql@16 mailpit
 
 # Comprobación
 node -v && pnpm -v && postgres -V
@@ -67,32 +66,26 @@ pnpm install
 
 ### 2.2 Levantar los servicios
 
-MinIO debe arrancar con **las mismas credenciales** que después irán en `.env`; si no
-coinciden, las subidas fallan con `InvalidAccessKeyId`.
-
 ```bash
 brew services start postgresql@16
 brew services start mailpit
-
-MINIO_ROOT_USER=pagares MINIO_ROOT_PASSWORD=pagares_local \
-  minio server .local/minio-data --address :9000 --console-address :9001 &
 ```
 
 Verificar:
 
 ```bash
-pg_isready                                                                       # accepting connections
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:9000/minio/health/live # 200
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8025                   # 200
+pg_isready                                                       # accepting connections
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8025   # 200
 ```
 
-### 2.3 Crear la base de datos y el bucket
+### 2.3 Crear la base de datos
 
 ```bash
 psql -d postgres -c "CREATE ROLE pagares LOGIN PASSWORD 'pagares_local' CREATEDB"
 psql -d postgres -c "CREATE DATABASE pagares OWNER pagares"
-mkdir -p .local/minio-data/pagares-media
 ```
+
+Los archivos —firmas y anexos— se guardan en `.local/storage`, que se crea solo.
 
 ### 2.4 Migrar y sembrar
 
@@ -109,17 +102,15 @@ pnpm db:seed        # datos de demostración (idempotente)
 cp .env.example .env
 ```
 
-`.env.example` documenta todas las variables. En desarrollo solo hay que rellenar cinco:
+`.env.example` documenta todas las variables. En desarrollo solo hay que rellenar dos:
 
 | Variable | Valor en local |
 |---|---|
-| `STORAGE_ACCESS_KEY` | `pagares` |
-| `STORAGE_SECRET_KEY` | `pagares_local` |
 | `JWT_ACCESS_SECRET` | `openssl rand -base64 48` |
 | `JWT_REFRESH_SECRET` | otro distinto del anterior |
-| `BOOTSTRAP_ADMIN_EMAIL` | tu correo |
 
 Las de Resend y APNs pueden quedar vacías: el correo va a Mailpit y el push queda apagado.
+El almacenamiento viene en `local`, que guarda en una carpeta y no pide credenciales.
 
 **Producción** — ver [`docs/DEPLOY.md`](docs/DEPLOY.md). Tres que suelen olvidarse:
 
@@ -144,7 +135,6 @@ pnpm dev            # arranca api y web
 | Panel web | http://localhost:3000 |
 | API | http://localhost:3001/api/v1 |
 | Buzón de correo | http://localhost:8025 |
-| Consola de MinIO | http://localhost:9001 |
 
 Credenciales del seed: `admin@pagares.local` / `Demo-Pagares-2026`.
 
@@ -250,6 +240,7 @@ Todo filtra por el usuario del token: un cliente no puede leer ni descargar nada
 | `GET` | `/health` | público |
 | `GET` | `/public/notes/:token` | público, solo lectura |
 | `POST` | `/uploads/presign` | autenticado |
+| `GET`·`PUT` | `/files/*` | enlace firmado con caducidad |
 | `POST` | `/webhooks/resend` | firma HMAC del proveedor |
 
 El contrato de cada cuerpo y cada respuesta vive en `packages/contracts`: schemas zod que
@@ -320,8 +311,8 @@ pnpm admin:create --email tu@correo.com --name "Tu Nombre"   # una sola vez
 |---|---|
 | `Environment variable not found: DATABASE_URL` | falta `.env` (sección 3) |
 | `pg_isready` no responde | `brew services start postgresql@16` |
-| `InvalidAccessKeyId` al subir un archivo | MinIO arrancado con credenciales distintas a las de `.env` |
-| `NoSuchBucket` | `mkdir -p .local/minio-data/pagares-media` |
+| Un archivo subido no se descarga | comprueba `STORAGE_LOCAL_DIR`: es relativa al directorio desde el que arranca la API |
+| `InvalidAccessKeyId` con `STORAGE_DRIVER=s3` | las llaves no corresponden al endpoint del bucket |
 | `429` en el primer acceso de `pnpm test:e2e` | límite de accesos agotado: reinicia la API o sube `RATE_LIMIT_AUTH_PER_15M` |
 | `pnpm test:e2e` falla en el primer test | la API no está levantada o la base no está sembrada |
 | El correo no llega | en local nada sale a internet: míralo en http://localhost:8025 |
