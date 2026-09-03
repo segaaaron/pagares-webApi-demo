@@ -31,7 +31,12 @@ RUN pnpm --filter @pagares/contracts --filter @pagares/domain-rules \
 RUN pnpm --filter @pagares/api exec prisma generate
 RUN pnpm --filter @pagares/api build
 # Poda lo que sólo servía para compilar.
-RUN pnpm --filter @pagares/api --prod deploy /out
+RUN pnpm --filter @pagares/api --prod --legacy deploy /out
+# El cliente de Prisma se genera dentro del árbol podado: el generado en la
+# etapa de compilación vive en el almacén de pnpm de /app, que aquí se tira.
+RUN cp -r apps/api/prisma /out/prisma \
+ && cd /out \
+ && /app/apps/api/node_modules/.bin/prisma generate --schema=/out/prisma/schema.prisma
 
 # ── Ejecución ─────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
