@@ -99,7 +99,7 @@ export function PagareFacsimile({ className = '' }: { className?: string }) {
           INTERÉS MORATORIO
         </text>
         <text x="286" y="163" fill="#121b17" fontSize="8.5">
-          36% anual
+          3% anual
         </text>
 
         <text x="30" y="178" fill="#6a7a71" fontSize="6" letterSpacing="1.2" fontFamily="monospace">
