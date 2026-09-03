@@ -39,7 +39,7 @@ RUN cp -r apps/api/prisma /out/prisma \
  && /app/apps/api/node_modules/.bin/prisma generate --schema=/out/prisma/schema.prisma
 # El alta del primer administrador (§25.1) se hace en el servidor, así que su
 # script viaja compilado: en la imagen final no hay TypeScript que lo ejecute.
-RUN cd apps/api && node_modules/.bin/tsc scripts/create-admin.ts \
+RUN pnpm --filter @pagares/api exec tsc scripts/create-admin.ts \
       --outDir /out/tools --module nodenext --moduleResolution nodenext \
       --target es2022 --skipLibCheck
 
