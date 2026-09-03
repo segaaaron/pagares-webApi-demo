@@ -44,7 +44,11 @@ ENV NODE_OPTIONS=--max-old-space-size=256
 ENV PORT=3000
 EXPOSE 3000
 
+# Se comprueba contra `/login`, no contra `/`: la raíz es del panel y sin sesión
+# responde con una redirección, que no es «ok» y marcaría sano un contenedor
+# enfermo… o al revés, como pasó: reinicios en bucle con la aplicación intacta.
+# Basta con que el servidor conteste algo que no sea un error suyo.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/web/server.js"]
