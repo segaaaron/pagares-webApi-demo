@@ -167,7 +167,7 @@ Para producción, `pnpm build` y después `pnpm start` en cada aplicación.
 | `pnpm db:migrate` | crea y aplica una migración de desarrollo |
 | `pnpm db:deploy` | aplica migraciones pendientes (producción) |
 | `pnpm db:seed` | datos de demostración |
-| `pnpm admin:create` | crea el primer administrador en un entorno vacío |
+| `pnpm admin:create --email tu@correo.com` | crea el primer administrador en un entorno vacío |
 
 `pnpm verify` es la puerta de entrada a `main`: si no pasa, el cambio no está listo.
 
@@ -309,7 +309,7 @@ Variables, migraciones, memoria y rotación de logs en [`docs/DEPLOY.md`](docs/D
 ```bash
 pnpm build          # compilar
 pnpm db:deploy      # migrar (paso previo al arranque, nunca dentro del contenedor)
-pnpm admin:create   # primer administrador, una sola vez
+pnpm admin:create --email tu@correo.com --name "Tu Nombre"   # una sola vez
 ```
 
 ---

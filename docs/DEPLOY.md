@@ -108,9 +108,6 @@ APNS_KEY_ID=
 APNS_TEAM_ID=
 APNS_BUNDLE_ID=
 APNS_ENVIRONMENT=production
-
-BOOTSTRAP_ADMIN_EMAIL=tu@correo.mx
-BOOTSTRAP_ADMIN_NAME=Tu Nombre
 ```
 
 Genera cada secreto con `openssl rand -base64 48`. **No reutilices los del `.env` local.**
@@ -148,7 +145,7 @@ Nunca al arrancar el contenedor. Si algún día hay dos réplicas, ambas migrar�
 Una sola vez, desde la terminal del contenedor de la API:
 
 ```
-pnpm admin:create
+pnpm admin:create --email tu@correo.com --name "Tu Nombre"
 ```
 
 Imprime la contraseña una vez y falla si ya existe un administrador, para que no quede como puerta trasera. Cámbiala al entrar.

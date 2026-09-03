@@ -1,8 +1,19 @@
 /**
  * Bootstrap del primer administrador (§25.1).
  *
- * Falla si ya existe uno: no puede quedar como puerta trasera permanente.
- * Imprime la contraseña una sola vez y obliga a cambiarla en el primer acceso.
+ *   pnpm admin:create --email tu@correo.com --name "Tu Nombre"
+ *
+ * Los datos van por argumento, no por variable de entorno: son de un solo uso y
+ * no tienen por qué quedarse en la configuración del despliegue para siempre.
+ * Se aceptan igualmente `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_NAME` para
+ * automatizarlo desde un provisionador, pero no hacen falta.
+ *
+ * Existe porque hay un círculo que romper: los usuarios se dan de alta desde el
+ * panel, y para entrar al panel hay que ser usuario. En una base vacía no hay
+ * nadie.
+ *
+ * Falla si ya existe un administrador: no puede quedar como puerta trasera
+ * permanente. Imprime la contraseña una sola vez y obliga a cambiarla al entrar.
  */
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -17,12 +28,28 @@ function generatePassword(length = 20): string {
   return out;
 }
 
+/** `--email tu@correo.com` o `--email=tu@correo.com`. */
+function argumento(nombre: string): string | undefined {
+  const args = process.argv.slice(2);
+  const exacto = args.indexOf(`--${nombre}`);
+  if (exacto !== -1 && args[exacto + 1] && !args[exacto + 1]?.startsWith('--')) {
+    return args[exacto + 1];
+  }
+  const pegado = args.find((a) => a.startsWith(`--${nombre}=`));
+  return pegado?.slice(nombre.length + 3);
+}
+
 async function main(): Promise<void> {
-  const email = process.env['BOOTSTRAP_ADMIN_EMAIL'];
-  const fullName = process.env['BOOTSTRAP_ADMIN_NAME'] ?? 'Administrador';
+  const email = argumento('email') ?? process.env['BOOTSTRAP_ADMIN_EMAIL'];
+  const fullName = argumento('name') ?? process.env['BOOTSTRAP_ADMIN_NAME'] ?? 'Administrador';
 
   if (!email) {
-    throw new Error('Falta BOOTSTRAP_ADMIN_EMAIL en el entorno');
+    throw new Error(
+      'Falta el correo. Uso: pnpm admin:create --email tu@correo.com --name "Tu Nombre"',
+    );
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new Error(`"${email}" no parece un correo válido`);
   }
 
   const prisma = new PrismaClient();
