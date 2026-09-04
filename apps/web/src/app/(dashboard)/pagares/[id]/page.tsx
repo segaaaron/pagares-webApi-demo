@@ -37,7 +37,7 @@ const AUDIT_LABEL: Record<string, string> = {
   'note.issue': 'Pagaré emitido',
   'note.sign': 'Firmado por el cliente',
   'note.void': 'Anulado',
-  'note.write-off': 'Castigado',
+  'note.write-off': 'Dado de baja',
   'note.reinstate': 'Castigo revertido',
   'note.extend': 'Prórroga registrada',
   'note.renew': 'Renovado',

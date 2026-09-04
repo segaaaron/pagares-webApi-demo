@@ -78,7 +78,7 @@ export function NoteActions({
     { id: 'extend', label: 'Prorrogar' },
     { id: 'settlement', label: 'Convenio' },
     { id: 'renew', label: 'Renovar' },
-    { id: 'write-off', label: 'Castigar', danger: true },
+    { id: 'write-off', label: 'Dar de baja', danger: true },
     { id: 'void', label: 'Anular', danger: true },
   ];
 
@@ -332,7 +332,7 @@ function ReasonForm({ noteId, folio, kind }: { noteId: string; folio: string; ki
       <p className="rounded-md bg-crit-soft px-3 py-2 text-xs text-crit">
         {kind === 'void'
           ? 'El pagaré deja de computar en la cartera. Queda registrado, no se borra.'
-          : 'Castigar no es perdonar: sale de la cartera activa, pero la deuda sigue siendo exigible y admite abonos como recuperación.'}
+          : 'Dar de baja no es perdonar: sale de la cartera activa, pero la deuda sigue siendo exigible y admite abonos como recuperación.'}
       </p>
       <div>
         <label htmlFor={`${kind}-reason`} className={LABEL}>Motivo</label>
@@ -355,7 +355,7 @@ function ReasonForm({ noteId, folio, kind }: { noteId: string; folio: string; ki
       <Feedback state={state} />
       <button type="submit" disabled={pending}
               className="rounded-md border border-crit bg-surface px-3 py-2 text-sm font-semibold text-crit hover:bg-crit-soft disabled:opacity-60">
-        {pending ? 'Procesando…' : kind === 'void' ? 'Anular pagaré' : 'Castigar pagaré'}
+        {pending ? 'Procesando…' : kind === 'void' ? 'Anular pagaré' : 'Dar de baja el pagaré'}
       </button>
     </form>
   );

@@ -73,7 +73,7 @@ export const STATUS_PRESENTATION: Record<NoteStatus, StatusPresentation> = {
     description: 'Sustituido por un pagaré nuevo',
   },
   WRITTEN_OFF: {
-    label: 'Castigado',
+    label: 'Dado de baja',
     // Relleno sólido, no suave: es lo único que lo separa de "Vencido" de un
     // vistazo, y son cosas muy distintas.
     chip: 'bg-crit text-white',

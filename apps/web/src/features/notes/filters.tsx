@@ -50,6 +50,10 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
   };
 
   const chips: { label: string; href: string }[] = [];
+  if (active !== 'todos') {
+    const etiqueta = TABS.find((t) => t.id === active)?.label ?? active;
+    chips.push({ label: `Estado: ${etiqueta}`, href: without('tab') });
+  }
   const q = params.get('q');
   if (q) chips.push({ label: `Búsqueda: "${q}"`, href: without('q') });
   const bucket = params.get('bucket');
@@ -65,25 +69,36 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
 
   return (
     <div className="space-y-3">
-      <nav aria-label="Vistas de la cartera" className="flex flex-wrap gap-1 border-b border-line pb-2">
-        {TABS.map((tab) => {
-          const isActive = tab.id === active;
-          return (
-            <Link
-              key={tab.id}
-              href={withParam('tab', tab.id)}
-              aria-current={isActive ? 'page' : undefined}
-              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                isActive ? 'bg-accent-soft font-semibold text-accent-ink' : 'text-ink-2 hover:bg-surface-2'
-              }`}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="card space-y-3 px-4 py-3.5">
+        {/* El estado es un filtro más, no una sección aparte: por eso vive dentro
+            de la tarjeta, con su etiqueta y su ficha retirable, y no en una barra
+            de pestañas que se lee como navegación. */}
+        <div>
+          <span id="filtro-estado" className="mb-1.5 block text-sm font-medium text-ink">
+            Estado
+          </span>
+          <div role="group" aria-labelledby="filtro-estado" className="flex flex-wrap gap-1.5">
+            {TABS.map((tab) => {
+              const isActive = tab.id === active;
+              return (
+                <Link
+                  key={tab.id}
+                  href={withParam('tab', tab.id)}
+                  aria-pressed={isActive}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                    isActive
+                      ? 'border-accent bg-accent-soft font-semibold text-accent-ink'
+                      : 'border-line text-ink-2 hover:bg-surface-2'
+                  }`}
+                >
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
 
-      <div className="card flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5">
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 border-t border-line pt-3">
         <form action="/pagares" method="get" className="flex items-end gap-2">
           <Hidden params={params} except={['q']} />
           <div>
@@ -138,6 +153,7 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
             ))}
           </div>
         </div>
+        </div>
       </div>
 
       {chips.length > 0 ? (
@@ -157,7 +173,7 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
               <span className="sr-only">Quitar</span>
             </Link>
           ))}
-          <Link href={without('q', 'bucket', 'desde', 'hasta')} className="text-xs text-accent-ink hover:underline">
+          <Link href={without('tab', 'q', 'bucket', 'desde', 'hasta')} className="text-xs text-accent-ink hover:underline">
             Limpiar todo
           </Link>
         </div>

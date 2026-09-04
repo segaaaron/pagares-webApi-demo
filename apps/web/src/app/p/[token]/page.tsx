@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAID: 'Liquidado',
   RESTRUCTURED: 'En convenio',
   RENEWED: 'Renovado',
-  WRITTEN_OFF: 'Castigado',
+  WRITTEN_OFF: 'Dado de baja',
   VOID: 'Anulado',
 };
 

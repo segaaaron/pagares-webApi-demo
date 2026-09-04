@@ -15,7 +15,10 @@ export const TABS = [
   { id: 'cartera-vencida', label: 'Cartera vencida' },
   { id: 'en-convenio', label: 'En convenio' },
   { id: 'pagados', label: 'Pagados' },
-  { id: 'castigados', label: 'Castigados' },
+  // El estado interno sigue siendo WRITTEN_OFF; sólo cambia cómo se nombra en
+  // pantalla: «castigado» es argot bancario y en español suena a reproche al
+  // deudor, cuando lo que describe es una decisión contable del acreedor.
+  { id: 'castigados', label: 'Baja contable' },
   { id: 'anulados', label: 'Anulados' },
 ] as const;
 
