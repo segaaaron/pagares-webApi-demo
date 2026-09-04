@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { changeInitialAction, type ChangeInitialState } from './actions';
 
 /**
@@ -13,6 +13,28 @@ export function ChangeInitialForm() {
     changeInitialAction,
     {},
   );
+  /**
+   * El aviso lo damos nosotros. El del navegador llega en inglés, tapa el campo
+   * y desaparece al primer clic: para una regla que hay que leer entera, es peor
+   * que no avisar.
+   */
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  function validar(datos: FormData): boolean {
+    const nueva = String(datos.get('newPassword') ?? '');
+    const repetida = String(datos.get('repeat') ?? '');
+
+    if (nueva.length < 12) {
+      setAviso(`Te faltan ${12 - nueva.length} caracteres: la contraseña necesita 12.`);
+      return false;
+    }
+    if (nueva !== repetida) {
+      setAviso('Las dos contraseñas no coinciden.');
+      return false;
+    }
+    setAviso(null);
+    return true;
+  }
 
   if (state.expired) {
     return (
@@ -29,7 +51,14 @@ export function ChangeInitialForm() {
   }
 
   return (
-    <form action={action} className="card space-y-4 p-6 shadow-[var(--shadow-card-hover)]">
+    <form
+      action={action}
+      noValidate
+      onSubmit={(evento) => {
+        if (!validar(new FormData(evento.currentTarget))) evento.preventDefault();
+      }}
+      className="card space-y-4 p-6 shadow-[var(--shadow-card-hover)]"
+    >
       <div>
         <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-ink">
           Contraseña nueva
@@ -39,9 +68,9 @@ export function ChangeInitialForm() {
           name="newPassword"
           type="password"
           autoComplete="new-password"
-          required
-          minLength={12}
+          aria-invalid={aviso !== null}
           className="input"
+          onChange={() => setAviso(null)}
         />
         <p className="mt-1 text-xs text-muted">
           Al menos 12 caracteres. No puede ser ninguna de tus cinco anteriores ni una que aparezca
@@ -58,14 +87,16 @@ export function ChangeInitialForm() {
           name="repeat"
           type="password"
           autoComplete="new-password"
-          required
-          minLength={12}
           className="input"
+          onChange={() => setAviso(null)}
         />
       </div>
 
       <div aria-live="polite">
-        {state.error ? (
+        {aviso ? (
+          <p className="rounded-lg bg-crit-soft px-3 py-2 text-sm text-crit">{aviso}</p>
+        ) : null}
+        {state.error && !aviso ? (
           <p className="rounded-lg bg-crit-soft px-3 py-2 text-sm text-crit">{state.error}</p>
         ) : null}
       </div>
