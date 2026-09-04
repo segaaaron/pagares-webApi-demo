@@ -5,12 +5,12 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
 /** Estado de cuenta del cliente en PDF (§17.1). */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const session = await readSession();
   if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   const { id } = await params;
@@ -20,7 +20,9 @@ export async function GET(
   });
 
   if (!upstream.ok) {
-    return NextResponse.json({ error: 'No se pudo generar el estado de cuenta' }, { status: upstream.status });
+    const destino = new URL(`/clientes/${id}`, request.url);
+    destino.searchParams.set('aviso', 'estado-cuenta-fallido');
+    return NextResponse.redirect(destino);
   }
 
   return new NextResponse(await upstream.arrayBuffer(), {

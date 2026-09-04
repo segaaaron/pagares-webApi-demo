@@ -23,7 +23,7 @@ interface DebtorRow {
 export async function GET(request: Request): Promise<NextResponse> {
   const session = await readSession();
   if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   const q = new URL(request.url).searchParams.get('q')?.trim() ?? '';

@@ -41,7 +41,8 @@ export async function GET(
 ): Promise<NextResponse> {
   const session = await readSession();
   if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    // Se abre en una pestaña: un 401 en JSON deja al usuario sin dónde volver.
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   const { id } = await params;
@@ -50,7 +51,7 @@ export async function GET(
   const paymentId = url.searchParams.get('paymentId');
 
   const document = DOCUMENTS[type];
-  if (!document) return NextResponse.json({ error: 'Documento desconocido' }, { status: 400 });
+  if (!document) return volverAlPagare(request, id, 'documento-desconocido');
 
   const upstream = await fetch(`${API_URL}/api/v1${document.path(id, paymentId)}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
@@ -75,4 +76,11 @@ export async function GET(
         : {}),
     },
   });
+}
+
+/** De vuelta al pagaré con el motivo, en lugar de un cuerpo de error en pantalla. */
+function volverAlPagare(request: Request, id: string, motivo: string): NextResponse {
+  const destino = new URL(`/pagares/${id}`, request.url);
+  destino.searchParams.set('aviso', motivo);
+  return NextResponse.redirect(destino);
 }

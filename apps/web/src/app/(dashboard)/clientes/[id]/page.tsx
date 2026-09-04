@@ -1,3 +1,4 @@
+import { RouteNotice } from '@/shared/ui/route-notice';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { api, ApiError } from '@/shared/api/client';
@@ -44,8 +45,26 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default async function DebtorPage({ params }: { params: Promise<{ id: string }> }) {
+
+/** Motivos con los que una descarga devuelve al administrador a esta pantalla. */
+const AVISOS: Record<string, { tone: 'warning' | 'error'; message: string }> = {
+  'documento-desconocido': { tone: 'error', message: 'Ese documento no existe.' },
+  'estado-cuenta-fallido': {
+    tone: 'error',
+    message: 'No se pudo generar el estado de cuenta. Inténtalo de nuevo en un momento.',
+  },
+};
+
+export default async function DebtorPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const consulta = await searchParams;
+  const aviso = typeof consulta['aviso'] === 'string' ? AVISOS[consulta['aviso']] : undefined;
 
   let debtor: DebtorDetail;
   try {
@@ -101,6 +120,7 @@ export default async function DebtorPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-5">
+      {aviso ? <RouteNotice tone={aviso.tone} message={aviso.message} /> : null}
       <PageHeader
         crumbs={[{ label: 'Deudores', href: '/clientes' }, { label: debtor.fullName }]}
         title={debtor.fullName}

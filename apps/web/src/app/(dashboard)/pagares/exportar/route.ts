@@ -15,7 +15,7 @@ import { csvResponse, toCsv } from '@/shared/lib/csv';
 export async function GET(request: Request): Promise<Response> {
   const session = await readSession();
   if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   const params = new URL(request.url).searchParams;
