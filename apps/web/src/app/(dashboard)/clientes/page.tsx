@@ -166,11 +166,20 @@ export default async function DebtorsPage({
       />
 
       {/* La importación vive aquí porque el alta masiva es lo primero que se
-          hace al empezar a usar el sistema con una cartera que ya existe (§24.5). */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ImportPanel kind="debtors" />
-        <ImportPanel kind="notes" />
-      </div>
+          hace al empezar a usar el sistema con una cartera que ya existe (§24.5).
+          Va plegada: se usa las primeras semanas y luego estorba todos los días. */}
+      <details className="card p-4" open={debtors.length === 0}>
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          Importar cartera desde un archivo
+          <span className="ml-2 font-normal text-muted">
+            Dos pasos, en orden: primero los deudores y después sus pagarés.
+          </span>
+        </summary>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <ImportPanel kind="debtors" />
+          <ImportPanel kind="notes" />
+        </div>
+      </details>
 
       <DataTable
         caption="Deudores con su saldo y su comportamiento de pago"
