@@ -56,6 +56,20 @@ export default async function PortfolioPage() {
         title="Cartera"
         description="Saldo, antigüedad y reparto del riesgo."
         meta={<span className="chip bg-surface text-muted">Al {shortDate(report.asOf)}</span>}
+        actions={
+          <>
+            {/* Las descargas de la foto de hoy viven donde se ve la foto, no en
+                Reportes: allí eran dos filas cuyo botón devolvía aquí. */}
+            <a href="/reportes/exportar/cartera" className="btn btn-secondary">
+              <NavIcon.download />
+              Vigente vs. vencida
+            </a>
+            <a href="/reportes/exportar/antiguedad" className="btn btn-secondary">
+              <NavIcon.download />
+              Antigüedad
+            </a>
+          </>
+        }
       />
 
       <section aria-label="Indicadores" className="grid grid-cols-2 gap-4 xl:grid-cols-4">

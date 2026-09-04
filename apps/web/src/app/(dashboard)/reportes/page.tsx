@@ -25,9 +25,8 @@ interface ReportRow {
   description: string;
   group: 'Cartera' | 'Colocación' | 'Gestión';
   /** Foto fija del saldo de hoy, o periodo acotable por fechas. */
-  scope: 'corte' | 'rango';
   icon: React.ReactNode;
-  /** Dónde se ve en pantalla; los de corte viven en Cartera. */
+  /** La pantalla del reporte, con su rango. */
   viewHref: string;
   downloadHref: string;
 }
@@ -40,31 +39,10 @@ const GROUP_CHIP: Record<ReportRow['group'], string> = {
 
 const REPORTS: ReportRow[] = [
   {
-    slug: 'cartera',
-    title: 'Cartera vigente vs. vencida',
-    description: 'Saldo por cobrar, vencido y lo que cruzó los 90 días.',
-    group: 'Cartera',
-    scope: 'corte',
-    icon: <NavIcon.portfolio />,
-    viewHref: '/cartera',
-    downloadHref: '/reportes/exportar/cartera',
-  },
-  {
-    slug: 'antiguedad',
-    title: 'Antigüedad de saldos',
-    description: 'Distribución del saldo por tramos, de 1 a más de 120 días.',
-    group: 'Cartera',
-    scope: 'corte',
-    icon: <NavIcon.portfolio />,
-    viewHref: '/cartera',
-    downloadHref: '/reportes/exportar/antiguedad',
-  },
-  {
     slug: 'concentration',
     title: 'Concentración por deudor',
     description: 'Cuánto del riesgo está en pocas manos.',
     group: 'Cartera',
-    scope: 'rango',
     icon: <NavIcon.clients />,
     viewHref: '/reportes/concentration',
     downloadHref: '/reportes/concentration/exportar',
@@ -74,7 +52,6 @@ const REPORTS: ReportRow[] = [
     title: 'Colocado por periodo',
     description: 'Cuántos pagarés se emitieron y por cuánto importe.',
     group: 'Colocación',
-    scope: 'rango',
     icon: <NavIcon.notes />,
     viewHref: '/reportes/issued',
     downloadHref: '/reportes/issued/exportar',
@@ -84,7 +61,6 @@ const REPORTS: ReportRow[] = [
     title: 'Liquidado por periodo',
     description: 'Cuánto se recuperó y en cuántos días, en promedio.',
     group: 'Colocación',
-    scope: 'rango',
     icon: <NavIcon.check />,
     viewHref: '/reportes/collected',
     downloadHref: '/reportes/collected/exportar',
@@ -94,17 +70,15 @@ const REPORTS: ReportRow[] = [
     title: 'Recuperación del periodo',
     description: 'Cobrado, separando capital, intereses y recuperación de castigos.',
     group: 'Colocación',
-    scope: 'rango',
     icon: <NavIcon.check />,
     viewHref: '/reportes/recovery',
     downloadHref: '/reportes/recovery/exportar',
   },
   {
     slug: 'written-off',
-    title: 'Cartera castigada y recuperada',
+    title: 'Cartera dada de baja y recuperada',
     description: 'Lo dado de baja contablemente y lo que aun así se cobró.',
     group: 'Colocación',
-    scope: 'rango',
     icon: <NavIcon.alert />,
     viewHref: '/reportes/written-off',
     downloadHref: '/reportes/written-off/exportar',
@@ -114,7 +88,6 @@ const REPORTS: ReportRow[] = [
     title: 'Convenios',
     description: 'Vigentes, cumplidos e incumplidos, con las quitas otorgadas.',
     group: 'Gestión',
-    scope: 'rango',
     icon: <NavIcon.collections />,
     viewHref: '/reportes/settlements',
     downloadHref: '/reportes/settlements/exportar',
@@ -124,7 +97,6 @@ const REPORTS: ReportRow[] = [
     title: 'Gestión del periodo',
     description: 'Contactos registrados y promesas obtenidas.',
     group: 'Gestión',
-    scope: 'rango',
     icon: <NavIcon.collections />,
     viewHref: '/reportes/activity',
     downloadHref: '/reportes/activity/exportar',
@@ -165,14 +137,7 @@ export default async function ReportsPage() {
       key: 'scope',
       header: 'Periodo',
       width: '11rem',
-      cell: (report) =>
-        report.scope === 'corte' ? (
-          <span className="text-xs text-muted" title="Es el saldo de hoy; no tiene rango que acotar">
-            Al corte de hoy
-          </span>
-        ) : (
-          <span className="text-xs text-ink-2">Rango de fechas</span>
-        ),
+      cell: () => <span className="text-xs text-ink-2">Rango de fechas</span>,
     },
     {
       key: 'format',
@@ -188,7 +153,7 @@ export default async function ReportsPage() {
       cell: (report) => (
         <span className="flex justify-end gap-1.5">
           <Link href={report.viewHref} className="btn btn-secondary btn-sm">
-            {report.scope === 'corte' ? 'Ver en Cartera' : 'Abrir'}
+            Abrir
           </Link>
           <a
             href={report.downloadHref}
@@ -210,7 +175,7 @@ export default async function ReportsPage() {
       <PageHeader
         crumbs={[{ label: 'Reportes' }]}
         title="Reportes"
-        description="Qué pasó entre dos fechas, con su archivo. Para hoy están el Panel y Cartera."
+        description="Qué pasó entre dos fechas, con su archivo. El saldo de hoy está en Cartera."
         meta={<span className="chip bg-surface text-muted">Datos al {shortDate(portfolio.asOf)}</span>}
       />
 

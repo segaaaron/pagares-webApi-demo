@@ -55,15 +55,31 @@ export default async function SettingsPage() {
       <PageHeader
         crumbs={[{ label: 'Ajustes' }]}
         title="Ajustes"
-        description="Estos valores se rellenan solos al emitir un pagaré y aparecen en los documentos."
+        description="Tres cosas distintas: cómo se emiten los pagarés, cuándo salen los avisos y qué prueba que nada se tocó."
       />
 
-      <SettingsForm values={values} />
+      <Bloque
+        titulo="La organización"
+        explicacion="Se rellena solo al emitir un pagaré y es lo que se imprime en los documentos."
+      >
+        <SettingsForm values={values} />
+      </Bloque>
 
-      <ReminderRulesForm data={rules} />
+      <Bloque
+        titulo="Avisos automáticos"
+        explicacion="Qué se manda y cuántos días antes o después del vencimiento. Nada sale solo: estas reglas eligen la plantilla cuando decides mandarlo."
+      >
+        <ReminderRulesForm data={rules} />
+      </Bloque>
 
-      <PasswordForm />
+      <Bloque titulo="Tu cuenta" explicacion="Sólo afecta a tu acceso, no al de los demás.">
+        <PasswordForm />
+      </Bloque>
 
+      <Bloque
+        titulo="Comprobaciones"
+        explicacion="Lo que demuestra que los números no se tocaron por fuera. Nada de esto se corrige solo: si algo no cuadra, se dice y se decide."
+      >
       <section className="card overflow-hidden" aria-label="Bitácora">
         <header className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden>
@@ -154,6 +170,34 @@ export default async function SettingsPage() {
           </>
         )}
       </section>
+      </Bloque>
     </div>
+  );
+}
+
+/**
+ * Un grupo de la pantalla, con su título y una línea que dice para qué sirve.
+ *
+ * Sin esto, Ajustes era una columna de tarjetas donde la configuración de la
+ * empresa, las reglas de aviso, la contraseña propia y la verificación de la
+ * bitácora pesaban lo mismo y parecían lo mismo.
+ */
+function Bloque({
+  titulo,
+  explicacion,
+  children,
+}: {
+  titulo: string;
+  explicacion: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-ink">{titulo}</h2>
+        <p className="mt-0.5 max-w-prose text-sm text-muted">{explicacion}</p>
+      </div>
+      {children}
+    </section>
   );
 }
