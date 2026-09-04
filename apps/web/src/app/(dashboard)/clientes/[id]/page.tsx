@@ -134,7 +134,11 @@ export default async function DebtorPage({
             </span>
           )
         }
-        description={`${debtor.address} · ${debtor.phone}${debtor.email ? ` · ${debtor.email}` : ''}`}
+        description={
+          debtor.hasAccount
+            ? 'Consulta y firma sus pagarés desde la aplicación.'
+            : 'Firma presencialmente: sus avisos son gestión manual.'
+        }
         actions={
           <>
             {/* El mismo diálogo que en Accesos: un solo flujo para dar acceso,
@@ -167,6 +171,44 @@ export default async function DebtorPage({
           </>
         }
       />
+
+      {/*
+        * Los datos de contacto son herramienta de cobro, no pie de foto: antes
+        * iban amontonados en una línea gris bajo el nombre, separados por
+        * puntos, y para llamar había que seleccionar el número a mano.
+        */}
+      <section aria-label="Contacto" className="card grid gap-px overflow-hidden bg-line sm:grid-cols-3">
+        <Dato etiqueta="Teléfono">
+          <a href={`tel:${debtor.phone.replace(/[^\d+]/g, '')}`} className="text-ink hover:underline">
+            {debtor.phone}
+          </a>
+          <a
+            href={`https://wa.me/${(() => {
+              const n = debtor.phone.replace(/[^\d+]/g, '');
+              return n.startsWith('+') ? n.slice(1) : n.length === 10 ? `52${n}` : n;
+            })()}`}
+            target="_blank"
+            rel="noopener"
+            className="ml-2 text-xs text-accent-ink hover:underline"
+          >
+            WhatsApp
+          </a>
+        </Dato>
+
+        <Dato etiqueta="Correo">
+          {debtor.email ? (
+            <a href={`mailto:${debtor.email}`} className="text-ink hover:underline">
+              {debtor.email}
+            </a>
+          ) : (
+            <span className="text-muted">Sin correo · firma en papel</span>
+          )}
+        </Dato>
+
+        <Dato etiqueta="Domicilio">
+          <span className="text-ink">{debtor.address}</span>
+        </Dato>
+      </section>
 
       <section aria-label="Resumen del deudor" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -217,4 +259,14 @@ function toCents(formatted: string): number {
 
 function formatCents(cents: number): string {
   return `${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cents / 100)} MXN`;
+}
+
+/** Un dato de contacto con su etiqueta, legible de un vistazo y accionable. */
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-surface px-4 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">{etiqueta}</p>
+      <p className="mt-1 text-sm">{children}</p>
+    </div>
+  );
 }
