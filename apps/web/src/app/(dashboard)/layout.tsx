@@ -7,7 +7,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { ToastProvider } from '@/shared/ui/toast';
 
 /**
- * Estructura del dashboard (§19.1): ocho destinos en tres grupos.
+ * Estructura del dashboard (§19.1): nueve destinos en tres grupos.
  *
  * El agrupado no es decoración: separa lo que se hace a diario de lo que se
  * consulta y de lo que casi nunca se toca. Sin él, "Cobranza" y "Reportes"
@@ -27,6 +27,7 @@ const GROUPS = [
       { href: '/', label: 'Panel', hint: 'Qué hay que hacer ahora', icon: NavIcon.panel },
       { href: '/pagares', label: 'Pagarés', hint: 'La cartera completa, pagaré por pagaré', icon: NavIcon.notes },
       { href: '/cobranza', label: 'Cobranza', hint: 'A quién perseguir hoy: embudo, promesas y convenios', icon: NavIcon.collections },
+      { href: '/avisos', label: 'Avisos', hint: 'Correos que no llegaron y su reenvío', icon: NavIcon.alert },
     ],
   },
   {

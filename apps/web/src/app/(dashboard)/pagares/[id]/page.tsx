@@ -179,7 +179,10 @@ export default async function NoteDetailPage({
 
           <header className="relative flex items-center justify-between bg-accent px-6 py-3 text-white">
             <p className="font-serif text-sm font-semibold tracking-[0.28em]">PAGARÉ</p>
-            <p className="font-mono text-[11px] tracking-[0.14em] text-white/80">{note.folio}</p>
+            {/* Blanco entero, no al 80 %: sobre el verde daba 4.01:1 y el folio
+                es texto de 11 px, que exige 4.5. La jerarquía la marcan ya el
+                tamaño y el espaciado. */}
+            <p className="font-mono text-[11px] tracking-[0.14em] text-white">{note.folio}</p>
           </header>
 
           <div className="relative px-6 py-6">

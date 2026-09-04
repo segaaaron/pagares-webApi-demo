@@ -7,6 +7,9 @@ import { PUSH_CHANNEL } from './domain/ports/notification-channel.js';
 import { DispatchPendingService } from './application/dispatch-pending.service.js';
 import { SendNoteDocumentUseCase } from './application/send-note-document.use-case.js';
 import { NoteMailController } from './note-mail.controller.js';
+import { NotificationsController } from './notifications.controller.js';
+import { ListNotificationsUseCase } from './application/list-notifications.use-case.js';
+import { RetryNotificationUseCase } from './application/retry-notification.use-case.js';
 import { WebhooksController } from './webhooks.controller.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 
@@ -20,7 +23,7 @@ import { DocumentsModule } from '../documents/documents.module.js';
 @Global()
 @Module({
   imports: [DocumentsModule],
-  controllers: [NoteMailController, WebhooksController],
+  controllers: [NoteMailController, NotificationsController, WebhooksController],
   providers: [
     ResendMailer,
     // El puerto lo sirve el decorador que anota cada envío; `ResendMailer` es
@@ -29,7 +32,9 @@ import { DocumentsModule } from '../documents/documents.module.js';
     { provide: PUSH_CHANNEL, useClass: ApnsChannel },
     DispatchPendingService,
     SendNoteDocumentUseCase,
+    ListNotificationsUseCase,
+    RetryNotificationUseCase,
   ],
-  exports: [MAILER, PUSH_CHANNEL, DispatchPendingService],
+  exports: [MAILER, PUSH_CHANNEL, DispatchPendingService, ListNotificationsUseCase],
 })
 export class NotificationsModule {}

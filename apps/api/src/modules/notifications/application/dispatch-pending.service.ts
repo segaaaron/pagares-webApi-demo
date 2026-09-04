@@ -25,8 +25,11 @@ import { PUSH_CHANNEL, type NotificationChannel } from '../domain/ports/notifica
 import { ENV } from '../../../config/config.module.js';
 import { withClock } from '../../promissory-notes/domain/note-status.js';
 import type { Env } from '../../../config/env.schema.js';
+// El tope de intentos vive en el dominio: el panel lo necesita para enseñar lo
+// que se atascó, y dos copias del número se desincronizan.
+import { MAX_ATTEMPTS } from '../domain/outbox-state.js';
 
-const MAX_ATTEMPTS = 3;
+
 
 /** Los avisos que además viajan como push (§24.3). */
 const PUSHABLE = new Set(['issued', 'reminder', 'payment', 'settled']);

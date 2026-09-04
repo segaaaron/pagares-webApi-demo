@@ -18,6 +18,13 @@ const API = process.env.E2E_API_URL ?? 'http://localhost:3001/api/v1';
 const NORMAS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
 async function auditar(page: Page, nombre: string): Promise<void> {
+  /*
+   * En desarrollo, Next compila la ruta en la primera visita y la sirve por
+   * partes. Auditar antes de que termine da fallos que no existen —texto sin su
+   * hoja de estilos, contraste imposible— y desaparecen al repetir. Esperar a
+   * que la red calle es lo que hace la prueba repetible.
+   */
+  await page.waitForLoadState('networkidle');
   const resultado = await new AxeBuilder({ page }).withTags(NORMAS).analyze();
 
   const fallos = resultado.violations.map((v) => ({
@@ -87,6 +94,14 @@ test.describe('accesibilidad de las rutas críticas', () => {
     await entrar(page);
     await page.goto('/cobranza');
     await auditar(page, '/cobranza');
+  });
+
+  test('avisos que no salieron', async ({ page }) => {
+    // Es la pantalla que se abre cuando algo está roto: tiene que leerse bien
+    // justo entonces, no sólo cuando está vacía.
+    await entrar(page);
+    await page.goto('/avisos');
+    await auditar(page, '/avisos');
   });
 
   test('reportes', async ({ page }) => {

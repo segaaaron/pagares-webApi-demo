@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import { getWorkQueues } from '@/features/queues/queries';
+import { getNotifications } from '@/features/notifications/queries';
 import { QueueBoard } from '@/features/queues/queue-board';
 import { getPortfolio } from '@/features/reports/queries';
 import { getSettings } from '@/features/settings/queries';
@@ -17,10 +19,11 @@ export const metadata = { title: 'Panel' };
  * sistema es "qué hago ahora", y cada cola trae ya el botón para hacerlo.
  */
 export default async function TodayPage() {
-  const [queues, portfolio, settings] = await Promise.all([
+  const [queues, portfolio, settings, avisos] = await Promise.all([
     getWorkQueues(),
     getPortfolio(),
     getSettings(),
+    getNotifications(),
   ]);
 
   // Serie de cobranza para la silueta y la variación: doce meses en pesos.
@@ -90,6 +93,30 @@ export default async function TodayPage() {
             : `${pending} ${pending === 1 ? 'asunto requiere' : 'asuntos requieren'} tu atención.`
         }
       />
+
+      {/*
+        * Un correo que no sale no interrumpe ninguna operación, así que sin este
+        * aviso puede pasar horas sin que nadie lo note —y con la contraseña de
+        * un cliente dentro. Va antes que los indicadores porque es lo único de
+        * esta pantalla que está roto ahora mismo (§22.3).
+        */}
+      {avisos.counts.stuck > 0 ? (
+        <section
+          aria-label="Avisos sin entregar"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-crit bg-crit-soft px-4 py-3"
+        >
+          <p className="text-sm text-crit">
+            <span className="font-semibold">
+              {avisos.counts.stuck}{' '}
+              {avisos.counts.stuck === 1 ? 'aviso no llegó' : 'avisos no llegaron'}
+            </span>{' '}
+            a su destinatario y ya no se reintentan solos.
+          </p>
+          <Link href="/avisos" className="btn btn-secondary btn-sm">
+            Ver y reenviar
+          </Link>
+        </section>
+      ) : null}
 
       <section aria-label="Indicadores" className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {indicators.map((i) => (

@@ -59,6 +59,10 @@ export const ERROR_CODES = {
   OTP_ATTEMPTS_EXCEEDED: 'otp_attempts_exceeded',
   OTP_COOLDOWN: 'otp_cooldown',
 
+  // Avisos
+  /** Reenviar un aviso ya entregado le mandaría el correo dos veces (§18.1). */
+  NOTIFICATION_ALREADY_DELIVERED: 'notification_already_delivered',
+
   // Genéricos
   NOT_FOUND: 'not_found',
   FORBIDDEN: 'forbidden',
