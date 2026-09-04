@@ -1,5 +1,6 @@
 'use client';
 
+import { PasswordField } from '../../shared/ui/password-field';
 import { useActionState } from 'react';
 import { loginAction, type LoginState } from './actions';
 
@@ -22,19 +23,13 @@ export function LoginForm() {
         />
       </div>
 
-      <div>
-        <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-ink">
-          Contraseña
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className="input"
-        />
-      </div>
+      <PasswordField
+        id="password"
+        name="password"
+        label="Contraseña"
+        autoComplete="current-password"
+        required
+      />
 
       {/* aria-live: el lector de pantalla anuncia el error sin que el foco se mueva. */}
       <div aria-live="polite">

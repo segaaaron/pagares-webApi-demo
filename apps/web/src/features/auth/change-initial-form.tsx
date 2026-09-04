@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
+import { PasswordField } from '../../shared/ui/password-field';
 import { changeInitialAction, type ChangeInitialState } from './actions';
 
 /**
@@ -60,16 +61,12 @@ export function ChangeInitialForm() {
       className="card space-y-4 p-6 shadow-[var(--shadow-card-hover)]"
     >
       <div>
-        <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-ink">
-          Contraseña nueva
-        </label>
-        <input
+        <PasswordField
           id="newPassword"
           name="newPassword"
-          type="password"
+          label="Contraseña nueva"
           autoComplete="new-password"
           aria-invalid={aviso !== null}
-          className="input"
           onChange={() => setAviso(null)}
         />
         <p className="mt-1 text-xs text-muted">
@@ -78,19 +75,13 @@ export function ChangeInitialForm() {
         </p>
       </div>
 
-      <div>
-        <label htmlFor="repeat" className="mb-1.5 block text-sm font-medium text-ink">
-          Repítela
-        </label>
-        <input
-          id="repeat"
-          name="repeat"
-          type="password"
-          autoComplete="new-password"
-          className="input"
-          onChange={() => setAviso(null)}
-        />
-      </div>
+      <PasswordField
+        id="repeat"
+        name="repeat"
+        label="Repítela"
+        autoComplete="new-password"
+        onChange={() => setAviso(null)}
+      />
 
       <div aria-live="polite">
         {aviso ? (

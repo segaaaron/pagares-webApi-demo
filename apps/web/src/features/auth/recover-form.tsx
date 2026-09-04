@@ -1,5 +1,6 @@
 'use client';
 
+import { PasswordField } from '../../shared/ui/password-field';
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { forgotPasswordAction, resetPasswordAction, type RecoverState } from './actions';
@@ -77,35 +78,25 @@ export function RecoverForm() {
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-ink">
-              Contraseña nueva
-            </label>
-            <input
+            <PasswordField
               id="newPassword"
               name="newPassword"
-              type="password"
+              label="Contraseña nueva"
               autoComplete="new-password"
               required
               minLength={12}
-              className="input"
             />
             <p className="mt-1 text-xs text-muted">Al menos 12 caracteres, distinta de las cinco anteriores.</p>
           </div>
 
-          <div>
-            <label htmlFor="repeat" className="mb-1.5 block text-sm font-medium text-ink">
-              Repítela
-            </label>
-            <input
-              id="repeat"
-              name="repeat"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={12}
-              className="input"
-            />
-          </div>
+          <PasswordField
+            id="repeat"
+            name="repeat"
+            label="Repítela"
+            autoComplete="new-password"
+            required
+            minLength={12}
+          />
         </>
       )}
 
