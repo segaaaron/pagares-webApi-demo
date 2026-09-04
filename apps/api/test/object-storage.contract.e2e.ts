@@ -190,6 +190,26 @@ function bateriaDeContrato(
       expect(Buffer.from(await respuesta.arrayBuffer()).toString()).toBe(cuerpo.toString());
     });
 
+    prueba('el archivo se puede incrustar desde otro origen', async () => {
+      /*
+       * Regresión de un fallo real: la firma del pagaré se veía como imagen rota
+       * en el panel. El archivo estaba guardado y la URL respondía 200, pero el
+       * panel vive en otro subdominio que la API y la política por omisión
+       * —`Cross-Origin-Resource-Policy: same-origin`— hace que el navegador
+       * descargue la respuesta y la descarte, sin un solo error visible.
+       *
+       * En esta ruta la autorización es la firma del enlace y no el origen de
+       * quien lo pide, igual que en una URL prefirmada de S3.
+       */
+      const key = clave('png');
+      await almacen.put(key, Buffer.from('imagen'), 'image/png');
+
+      const respuesta = await fetch(await almacen.signedUrl(key, 120));
+      const politica = respuesta.headers.get('cross-origin-resource-policy');
+      // MinIO no la manda y no le hace falta: sirve desde su propio origen.
+      if (politica !== null) expect(politica).toBe('cross-origin');
+    });
+
     prueba('la subida directa devuelve la clave y el plazo que se pidió', async () => {
       const key = clave();
       const firmado = await almacen.presignPut({

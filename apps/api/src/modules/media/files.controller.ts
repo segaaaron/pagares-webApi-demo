@@ -76,7 +76,19 @@ export class FilesController {
       // Es contenido personal servido con un enlace que caduca: ni cachés
       // intermedias ni buscadores.
       .setHeader('Cache-Control', 'private, no-store')
-      .setHeader('X-Content-Type-Options', 'nosniff');
+      .setHeader('X-Content-Type-Options', 'nosniff')
+      /*
+       * El panel vive en otro subdominio que la API, así que su `<img>` es una
+       * petición entre orígenes. Helmet pone `same-origin` en toda la API —lo
+       * correcto para las rutas de datos—, y con ella el navegador descarga la
+       * firma y **la descarta**: se ve el icono de imagen rota sin un solo error
+       * en la consola de red.
+       *
+       * Aquí se relaja a propósito y sólo aquí: la autorización de esta ruta es
+       * la firma del enlace, no el origen de quien la pide, exactamente igual
+       * que en una URL prefirmada de S3.
+       */
+      .setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
     // Se envía por streaming: un escaneo de 20 MB no pasa por la memoria del
     // proceso, y varias descargas a la vez no se suman.
