@@ -20,7 +20,10 @@ export interface NoteDetail {
   balance: { cents: string; formatted: string };
   accruedInterest: { cents: string; formatted: string };
   interestRateAnnualPct: number | null;
+  /** Como se pactó: «3% mensual». Es lo que va en el documento. */
   interestRateLabel: string;
+  /** Con la equivalencia anual simple, para la columna de operación. */
+  interestRateOperationalLabel: string;
   negotiable: boolean;
   guarantors: {
     position: number;

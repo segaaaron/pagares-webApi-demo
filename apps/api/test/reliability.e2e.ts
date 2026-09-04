@@ -302,3 +302,49 @@ describe('§10.2 · el bloqueo por intentos fallidos es por cuenta', () => {
     expect(correct.status).toBe(423);
   });
 });
+
+describe('§24.1 · la cadena de la bitácora aguanta la concurrencia', () => {
+  it('diez operaciones a la vez no rompen el encadenado', async () => {
+    /*
+     * Regresión de un fallo propio. Cada movimiento de la bitácora guarda el
+     * hash del anterior; para calcularlo hay que leer la punta de la cadena y
+     * escribir detrás. Sin serializar ese añadido, dos operaciones simultáneas
+     * leían la misma punta y escribían dos eslabones con el mismo padre: la
+     * comprobación de integridad decía «alterada» sin que nadie hubiera tocado
+     * nada.
+     *
+     * Y eso no es un falso positivo cualquiera: a la tercera falsa alarma nadie
+     * vuelve a mirar la comprobación, que es justo lo que la deja de servir.
+     */
+    const antes = await call('/admin/audit/verify', { token: adminToken });
+    expect(antes.status).toBe(200);
+
+    const label = unique();
+    await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        call('/admin/notes', {
+          method: 'POST',
+          token: adminToken,
+          idempotencyKey: randomUUID(),
+          body: noteBody(`cadena-${label}-${index}`, `+52443${String(Date.now() + index).slice(-7)}`),
+        }),
+      ),
+    );
+
+    const despues = await call('/admin/audit/verify', { token: adminToken });
+    expect(despues.status).toBe(200);
+
+    /*
+     * Se compara contra el estado previo y no contra `true` a secas: una base de
+     * desarrollo puede arrastrar una cadena ya rota de antes, y esta prueba
+     * afirma lo suyo —que **estas** escrituras no la rompen—, no que el pasado
+     * esté limpio.
+     */
+    if (antes.body['intact'] === true) {
+      expect(despues.body['intact'], 'diez escrituras simultáneas rompieron la cadena').toBe(true);
+    } else {
+      expect(Number(despues.body['brokenAt'])).toBe(Number(antes.body['brokenAt']));
+    }
+  });
+});
+

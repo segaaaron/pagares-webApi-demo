@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   accrueInterest,
   describeRate,
+  describeRateWithAnnual,
   fromAnnualRatePct,
   toAnnualRatePct,
 } from './interest.js';
@@ -62,10 +63,22 @@ describe('periodicidad de la tasa', () => {
     expect(fromAnnualRatePct(36, 'ANNUAL')).toBe(36);
   });
 
-  it('describe la tasa como se firmó y como se calcula', () => {
-    expect(describeRate(36, 'MONTHLY')).toBe('3% mensual (36% anual)');
+  it('el documento dice la tasa como se pactó, sin equivalencias', () => {
+    /*
+     * "3% mensual (36% anual)" metía en el título un número que nadie firmó, y
+     * encima ambiguo: el 36 es el equivalente **simple** —el que usa la fórmula
+     * de §12.3— pero se lee como efectivo, y capitalizando saldría 42.58 %.
+     */
+    expect(describeRate(36, 'MONTHLY')).toBe('3% mensual');
     expect(describeRate(36, 'ANNUAL')).toBe('36% anual');
     expect(describeRate(null, 'ANNUAL')).toBe('Sin intereses pactados');
     expect(describeRate(0, 'MONTHLY')).toBe('Intereses pactados en cero');
+  });
+
+  it('la equivalencia anual existe aparte, y dice que es simple', () => {
+    // Para comparar cartera y explicar un cálculo, no para el documento.
+    expect(describeRateWithAnnual(36, 'MONTHLY')).toBe('3% mensual · 36% anual simple');
+    expect(describeRateWithAnnual(36, 'ANNUAL')).toBe('36% anual');
+    expect(describeRateWithAnnual(null, 'MONTHLY')).toBe('Sin intereses pactados');
   });
 });

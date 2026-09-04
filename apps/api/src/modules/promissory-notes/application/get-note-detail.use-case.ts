@@ -6,6 +6,7 @@ import {
   classifyPortfolio,
   daysOverdue,
   describeRate,
+  describeRateWithAnnual,
   formatMxn,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
@@ -36,7 +37,10 @@ export interface NoteDetail {
   accruedInterest: { cents: string; formatted: string };
   interestRateAnnualPct: number | null;
   /** Cómo se firmó: "3% mensual (36% anual)". Es lo que va en el documento. */
+  /** Como se pactó, para el documento: «3% mensual». */
   interestRateLabel: string;
+  /** Con su equivalencia anual simple, para las pantallas de operación. */
+  interestRateOperationalLabel: string;
   /** Si circula por endoso o lleva la cláusula "no a la orden" (art. 25 LGTOC). */
   negotiable: boolean;
   interestPeriod: 'MONTHLY' | 'ANNUAL';
@@ -240,6 +244,10 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
       interestPeriod: note.interestPeriod,
       negotiable: note.negotiable,
       interestRateLabel: describeRate(
+        note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
+        note.interestPeriod,
+      ),
+      interestRateOperationalLabel: describeRateWithAnnual(
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
         note.interestPeriod,
       ),

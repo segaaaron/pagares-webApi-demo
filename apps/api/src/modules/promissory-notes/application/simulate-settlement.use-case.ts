@@ -4,7 +4,7 @@ import {
   accrueInterest,
   businessToday,
   daysBetween,
-  describeRate,
+  describeRateWithAnnual,
   formatMxn,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
@@ -125,7 +125,9 @@ export class SimulateSettlementUseCase extends BaseUseCase<
       principal: { cents: principal.toString(), formatted: formatMxn(principal) },
       interest: { cents: interest.toString(), formatted: formatMxn(interest) },
       total: { cents: total.toString(), formatted: formatMxn(total) },
-      interestRateLabel: describeRate(rate, note.interestPeriod),
+      // El simulador explica de dónde sale el interés: aquí la equivalencia
+      // anual simple es justo lo que hace entendible la cuenta.
+      interestRateLabel: describeRateWithAnnual(rate, note.interestPeriod),
       settlement: active
         ? {
             agreed: formatMxn(active.agreedCents),

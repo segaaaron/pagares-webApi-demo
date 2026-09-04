@@ -58,13 +58,41 @@ export function fromAnnualRatePct(annualPct: number, period: InterestPeriod): nu
   return period === 'MONTHLY' ? annualPct / 12 : annualPct;
 }
 
-/** "3% mensual (36% anual)" — como se firmó y como se calcula. */
+const trimRate = (value: number): string => String(Number(value.toFixed(4)));
+
+/**
+ * La tasa **como se pactó**, y nada más: "3% mensual".
+ *
+ * Es lo que va en el documento. Añadir ahí la equivalencia anual —"(36% anual)"—
+ * mete en el título un número que nadie firmó, y encima uno que se lee mal: el
+ * 36 % es el equivalente **simple**, que es como calcula este sistema (§12.3),
+ * pero quien lo ve suele entenderlo como tasa efectiva, y capitalizando mes a
+ * mes un 3 % mensual sale 42.58 % al año. Dos cifras distintas para lo mismo en
+ * un papel que se lleva a un juzgado no ayudan a nadie.
+ */
 export function describeRate(annualPct: number | null, period: InterestPeriod): string {
   if (annualPct === null) return 'Sin intereses pactados';
   if (annualPct === 0) return 'Intereses pactados en cero';
   const pacted = fromAnnualRatePct(annualPct, period);
-  const trim = (value: number): string => String(Number(value.toFixed(4)));
   return period === 'MONTHLY'
-    ? `${trim(pacted)}% mensual (${trim(annualPct)}% anual)`
-    : `${trim(annualPct)}% anual`;
+    ? `${trimRate(pacted)}% mensual`
+    : `${trimRate(annualPct)}% anual`;
+}
+
+/**
+ * La misma tasa, con su equivalencia anual y dicha con todas las letras.
+ *
+ * Sólo para las pantallas de operación —comparar cartera, explicar un cálculo—,
+ * nunca para el documento. Se llama "anual simple" a propósito: es la que entra
+ * en la fórmula de §12.3, sin capitalizar, y no es la tasa efectiva.
+ */
+export function describeRateWithAnnual(
+  annualPct: number | null,
+  period: InterestPeriod,
+): string {
+  if (annualPct === null || annualPct === 0) return describeRate(annualPct, period);
+  if (period === 'ANNUAL') return `${trimRate(annualPct)}% anual`;
+  return `${trimRate(fromAnnualRatePct(annualPct, period))}% mensual · ${trimRate(
+    annualPct,
+  )}% anual simple`;
 }

@@ -374,6 +374,10 @@ export default async function NoteDetailPage({
                 ['Importe', note.amount.formatted, ''],
                 ['Abonado', note.paid.formatted, 'text-muted'],
                 ['Interés devengado', note.accruedInterest.formatted, 'text-warn'],
+                // La equivalencia anual vive aquí y no en el documento: sirve
+                // para comparar cartera, y en el título sería un número que
+                // nadie firmó.
+                ['Tasa moratoria', note.interestRateOperationalLabel, 'text-ink-2'],
                 ['Saldo', note.balance.formatted, 'font-semibold'],
               ].map(([label, value, cls]) => (
                 <div key={label} className="flex justify-between">

@@ -91,7 +91,7 @@ export default async function SettingsPage() {
 
       <Bloque
         titulo="Comprobaciones"
-        explicacion="Dos preguntas que sólo se contestan mirando: ¿alguien tocó los datos por fuera del sistema, y el saldo de cada pagaré sigue siendo la suma de sus abonos? Si algo no cuadra, aquí sale con nombre."
+        explicacion="Aquí se responde si los números que cobras son de fiar. Míralo cuando un saldo no cuadre, cuando alguien reclame un abono que no aparece, o antes de cerrar el mes: en verde no hay nada que hacer."
       >
         <Suspense fallback={<ComprobacionesCargando />}>
           <Comprobaciones />
@@ -137,19 +137,63 @@ async function Comprobaciones() {
   }
 
   const avisos = audit.filter((entry) => auditLabel(entry.action).tone === 'atencion').length;
+  const todoBien = chain.intact && balances.balanced;
 
   return (
     <>
+      {/*
+        * El veredicto va primero y en una línea. Antes había que leer dos
+        * tarjetas hasta el final para saber si había algo que hacer, y lo
+        * primero que se veía era la lista de movimientos, que parece ruido
+        * cuando todo está bien.
+        */}
+      <section
+        aria-label="Resultado de las comprobaciones"
+        className={`card flex flex-wrap items-center gap-x-4 gap-y-2 p-4 ${
+          todoBien ? '' : 'border-crit'
+        }`}
+      >
+        <span
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+            todoBien ? 'bg-ok-soft text-ok' : 'bg-crit-soft text-crit'
+          }`}
+          aria-hidden
+        >
+          {todoBien ? <NavIcon.check /> : <NavIcon.alert />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-ink">
+            {todoBien
+              ? 'Los datos están intactos y los saldos cuadran'
+              : 'Hay algo que revisar'}
+          </p>
+          <p className="text-xs text-muted">
+            {todoBien
+              ? 'Nadie tocó la base por fuera del sistema y cada saldo coincide con la suma de sus abonos. No hay nada que hacer.'
+              : [
+                  chain.intact ? null : 'la bitácora fue alterada',
+                  balances.balanced ? null : 'algún saldo no coincide con sus abonos',
+                ]
+                  .filter(Boolean)
+                  .join(' y ') + '. El detalle está abajo.'}
+          </p>
+        </div>
+        <span className="tnum shrink-0 text-xs text-muted">
+          comprobado {dateTime(chain.checkedAt)}
+        </span>
+      </section>
+
       <section className="card overflow-hidden" aria-label="Bitácora">
         <header className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden>
             <NavIcon.document />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold">Qué ha pasado</h2>
+            <h2 className="text-sm font-semibold">Quién hizo qué</h2>
             <p className="text-xs text-muted">
-              Los últimos {audit.length} movimientos, en orden. Es la única forma de saber quién
-              anuló un abono o borró un acceso, y no se puede editar.
+              Toda acción que toca dinero, accesos o el estado de un pagaré se anota aquí sola, y
+              no se puede editar ni borrar. Es lo que contesta «¿quién anuló ese abono?» cuando el
+              deudor reclama.
             </p>
           </div>
           {avisos > 0 ? (
@@ -163,10 +207,10 @@ async function Comprobaciones() {
           <p className="px-5 py-6 text-center text-sm text-muted">Todavía no hay movimientos.</p>
         ) : (
           <ul className="divide-y divide-line">
-            {audit.map((entry) => {
-              const label = auditLabel(entry.action);
+            {agruparRepetidos(audit).map((grupo) => {
+              const label = auditLabel(grupo.entry.action);
               return (
-                <li key={entry.id} className="px-5 py-3">
+                <li key={grupo.entry.id} className="px-5 py-3">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span
                       className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -174,11 +218,21 @@ async function Comprobaciones() {
                       }`}
                       aria-hidden
                     />
-                    <span className="min-w-0 flex-1 text-sm text-ink">{label.text}</span>
-                    <span className="shrink-0 text-xs text-muted">
-                      {ROLES[entry.actorRole] ?? entry.actorRole}
+                    <span className="min-w-0 flex-1 text-sm text-ink">
+                      {label.text}
+                      {grupo.veces > 1 ? (
+                        // Cuatro avisos iguales seguidos son un hecho, no
+                        // cuatro: repetirlos empuja fuera de pantalla lo demás.
+                        <span className="ml-2 text-xs text-muted">{grupo.veces} veces</span>
+                      ) : null}
                     </span>
-                    <span className="tnum shrink-0 text-xs text-muted">{dateTime(entry.createdAt)}</span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {ROLES[grupo.entry.actorRole] ?? grupo.entry.actorRole}
+                    </span>
+                    <span className="tnum shrink-0 text-xs text-muted">
+                      {dateTime(grupo.entry.createdAt)}
+                      {grupo.veces > 1 ? ` – ${dateTime(grupo.ultima)}` : ''}
+                    </span>
                   </div>
                   {label.hint ? (
                     <p className="mt-1 pl-[1.125rem] text-xs text-muted">{label.hint}</p>
@@ -316,4 +370,32 @@ function Bloque({
       {children}
     </section>
   );
+}
+
+/**
+ * Junta los movimientos iguales y seguidos.
+ *
+ * Cuatro «se reutilizó un token de sesión» del mismo sistema en un minuto son
+ * **un** hecho contado cuatro veces, y ocupan el sitio de lo que sí hay que
+ * mirar. Se agrupan sólo si son consecutivos: si entre medias pasó otra cosa,
+ * el orden importa y no se toca.
+ */
+function agruparRepetidos(
+  entradas: AuditEntry[],
+): { entry: AuditEntry; veces: number; ultima: string }[] {
+  const grupos: { entry: AuditEntry; veces: number; ultima: string }[] = [];
+
+  for (const entrada of entradas) {
+    const ultimo = grupos.at(-1);
+    if (ultimo && ultimo.entry.action === entrada.action && ultimo.entry.actorRole === entrada.actorRole) {
+      ultimo.veces += 1;
+      // La lista va de lo nuevo a lo viejo: la última del grupo es la más
+      // antigua, y con las dos se ve el rango.
+      ultimo.ultima = entrada.createdAt;
+      continue;
+    }
+    grupos.push({ entry: entrada, veces: 1, ultima: entrada.createdAt });
+  }
+
+  return grupos;
 }
