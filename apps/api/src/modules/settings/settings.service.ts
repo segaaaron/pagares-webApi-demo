@@ -29,21 +29,31 @@ export class SettingsService {
       ...row,
       defaultInterestRateAnnualPct: row.defaultInterestRateAnnualPct?.toString() ?? null,
       interestWarningThresholdPct: row.interestWarningThresholdPct.toString(),
+      // Dinero en centavos: viaja como cadena, como todo `BigInt` del sistema.
+      settlementToleranceCents: row.settlementToleranceCents.toString(),
       configured: true,
     };
   }
 
   /** `upsert`, no `update`: la primera vez que se guarda, la fila nace aquí. */
   async update(data: Record<string, unknown>) {
+    const { settlementToleranceCents, ...resto } = data;
+    const valores = {
+      ...resto,
+      ...(settlementToleranceCents !== undefined
+        ? { settlementToleranceCents: BigInt(String(settlementToleranceCents)) }
+        : {}),
+    };
     const row = await this.prisma.organizationSettings.upsert({
       where: { id: 'singleton' },
-      update: data as never,
-      create: { id: 'singleton', ...data } as never,
+      update: valores as never,
+      create: { id: 'singleton', ...valores } as never,
     });
     return {
       ...row,
       defaultInterestRateAnnualPct: row.defaultInterestRateAnnualPct?.toString() ?? null,
       interestWarningThresholdPct: row.interestWarningThresholdPct.toString(),
+      settlementToleranceCents: row.settlementToleranceCents.toString(),
       configured: true,
     };
   }
@@ -67,5 +77,15 @@ const EN_BLANCO = {
   interestWarningThresholdPct: '60',
   applyPaymentToInterestFirst: true,
   prescriptionYears: 3,
+  settlementToleranceCents: '0',
   timezone: 'America/Mexico_City',
+  noteFolioPrefix: 'PAG',
+  receiptFolioPrefix: 'REC',
+  statementPrefix: 'EDC',
+  // Sin estos campos, una instalación recién migrada devolvía un objeto al que
+  // le faltaban claves que el panel y la aplicación del cliente sí declaran.
+  bankName: null,
+  bankAccount: null,
+  bankClabe: null,
+  paymentReference: null,
 } as const;

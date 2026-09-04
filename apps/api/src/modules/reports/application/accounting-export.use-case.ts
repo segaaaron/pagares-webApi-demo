@@ -104,7 +104,15 @@ export class AccountingExportUseCase extends BaseUseCase<AccountingExportInput, 
         capital: pesos(row.principalCents),
         forma: row.method,
         referencia: row.reference ?? '',
-        tipo: row.isReversal ? 'Reversa' : row.isRecovery ? 'Recuperación de castigo' : 'Abono',
+        // La condonación va nombrada: en una póliza contable no es cobranza,
+        // es pérdida, y quien cuadre la hoja necesita distinguirlas (§25.16).
+        tipo: row.isReversal
+          ? 'Reversa'
+          : row.isWaiver
+            ? 'Condonación'
+            : row.isRecovery
+              ? 'Recuperación de castigo'
+              : 'Abono',
       })),
     };
   }

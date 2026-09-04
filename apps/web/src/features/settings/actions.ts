@@ -10,6 +10,19 @@ export interface SettingsState {
 }
 
 const num = (form: FormData, key: string): number => Number(String(form.get(key) ?? '0'));
+
+/** "1,500.50" → "150050" en centavos, sin pasar por coma flotante. */
+const toCents = (value: string): string => {
+  // Se queda con dígitos y punto: un signo o una letra colada no debe viajar al
+  // servidor para volver como un error de validación que el usuario no entiende.
+  const cleaned = value.replace(/[^\d.]/g, '');
+  if (cleaned === '') return '0';
+  const [pesos = '0', centavos = ''] = cleaned.split('.');
+  return (
+    BigInt(pesos || '0') * 100n +
+    BigInt(centavos.padEnd(2, '0').slice(0, 2) || '0')
+  ).toString();
+};
 const str = (form: FormData, key: string): string => String(form.get(key) ?? '').trim();
 const nullable = (form: FormData, key: string): string | null => str(form, key) || null;
 
@@ -43,6 +56,9 @@ export async function saveSettingsAction(
         interestWarningThresholdPct: num(formData, 'interestWarningThresholdPct'),
         applyPaymentToInterestFirst: formData.get('applyPaymentToInterestFirst') === 'on',
         prescriptionYears: num(formData, 'prescriptionYears'),
+        // En centavos hacia el servidor: el formulario habla en pesos porque es
+        // como se piensa un importe, pero el dinero nunca viaja en coma flotante.
+        settlementToleranceCents: toCents(str(formData, 'settlementTolerance')),
         bankName: nullable(formData, 'bankName'),
         bankAccount: nullable(formData, 'bankAccount'),
         bankClabe: nullable(formData, 'bankClabe'),

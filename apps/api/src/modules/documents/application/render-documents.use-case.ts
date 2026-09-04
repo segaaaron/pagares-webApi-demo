@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import { createHash } from 'node:crypto';
 import { amountToWords, businessToday, formatMxn } from '@pagares/domain-rules';
@@ -51,6 +51,16 @@ export class RenderReceiptUseCase extends BaseUseCase<{ paymentId: string }, Buf
       include: { note: { include: { debtor: true } } },
     });
     if (!payment) throw new NotFoundException('El abono no existe');
+
+    // Un recibo acredita dinero recibido. La condonación cierra el pagaré sin
+    // que entrara nada: emitirle recibo sería firmar un comprobante de un pago
+    // que no existió, y el deudor podría exhibirlo como tal (§25.16). El panel
+    // ya no ofrece el enlace; esto lo impide también por la puerta de atrás.
+    if (payment.isWaiver) {
+      throw new BadRequestException(
+        'Una condonación no tiene recibo: no hubo pago que acreditar. La liquidación consta en la carta de finiquito',
+      );
+    }
 
     const settings = await this.prisma.organizationSettings.findUnique({ where: { id: 'singleton' } });
     const now = this.clock.now();

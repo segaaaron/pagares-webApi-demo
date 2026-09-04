@@ -29,6 +29,8 @@ export interface RecoveryRow {
   interestCents: bigint;
   principalCents: bigint;
   isRecovery: boolean;
+  /** Condonación del remanente: cierra el pagaré, no entra caja (§25.16). */
+  isWaiver: boolean;
 }
 
 export interface WrittenOffRow {
@@ -105,6 +107,8 @@ export interface LedgerPaymentRow {
   reversalOfId: string | null;
   /** Abono sobre un pagaré castigado: renglón propio en contabilidad (§13.7). */
   isRecovery: boolean;
+  /** Condonación del remanente: cierra el pagaré, no entra caja (§25.16). */
+  isWaiver: boolean;
 }
 
 /**
@@ -123,7 +127,10 @@ export interface BalanceMismatchRow {
 export interface ReportRepository {
   /** Pagarés con saldo vivo: excluye finales y los previos a la firma. */
   openBalances(): Promise<OpenBalanceRow[]>;
-  /** Suma de abonos desde una fecha, reversas incluidas con su signo. */
+  /**
+   * Suma de abonos desde una fecha, reversas incluidas con su signo. Excluye
+   * las condonaciones: cierran el pagaré, pero no entró dinero (§25.16).
+   */
   collectedSince(from: string): Promise<bigint>;
   /** Cobrado y colocado mes a mes, para la gráfica de evolución (§19.3). */
   monthlyFlow(fromMonth: string): Promise<MonthlyFlowRow[]>;

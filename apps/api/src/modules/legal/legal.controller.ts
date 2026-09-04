@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
 import { civilDateSchema } from '@pagares/contracts';
 import type { Request } from 'express';
@@ -6,6 +6,7 @@ import { ZodValidationPipe } from '../../shared/http/zod-validation.pipe.js';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../shared/persistence/audit.service.js';
+import { RegisterCustodyEventUseCase } from './application/register-custody-event.use-case.js';
 
 const openCaseSchema = z
   .object({
@@ -26,9 +27,28 @@ const actionSchema = z
   })
   .strict();
 
+/**
+ * Un movimiento del documento físico, no sólo su sitio actual.
+ *
+ * Antes esto era un `physicalDocumentLocation` que se sobrescribía: quedaba el
+ * último sitio y desaparecía quién lo tuvo antes. Ahora cada movimiento se
+ * anexa con responsable y fecha, que es lo que el plan pide en §13.6 y lo que
+ * hace falta el día que el pagaré no aparece.
+ */
 const custodySchema = z
-  .object({ physicalDocumentLocation: z.string().trim().min(2).max(240) })
-  .strict();
+  .object({
+    kind: z.enum(['RECEIVED', 'MOVED', 'HANDED_OVER', 'RETURNED', 'LOST']),
+    occurredOn: civilDateSchema,
+    location: z.string().trim().min(2).max(240),
+    holder: z.string().trim().min(2).max(160),
+    handedTo: z.string().trim().max(160).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict()
+  .refine((body) => body.kind !== 'HANDED_OVER' || (body.handedTo ?? '') !== '', {
+    message: 'Una entrega tiene que decir a quién se le entregó',
+    path: ['handedTo'],
+  });
 
 /**
  * Expediente judicial (§13.6).
@@ -45,6 +65,7 @@ export class LegalController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly custody: RegisterCustodyEventUseCase,
   ) {}
 
   @Post('legal-case')
@@ -136,29 +157,75 @@ export class LegalController {
     return { id: created.id };
   }
 
-  /** Dónde está el pagaré original en papel: sin él no se puede demandar. */
-  @Patch('custody')
-  async custody(
+  /**
+   * Dónde está el pagaré original en papel, y por dónde ha pasado.
+   *
+   * Sin el documento no hay juicio ejecutivo, así que la pregunta que este
+   * histórico contesta —"¿quién lo tuvo y a quién se lo dio?"— es la que decide
+   * si una deuda se puede cobrar en tribunales o no.
+   */
+  @Post('custody')
+  async registerCustody(
     @Param('noteId') noteId: string,
     @Body(new ZodValidationPipe(custodySchema)) body: z.infer<typeof custodySchema>,
     @CurrentActor() actor: Actor,
     @Req() request: Request & { traceId?: string },
   ) {
-    await this.prisma.promissoryNote.update({
-      where: { id: noteId },
-      data: { physicalDocumentLocation: body.physicalDocumentLocation },
-    });
+    return this.custody.execute(
+      {
+        noteId,
+        kind: body.kind,
+        occurredOn: body.occurredOn,
+        location: body.location,
+        holder: body.holder,
+        ...(body.handedTo !== undefined ? { handedTo: body.handedTo } : {}),
+        ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      },
+      {
+        traceId: request.traceId ?? 'unknown',
+        actorId: actor.id,
+        actorRole: actor.role,
+        ...(request.ip !== undefined ? { ip: request.ip } : {}),
+      },
+    );
+  }
 
-    await this.audit.record({
-      actorId: actor.id,
-      actorRole: actor.role,
-      action: 'legal.custody',
-      targetType: 'PromissoryNote',
-      targetId: noteId,
-      metadata: { location: body.physicalDocumentLocation },
-      ...(request.ip !== undefined ? { ip: request.ip } : {}),
-    });
+  @Get('custody')
+  async custodyLog(@Param('noteId') noteId: string) {
+    const [note, events] = await Promise.all([
+      this.prisma.promissoryNote.findUnique({
+        where: { id: noteId },
+        select: { physicalDocumentLocation: true, status: true },
+      }),
+      this.prisma.custodyEvent.findMany({
+        where: { noteId },
+        orderBy: [{ occurredOn: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
 
-    return { ok: true };
+    const ultimo = events[0] ?? null;
+
+    return {
+      currentLocation: note?.physicalDocumentLocation ?? null,
+      currentHolder: ultimo?.holder ?? null,
+      /**
+       * Art. 129 LGTOC: al pagar, el deudor puede exigir que se le devuelva el
+       * título. Un pagaré liquidado cuyo papel sigue en nuestro poder es un
+       * documento que todavía puede circular, y eso es un riesgo real para
+       * quien ya pagó.
+       */
+      pendingReturn:
+        note?.status === 'PAID' && events.length > 0 && ultimo?.kind !== 'RETURNED',
+      events: events.map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        occurredOn: event.occurredOn.toISOString().slice(0, 10),
+        location: event.location,
+        holder: event.holder,
+        handedTo: event.handedTo,
+        notes: event.notes,
+        registeredBy: event.registeredBy,
+      })),
+    };
   }
 }

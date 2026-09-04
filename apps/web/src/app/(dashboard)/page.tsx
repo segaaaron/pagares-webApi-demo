@@ -74,7 +74,8 @@ export default async function TodayPage() {
     { id: 'unattended', title: 'Con atraso sin gestión', hint: 'Siete días sin un contacto registrado.', empty: 'Todo lo atrasado tiene gestión reciente.', items: queues.unattended, icon: <NavIcon.collections />, tone: 'crit' as const },
     { id: 'pending', title: 'Firmas pendientes', hint: 'Enviados hace más de 48 h y sin firmar.', empty: 'No hay firmas pendientes.', items: queues.pendingSignature, icon: <NavIcon.document />, tone: 'neutral' as const },
     { id: 'no-channel', title: 'Sin canal automático', hint: 'Sin correo: el aviso es manual.', empty: 'Todos los deudores con atraso tienen correo.', items: queues.noChannel, icon: <NavIcon.clients />, tone: 'neutral' as const },
-    { id: 'prescribing', title: 'Por prescribir', hint: 'Cerca del plazo legal para demandar.', empty: 'Ninguno cerca del plazo.', items: queues.prescribing, icon: <NavIcon.alert />, tone: 'warn' as const },
+    { id: 'prescribing', title: 'Por prescribir', hint: 'Cerca del plazo para demandar. Demandar detiene el reloj.', empty: 'Ninguno cerca del plazo.', items: queues.prescribing, icon: <NavIcon.alert />, tone: 'warn' as const },
+    { id: 'prescribed', title: 'Fuera de plazo', hint: 'Ya no se pueden demandar. Cobrarlos sí, pero sólo de buena fe.', empty: 'Ninguno fuera de plazo.', items: queues.prescribed, icon: <NavIcon.alert />, tone: 'crit' as const },
   ];
 
   const pending = sections.reduce((n, s) => n + s.items.length, 0);

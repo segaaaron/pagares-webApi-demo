@@ -50,6 +50,7 @@ export interface NoteDetail {
     method: string;
     reference: string | null;
     isReversal: boolean;
+    isWaiver: boolean;
     registeredBy: string;
   }[];
   allowedTransitions: NoteStatus[];

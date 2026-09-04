@@ -147,7 +147,13 @@ export class BuildLegalPackageUseCase extends BaseUseCase<{ noteId: string }, Le
       promisedOn: Date | null;
       notes: string | null;
     }[];
-    payments: { paidOn: Date; amountCents: bigint; method: string; reference: string | null }[];
+    payments: {
+      paidOn: Date;
+      amountCents: bigint;
+      method: string;
+      reference: string | null;
+      reversalOfId: string | null;
+    }[];
     legalCase: { actions: { occurredOn: Date; description: string }[] } | null;
   }): string {
     const escape = (value: string): string => `"${value.replace(/"/g, '""')}"`;
@@ -173,7 +179,7 @@ export class BuildLegalPackageUseCase extends BaseUseCase<{ noteId: string }, Le
     for (const payment of note.payments) {
       rows.push([
         payment.paidOn.toISOString().slice(0, 10),
-        payment.amountCents < 0n ? 'Reversa de abono' : 'Abono',
+        payment.reversalOfId !== null ? 'Reversa de abono' : 'Abono',
         [payment.method, payment.reference].filter(Boolean).join(' · '),
         formatMxn(payment.amountCents),
       ]);

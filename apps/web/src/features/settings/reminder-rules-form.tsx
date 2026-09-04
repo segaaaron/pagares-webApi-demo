@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import {
   previewReminderAction,
@@ -40,6 +40,12 @@ export function ReminderRulesForm({ data }: { data: ReminderRulesData }) {
     saveReminderRulesAction,
     {},
   );
+
+  // Guardar borra y recrea las filas en la base: los identificadores cambian.
+  // Sin adoptar los nuevos, los envíos de prueba apuntarían a reglas borradas.
+  useEffect(() => {
+    if (state.rules) setRows(state.rules);
+  }, [state.rules]);
 
   const addRow = (): void => {
     setRows((current) => [
@@ -170,9 +176,19 @@ export function ReminderRulesForm({ data }: { data: ReminderRulesData }) {
           propio correo.
         </p>
         <ul className="mt-3 space-y-2">
-          {data.rules.map((rule) => (
-            <RulePreview key={rule.id} rule={rule} />
-          ))}
+          {/* Un tramo recién añadido todavía no existe en la base: previsualizarlo
+              pediría una regla con un identificador inventado. Aparece cuando se
+              guarda. */}
+          {rows
+            .filter((rule) => !rule.id.startsWith('nueva-'))
+            .map((rule) => (
+              <RulePreview key={rule.id} rule={rule} />
+            ))}
+          {rows.some((rule) => rule.id.startsWith('nueva-')) ? (
+            <li className="text-xs text-muted">
+              Guarda las reglas para poder ver cómo le llega el tramo que acabas de añadir.
+            </li>
+          ) : null}
         </ul>
       </div>
     </section>

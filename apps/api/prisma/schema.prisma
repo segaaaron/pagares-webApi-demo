@@ -270,6 +270,8 @@ model PromissoryNote {
   inLitigation             Boolean   @default(false)
   physicalDocumentLocation String?
 
+  custodyEvents CustodyEvent[]
+
   renewedFrom   PromissoryNote?  @relation("Renewal", fields: [renewedFromId], references: [id])
   renewedFromId String?          @unique
   renewedBy     PromissoryNote?  @relation("Renewal")
@@ -408,6 +410,15 @@ model Payment {
   appliedToInterestCents  BigInt @default(0)
   appliedToPrincipalCents BigInt @default(0)
   isRecovery              Boolean @default(false) // abono sobre pagaré castigado
+  /**
+   * Condonación del remanente (§25.16): no es dinero recibido.
+   *
+   * Cierra el pagaré por una diferencia que no vale la pena perseguir, y por eso
+   * entra en el libro —el saldo tiene que cuadrar con la suma de sus filas—,
+   * pero se excluye de todo lo que cuenta caja: cobrado del día, del mes y
+   * recuperaciones. Contarlo como ingreso sería inventar dinero.
+   */
+  isWaiver                Boolean @default(false)
 
   paidOn    DateTime      @db.Date
   method    PaymentMethod
@@ -546,6 +557,43 @@ model CollectionActivity {
 
 // ──────────────────────────────────────────────────────────── legal (§13.6)
 
+/**
+ * Qué le pasó al pagaré en papel. El plan lo pide con esas palabras: "registra
+ * `physicalDocumentLocation` con responsable y **bitácora de custodia**".
+ *
+ * Sin el histórico sólo había un texto que se sobrescribía: no se podía saber
+ * quién lo tuvo antes, ni a quién se le entregó, ni si volvió. Y para demandar
+ * hace falta el original: quien no sabe dónde está, no demanda.
+ */
+enum CustodyEventKind {
+  RECEIVED // llega a nuestras manos
+  MOVED // cambia de caja, de oficina o de responsable
+  HANDED_OVER // se entrega a un tercero: abogado, juzgado
+  RETURNED // se devuelve al deudor, típicamente al liquidar (art. 129)
+  LOST // se extravía; se registra, no se disimula
+}
+
+model CustodyEvent {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+
+  kind       CustodyEventKind
+  occurredOn DateTime         @db.Date
+  /** Dónde queda tras el movimiento. Se copia a `physicalDocumentLocation`. */
+  location   String
+  /** Quién responde por el documento a partir de aquí. */
+  holder     String
+  /** A quién se le entregó, cuando el movimiento es una entrega. */
+  handedTo   String?
+  notes      String?
+
+  registeredBy String
+  createdAt    DateTime @default(now())
+
+  @@index([noteId, occurredOn])
+}
+
 model LegalCase {
   id     String         @id @default(uuid())
   note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
@@ -618,6 +666,16 @@ model OrganizationSettings {
   applyPaymentToInterestFirst  Boolean  @default(true)
 
   prescriptionYears Int    @default(3) // se avisa, no se aplica sola (§25.13)
+
+  /**
+   * Hasta cuánto se puede condonar para dar por liquidado un pagaré (§25.16).
+   *
+   * El deudor consulta el lunes, transfiere el jueves, y el interés de esos días
+   * deja un remanente de unos pesos. Sin un límite, ese pagaré queda abierto
+   * para siempre por una cantidad que nadie va a cobrar. Cero —el valor por
+   * defecto— desactiva la propuesta: no se condona nada sin decidirlo.
+   */
+  settlementToleranceCents BigInt @default(0)
   timezone          String @default("America/Mexico_City")
 
   noteFolioPrefix    String @default("PAG")

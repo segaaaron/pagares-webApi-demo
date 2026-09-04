@@ -225,7 +225,11 @@ export class DispatchPendingService {
           settings.bankName ? `Banco: ${settings.bankName}` : null,
           settings.bankAccount ? `Cuenta: ${settings.bankAccount}` : null,
           `CLABE: ${settings.bankClabe}`,
-          settings.paymentReference ? `Referencia: ${settings.paymentReference}` : null,
+          // El folio, como concepto de la transferencia: es lo único que permite
+          // saber a qué pagaré aplicar el depósito, y es lo mismo que enseña la
+          // aplicación del cliente. Dos versiones distintas acaban en llamada.
+          `Concepto: ${note.folio}`,
+          settings.paymentReference ? `Referencia de la empresa: ${settings.paymentReference}` : null,
         ]
           .filter(Boolean)
           .join(' · ')

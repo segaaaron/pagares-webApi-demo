@@ -6,6 +6,9 @@ import { PaymentForm } from '@/features/notes/payment-form';
 import { NoteActions } from '@/features/notes/note-actions';
 import { SettlementPanel, ReinstatePanel } from '@/features/notes/settlement-panel';
 import { LegalPanel } from '@/features/notes/legal-panel';
+import { getCustodyLog } from '@/features/notes/custody-queries';
+import { ForgiveRemainder } from '@/features/notes/forgive-remainder';
+import { getSettlementToleranceCents } from '@/features/settings/queries';
 import { Simulator } from '@/features/notes/simulator';
 import { SendDocument } from '@/features/notes/send-document';
 import { STATUS_PRESENTATION } from '@/entities/note/status';
@@ -96,6 +99,19 @@ export default async function NoteDetailPage({
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
+
+  // La bitácora de custodia va aparte y nunca tumba el detalle: si no responde,
+  // llega vacía (§13.6).
+  const [custody, toleranceCents] = await Promise.all([
+    getCustodyLog(id),
+    getSettlementToleranceCents(),
+  ]);
+
+  // ¿Sobra un resto que cabe en la tolerancia? El servidor lo vuelve a comprobar
+  // antes de condonar; esto sólo decide si se ofrece.
+  const toleranciaCents = BigInt(toleranceCents || '0');
+  const saldoCents = BigInt(note.balance.cents);
+  const puedeCerrarse = toleranciaCents > 0n && saldoCents > 0n && saldoCents <= toleranciaCents;
 
   const presentation = STATUS_PRESENTATION[note.status];
   const today = todayInBusinessZone();
@@ -308,6 +324,12 @@ export default async function NoteDetailPage({
             {...(blockedReason !== undefined ? { disabledReason: blockedReason } : {})}
           />
 
+          {/* Sólo si sobra un resto y cabe en la tolerancia: sin ella configurada,
+              esto no aparece nunca y nadie condona nada por omisión. */}
+          {blockedReason === undefined && puedeCerrarse ? (
+            <ForgiveRemainder noteId={note.id} balanceLabel={note.balance.formatted} />
+          ) : null}
+
           <NoteActions
             noteId={note.id}
             folio={note.folio}
@@ -388,21 +410,30 @@ export default async function NoteDetailPage({
                     <div>
                       <p className="tnum font-medium">{p.amount}</p>
                       <p className="text-xs text-muted">
-                        {shortDate(p.paidOn)} · {p.method}
+                        {shortDate(p.paidOn)} · {p.isWaiver ? 'Condonación' : p.method}
                         {p.reference ? ` · ${p.reference}` : ''}
                       </p>
+                      {/* Un asiento que cierra el pagaré sin que entrara dinero
+                          tiene que decirlo: si no, parece cobranza. */}
+                      {p.isWaiver ? (
+                        <p className="text-xs text-warn">
+                          Remanente condonado para cerrar. No entró dinero: va como pérdida.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="text-right text-xs text-muted">
                       <p className="tnum">Capital {p.appliedToPrincipal}</p>
                       <p className="tnum">Interés {p.appliedToInterest}</p>
-                      {!p.isReversal ? (
+                      {!p.isReversal && !p.isWaiver ? (
                         <a href={`/pagares/${note.id}/pdf?type=receipt&paymentId=${p.id}`}
                            target="_blank" rel="noopener"
                            className="text-accent-ink hover:underline">
                           Recibo
                         </a>
-                      ) : (
+                      ) : p.isReversal ? (
                         <span className="text-crit">Reversa</span>
+                      ) : (
+                        <span className="text-warn">Sin recibo</span>
                       )}
                     </div>
                   </li>
@@ -431,12 +462,7 @@ export default async function NoteDetailPage({
             </section>
           ) : null}
 
-          <LegalPanel
-            noteId={note.id}
-            legalCase={note.legalCase}
-            physicalDocumentLocation={note.physicalDocumentLocation}
-            today={today}
-          />
+          <LegalPanel noteId={note.id} legalCase={note.legalCase} custody={custody} today={today} />
 
           {note.audit.length > 0 ? (
             <section className="card p-4" aria-label="Historial">

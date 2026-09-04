@@ -290,17 +290,63 @@ export async function setCustodyAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const location = String(formData.get('physicalDocumentLocation') ?? '').trim();
-  if (location.length < 2) return { error: 'Escribe dónde está el documento físico.' };
+  const location = String(formData.get('location') ?? '').trim();
+  const holder = String(formData.get('holder') ?? '').trim();
+  const kind = String(formData.get('kind') ?? 'MOVED');
+  const occurredOn = String(formData.get('occurredOn') ?? '').trim();
+  const handedTo = String(formData.get('handedTo') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
+
+  if (location.length < 2) return { error: 'Escribe dónde queda el documento.' };
+  if (holder.length < 2) return { error: 'Escribe quién responde por él a partir de ahora.' };
+  if (occurredOn === '') return { error: 'Falta la fecha del movimiento.' };
+  if (kind === 'HANDED_OVER' && handedTo === '') {
+    return { error: 'Una entrega tiene que decir a quién se le entregó.' };
+  }
 
   return run(
     noteId,
     () =>
       api(`/admin/notes/${noteId}/custody`, {
-        method: 'PATCH',
-        body: { physicalDocumentLocation: location },
+        method: 'POST',
+        body: {
+          kind,
+          occurredOn,
+          location,
+          holder,
+          ...(handedTo !== '' ? { handedTo } : {}),
+          ...(notes !== '' ? { notes } : {}),
+        },
       }),
-    'Ubicación del documento registrada.',
+    'Movimiento del documento registrado.',
+  );
+}
+
+/**
+ * Cerrar el pagaré condonando lo que falta (§25.16).
+ *
+ * El servidor comprueba de nuevo el límite: aquí sólo se recoge el motivo, y
+ * quien decide es la persona, no el umbral.
+ */
+export async function forgiveRemainderAction(
+  noteId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const reasonNote = String(formData.get('reasonNote') ?? '').trim();
+  if (reasonNote.length < 3) {
+    return { error: 'Escribe por qué se cierra: dentro de seis meses alguien va a preguntar.' };
+  }
+
+  return run(
+    noteId,
+    () =>
+      api(`/admin/notes/${noteId}/forgive-remainder`, {
+        method: 'POST',
+        body: { reasonCode: 'TOLERANCIA', reasonNote },
+        idempotencyKey: randomUUID(),
+      }),
+    'Pagaré cerrado. El remanente queda como condonación en el libro.',
   );
 }
 

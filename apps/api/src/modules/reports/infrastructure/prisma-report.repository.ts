@@ -39,7 +39,9 @@ export class PrismaReportRepository implements ReportRepository {
 
   async collectedSince(from: string): Promise<bigint> {
     const result = await this.prisma.payment.aggregate({
-      where: { paidOn: { gte: new Date(`${from}T00:00:00Z`) } },
+      // Lo cobrado es dinero recibido. La condonación cierra el pagaré pero no
+      // entra caja: contarla aquí sería inventar un ingreso (§25.16).
+      where: { paidOn: { gte: new Date(`${from}T00:00:00Z`) }, isWaiver: false },
       _sum: { amountCents: true },
     });
     return result._sum.amountCents ?? 0n;
@@ -59,7 +61,7 @@ export class PrismaReportRepository implements ReportRepository {
       this.prisma.$queryRaw<{ month: Date; total: bigint }[]>`
         SELECT date_trunc('month', "paidOn") AS month, SUM("amountCents")::bigint AS total
         FROM "Payment"
-        WHERE "paidOn" >= ${from}
+        WHERE "paidOn" >= ${from} AND "isWaiver" = false
         GROUP BY 1 ORDER BY 1
       `,
       this.prisma.$queryRaw<{ month: Date; total: bigint }[]>`
@@ -140,6 +142,8 @@ export class PrismaReportRepository implements ReportRepository {
       interestCents: r.appliedToInterestCents,
       principalCents: r.appliedToPrincipalCents,
       isRecovery: r.isRecovery,
+      /** Cierra el pagaré, pero no es dinero: no suma a lo cobrado (§25.16). */
+      isWaiver: r.isWaiver,
     }));
   }
 
@@ -264,9 +268,12 @@ export class PrismaReportRepository implements ReportRepository {
       principalCents: row.appliedToPrincipalCents,
       method: row.method,
       reference: row.reference,
-      isReversal: row.amountCents < 0n,
+      // Lo que define una reversa es apuntar al abono que revierte, no el
+      // signo: un ajuste negativo de otra clase no es una anulación.
+      isReversal: row.reversalOfId !== null,
       reversalOfId: row.reversalOfId,
       isRecovery: row.isRecovery,
+      isWaiver: row.isWaiver,
     }));
   }
 

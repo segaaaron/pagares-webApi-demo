@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { isValidClabe, normalizeClabe } from '@pagares/domain-rules';
 import { ZodValidationPipe } from '../../shared/http/zod-validation.pipe.js';
 import { Roles } from '../../shared/http/auth.guard.js';
 import { SettingsService } from './settings.service.js';
@@ -21,9 +22,30 @@ const updateSchema = z
     interestWarningThresholdPct: z.number().min(0).max(1000),
     applyPaymentToInterestFirst: z.boolean(),
     prescriptionYears: z.number().int().min(1).max(20),
+    /**
+     * Hasta cuánto se puede condonar para cerrar un pagaré (§25.16). En
+     * centavos, como todo el dinero del sistema. Cero apaga la propuesta.
+     */
+    settlementToleranceCents: z
+      .string()
+      .regex(/^\d+$/, 'La tolerancia va en centavos, sin signo ni decimales')
+      .refine((value) => BigInt(value) <= 100_000n, {
+        message: 'La tolerancia no puede pasar de $1,000.00: más que eso es una quita, y va en un convenio',
+      }),
     bankName: z.string().trim().max(80).nullable(),
     bankAccount: z.string().trim().max(40).nullable(),
-    bankClabe: z.string().trim().max(40).nullable(),
+    // La CLABE llega al teléfono del deudor y a los correos de cobro: un dígito
+    // mal tecleado manda el dinero a otra cuenta y nadie se entera hasta que
+    // falta. Se guarda normalizada, sin espacios ni guiones.
+    bankClabe: z
+      .string()
+      .trim()
+      .max(40)
+      .nullable()
+      .transform((value) => (value === null || value === '' ? null : normalizeClabe(value)))
+      .refine((value) => value === null || isValidClabe(value), {
+        message: 'La CLABE debe tener 18 dígitos y su dígito verificador no cuadra.',
+      }),
     paymentReference: z.string().trim().max(160).nullable(),
   })
   .strict();

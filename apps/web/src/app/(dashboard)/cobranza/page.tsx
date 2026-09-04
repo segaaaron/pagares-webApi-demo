@@ -239,6 +239,15 @@ export default async function CollectionsPage({
             tone: 'crit',
           },
           {
+            id: 'prescribed',
+            title: 'Fuera de plazo para demandar',
+            hint: 'Pasaron los años del art. 165 sin demanda. El deudor puede pagar; el juez ya no obliga.',
+            empty: 'Ninguno fuera de plazo.',
+            items: queues.prescribed,
+            icon: <NavIcon.alert />,
+            tone: 'crit',
+          },
+          {
             id: 'no-channel',
             title: 'Sin canal automático',
             hint: 'Deudores sin correo: el aviso hay que darlo a mano.',

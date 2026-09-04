@@ -85,12 +85,12 @@ export function PaymentForm({
 
         <div>
           <label htmlFor="reference" className="mb-1 block text-xs text-muted">
-            Referencia
+            Referencia del depósito
           </label>
           <input
             id="reference"
             name="reference"
-            placeholder="Folio de transferencia"
+            placeholder="Referencia del banco"
             className="w-full input"
           />
         </div>

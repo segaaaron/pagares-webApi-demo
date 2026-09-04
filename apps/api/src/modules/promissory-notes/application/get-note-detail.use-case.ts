@@ -70,6 +70,8 @@ export interface NoteDetail {
     method: string;
     reference: string | null;
     isReversal: boolean;
+    /** Condonación del remanente para cerrar el pagaré (§25.16). */
+    isWaiver: boolean;
     registeredBy: string;
   }[];
 
@@ -207,6 +209,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         method: p.method,
         reference: p.reference,
         isReversal: p.reversalOfId !== null,
+        isWaiver: p.isWaiver,
         registeredBy: p.registeredBy,
       })),
 

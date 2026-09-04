@@ -91,13 +91,30 @@ export class ClientController {
     return payments.map((payment) => ({
       id: payment.id,
       amount: formatMxn(payment.amountCents),
+      // También en centavos: el cliente que necesite sumar o comparar no debería
+      // tener que deshacer el formato de pesos para recuperar el número.
+      amountCents: payment.amountCents.toString(),
       appliedToInterest: formatMxn(payment.appliedToInterestCents),
       appliedToPrincipal: formatMxn(payment.appliedToPrincipalCents),
+      appliedToInterestCents: payment.appliedToInterestCents.toString(),
+      appliedToPrincipalCents: payment.appliedToPrincipalCents.toString(),
       paidOn: payment.paidOn.toISOString().slice(0, 10),
       method: payment.method,
       reference: payment.reference,
-      /** Una reversa lleva importe negativo y la fila original no se toca (§12.2). */
-      isReversal: payment.amountCents < 0n,
+      /**
+       * Una reversa lleva importe negativo y la fila original no se toca (§12.2).
+       * Lo que la define es apuntar al abono que revierte, no el signo: el signo
+       * dejaría de bastar el día que exista un ajuste negativo de otra clase.
+       */
+      isReversal: payment.reversalOfId !== null,
+      /** Abono sobre un pagaré ya dado de baja contable: recuperación (§12.4). */
+      isRecovery: payment.isRecovery,
+      /**
+       * Condonación del remanente (§25.16). Se enseña como lo que es: si el
+       * deudor ve un abono que no coincide con lo que transfirió y nadie se lo
+       * explica, la conclusión razonable es que hay un error.
+       */
+      isWaiver: payment.isWaiver,
     }));
   }
 
@@ -218,14 +235,15 @@ export class ClientController {
     }
 
     for (const payment of payments) {
+      // El signo dice cómo se pinta el importe; la relación dice qué ES la fila.
+      const esReversa = payment.reversalOfId !== null;
       events.push({
         at: payment.paidOn.toISOString(),
-        kind: payment.amountCents < 0n ? 'payment-reversed' : 'payment-registered',
+        kind: esReversa ? 'payment-reversed' : 'payment-registered',
         folio: byId.get(payment.noteId)?.folio ?? '',
-        detail:
-          payment.amountCents < 0n
-            ? `Abono anulado por ${formatMxn(-payment.amountCents)}`
-            : `Abono de ${formatMxn(payment.amountCents)}`,
+        detail: esReversa
+          ? `Abono anulado por ${formatMxn(-payment.amountCents)}`
+          : `Abono de ${formatMxn(payment.amountCents)}`,
       });
     }
 
@@ -305,9 +323,27 @@ export class ClientController {
       signatureUrl: note.signature ? await this.storage.signedUrl(note.signature.assetId) : null,
       payments: note.payments.map((p) => ({
         amount: formatMxn(p.amountCents),
+        // El reparto va aquí y no sólo en la lista aparte: sin él, un abono que
+        // se consumió entero en interés deja al deudor mirando un capital que no
+        // se movió, y concluyendo que su dinero no llegó.
+        appliedToInterest: formatMxn(p.appliedToInterestCents),
+        appliedToPrincipal: formatMxn(p.appliedToPrincipalCents),
         paidOn: p.paidOn.toISOString().slice(0, 10),
         method: p.method,
+        // Las mismas banderas que en el libro: un array donde la anulación llega
+        // en negativo y sin etiqueta es una trampa para quien lo lea después.
+        isReversal: p.reversalOfId !== null,
+        isRecovery: p.isRecovery,
+        isWaiver: p.isWaiver,
       })),
+      /**
+       * Cómo se reparte un abono en esta casa (§12.3).
+       *
+       * Lo decide el administrador en Ajustes y cambia lo que el deudor debe
+       * entender: con el interés primero, un abono pequeño no baja el capital.
+       * Sin este dato, la aplicación sólo puede escribir una frase ambigua.
+       */
+      applyPaymentToInterestFirst: settings?.applyPaymentToInterestFirst ?? true,
       // Datos para pagar, desde Ajustes (§25.12).
       paymentInstructions: settings
         ? {

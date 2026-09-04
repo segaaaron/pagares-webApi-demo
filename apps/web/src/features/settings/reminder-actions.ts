@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { api, ApiError } from '@/shared/api/client';
 
 export interface ReminderRule {
@@ -23,6 +22,17 @@ export interface ReminderRulesData {
 export interface RulesState {
   ok?: string;
   error?: string;
+  /**
+   * El juego de reglas tal y como quedó guardado.
+   *
+   * Guardar borra y vuelve a crear las filas, así que los identificadores
+   * cambian: sin devolverlas, los botones de «vista previa» y «enviarme una
+   * prueba» seguían apuntando a reglas que ya no existen. Viaja en el estado en
+   * vez de revalidar la pantalla entera porque Ajustes también recorre la
+   * bitácora y suma la cartera, y eso dejaba el botón en «Guardando…» varios
+   * segundos después de haber guardado.
+   */
+  rules?: ReminderRule[];
 }
 
 export async function getReminderRules(): Promise<ReminderRulesData> {
@@ -58,8 +68,8 @@ export async function saveReminderRulesAction(
 
   try {
     await api('/admin/reminder-rules', { method: 'PUT', body: { rules } });
-    revalidatePath('/ajustes');
-    return { ok: `${rules.length} reglas guardadas.` };
+    const saved = await getReminderRules();
+    return { ok: `${rules.length} reglas guardadas.`, rules: saved.rules };
   } catch (error) {
     if (error instanceof ApiError) {
       return { error: error.problem?.title ?? 'No se pudieron guardar las reglas.' };

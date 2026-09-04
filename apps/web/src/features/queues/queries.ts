@@ -19,6 +19,8 @@ export interface WorkQueues {
   pendingSignature: QueueItem[];
   noChannel: QueueItem[];
   prescribing: QueueItem[];
+  /** Ya pasó el plazo del art. 165: se puede cobrar, ya no demandar. */
+  prescribed: QueueItem[];
 }
 
 export async function getWorkQueues(): Promise<WorkQueues> {

@@ -144,9 +144,16 @@ export class OperationalReportsUseCase extends BaseUseCase<
     let interest = 0n;
     let principal = 0n;
     let recovered = 0n;
+    let forgiven = 0n;
     const byDay = new Map<string, bigint>();
 
     for (const p of payments) {
+      // La condonación cierra el pagaré sin que entre dinero: va en su propio
+      // renglón, como pérdida, y no toca ninguna cifra de cobranza (§25.16).
+      if (p.isWaiver) {
+        forgiven += p.amountCents;
+        continue;
+      }
       interest += p.interestCents;
       principal += p.principalCents;
       // La recuperación de castigos es un renglón propio: no es cobranza normal.
@@ -165,6 +172,11 @@ export class OperationalReportsUseCase extends BaseUseCase<
           label: 'Recuperación de castigos',
           value: formatMxn(recovered),
           detail: 'Abonos sobre pagarés dados de baja contablemente',
+        },
+        {
+          label: 'Condonado para cerrar',
+          value: formatMxn(forgiven),
+          detail: 'Remanentes perdonados dentro de la tolerancia: pérdida, no cobranza',
         },
       ],
       columns: [

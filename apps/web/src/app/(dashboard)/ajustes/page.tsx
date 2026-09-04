@@ -1,9 +1,11 @@
+import { Suspense } from 'react';
 import { api } from '@/shared/api/client';
 import { SettingsForm, type SettingsValues } from '@/features/settings/settings-form';
 import { PasswordForm } from '@/features/settings/password-form';
 import { ReminderRulesForm } from '@/features/settings/reminder-rules-form';
 import { getReminderRules } from '@/features/settings/reminder-actions';
 import { BalanceRow, type Mismatch } from '@/features/settings/balance-row';
+import { auditLabel } from '@/features/settings/audit-labels';
 import { dateTime } from '@/shared/lib/format';
 import { PageHeader } from '@/shared/ui/page-header';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
@@ -32,22 +34,24 @@ interface ChainVerification {
 
 export const metadata = { title: 'Ajustes' };
 
-const ROLES: Record<string, string> = { ADMIN: 'Administrador', CLIENT: 'Cliente', SYSTEM: 'Sistema' };
+const ROLES: Record<string, string> = { ADMIN: 'Tú', CLIENT: 'El deudor', SYSTEM: 'El sistema' };
 
 /**
  * Configuración de la organización (§19.8). Es lo que evita teclear los mismos
  * datos en cada pagaré, y donde viven los umbrales que el sistema sólo avisa.
+ *
+ * Las comprobaciones van en su propio límite de suspensión: recorren la cadena
+ * de la bitácora y recalculan el saldo de toda la cartera, y bloquear los
+ * formularios detrás de eso dejaba «Guardando…» encendido mucho después de que
+ * el guardado ya había terminado.
  */
 export default async function SettingsPage() {
-  const [values, rules, chain, balances, audit] = await Promise.all([
+  const [values, rules] = await Promise.all([
     api<SettingsValues>('/admin/settings'),
-    getReminderRules(),
-    api<ChainVerification>('/admin/audit/verify'),
-    // La otra comprobación que nadie hace si no está a la vista (§22.5).
-    api<BalanceCheck>('/admin/reports/balance-check'),
-    // Las últimas del libro: verificar la cadena sin poder leerla contesta
-    // "no la tocaron", pero no "quién hizo qué" (§14.5).
-    api<AuditEntry[]>('/admin/audit?limit=15'),
+    // Que no se puedan leer las reglas de aviso no debe impedir configurar la
+    // organización ni cambiar la contraseña: son tres cosas independientes que
+    // sólo comparten pantalla.
+    getReminderRules().catch(() => null),
   ]);
 
   return (
@@ -69,7 +73,16 @@ export default async function SettingsPage() {
         titulo="Avisos automáticos"
         explicacion="Qué se manda y cuántos días antes o después del vencimiento. Nada sale solo: estas reglas eligen la plantilla cuando decides mandarlo."
       >
-        <ReminderRulesForm data={rules} />
+        {rules ? (
+          <ReminderRulesForm data={rules} />
+        ) : (
+          <section className="card p-4">
+            <p className="text-sm text-muted">
+              No se pudieron cargar las reglas de aviso. Vuelve a cargar la página; lo demás de
+              esta pantalla sigue funcionando.
+            </p>
+          </section>
+        )}
       </Bloque>
 
       <Bloque titulo="Tu cuenta" explicacion="Sólo afecta a tu acceso, no al de los demás.">
@@ -78,45 +91,114 @@ export default async function SettingsPage() {
 
       <Bloque
         titulo="Comprobaciones"
-        explicacion="Lo que demuestra que los números no se tocaron por fuera. Nada de esto se corrige solo: si algo no cuadra, se dice y se decide."
+        explicacion="Dos preguntas que sólo se contestan mirando: ¿alguien tocó los datos por fuera del sistema, y el saldo de cada pagaré sigue siendo la suma de sus abonos? Si algo no cuadra, aquí sale con nombre."
       >
+        <Suspense fallback={<ComprobacionesCargando />}>
+          <Comprobaciones />
+        </Suspense>
+      </Bloque>
+    </div>
+  );
+}
+
+/**
+ * Las tres comprobaciones, con sus tres llamadas.
+ *
+ * Son caras —recorren la bitácora entera y suman el libro de abonos de toda la
+ * cartera—, así que van juntas y separadas de lo demás.
+ */
+async function Comprobaciones() {
+  let chain: ChainVerification;
+  let balances: BalanceCheck;
+  let audit: AuditEntry[];
+  try {
+    [chain, balances, audit] = await Promise.all([
+      api<ChainVerification>('/admin/audit/verify'),
+      // La otra comprobación que nadie hace si no está a la vista (§22.5).
+      api<BalanceCheck>('/admin/reports/balance-check'),
+      // Las últimas del libro: verificar la cadena sin poder leerla contesta
+      // "no la tocaron", pero no "quién hizo qué" (§14.5).
+      api<AuditEntry[]>('/admin/audit?limit=15'),
+    ]);
+  } catch {
+    // Estas tres recorren la bitácora entera y suman toda la cartera: son las
+    // que primero se caen cuando la API va justa. Que no se puedan comprobar no
+    // es motivo para tumbar Ajustes y dejar al administrador sin poder guardar
+    // nada. Se dice que no se pudo, y el resto de la pantalla sigue en pie.
+    return (
+      <section className="card p-4">
+        <h2 className="text-sm font-semibold">No se pudieron hacer las comprobaciones</h2>
+        <p className="mt-1 text-xs text-muted">
+          Ni la bitácora ni el cuadre de saldos respondieron. No significa que algo no cuadre:
+          significa que no se pudo mirar. Vuelve a cargar la página en un momento.
+        </p>
+      </section>
+    );
+  }
+
+  const avisos = audit.filter((entry) => auditLabel(entry.action).tone === 'atencion').length;
+
+  return (
+    <>
       <section className="card overflow-hidden" aria-label="Bitácora">
         <header className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden>
             <NavIcon.document />
           </span>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">Bitácora</h2>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold">Qué ha pasado</h2>
             <p className="text-xs text-muted">
-              Los últimos {audit.length} movimientos: quién hizo qué y cuándo.
+              Los últimos {audit.length} movimientos, en orden. Es la única forma de saber quién
+              anuló un abono o borró un acceso, y no se puede editar.
             </p>
           </div>
+          {avisos > 0 ? (
+            <span className="chip shrink-0 bg-warn-soft text-warn">
+              {avisos} para mirar
+            </span>
+          ) : null}
         </header>
 
         {audit.length === 0 ? (
           <p className="px-5 py-6 text-center text-sm text-muted">Todavía no hay movimientos.</p>
         ) : (
           <ul className="divide-y divide-line">
-            {audit.map((entry) => (
-              <li key={entry.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
-                <span className="chip bg-surface-2 font-mono text-[11px] text-ink-2">{entry.action}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted">{entry.targetType}</span>
-                <span className="shrink-0 text-xs text-muted">{ROLES[entry.actorRole] ?? entry.actorRole}</span>
-                <span className="tnum shrink-0 text-xs text-muted">{dateTime(entry.createdAt)}</span>
-              </li>
-            ))}
+            {audit.map((entry) => {
+              const label = auditLabel(entry.action);
+              return (
+                <li key={entry.id} className="px-5 py-3">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        label.tone === 'atencion' ? 'bg-warn' : 'bg-line-strong'
+                      }`}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 text-sm text-ink">{label.text}</span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {ROLES[entry.actorRole] ?? entry.actorRole}
+                    </span>
+                    <span className="tnum shrink-0 text-xs text-muted">{dateTime(entry.createdAt)}</span>
+                  </div>
+                  {label.hint ? (
+                    <p className="mt-1 pl-[1.125rem] text-xs text-muted">{label.hint}</p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
 
       {/* La bitácora encadenada sólo sirve si alguien la comprueba (§24.1). */}
       <section className="card p-4">
-        <h2 className="text-sm font-semibold">Integridad de la bitácora</h2>
+        <h2 className="text-sm font-semibold">Nadie tocó la bitácora</h2>
         <p className="mt-1 text-xs text-muted">
-          Cada registro incorpora el hash del anterior. Si alguien altera o borra una fila
-          directamente en la base, la cadena deja de cuadrar.
+          Cada movimiento lleva la huella del anterior encadenada. Si alguien entrara a la base de
+          datos a borrar o cambiar una fila —para tapar un abono anulado, por ejemplo—, la cadena
+          dejaría de cuadrar y se vería aquí.
         </p>
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <span
             className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
               chain.intact ? 'bg-ok-soft text-ok' : 'bg-crit-soft text-crit'
@@ -129,18 +211,25 @@ export default async function SettingsPage() {
             {dateTime(chain.checkedAt)}
           </span>
         </div>
+        {chain.intact ? null : (
+          <p className="mt-3 rounded-lg bg-crit-soft px-3 py-2 text-xs text-crit">
+            Alguien modificó la bitácora fuera del sistema. No lo arregles borrando: guarda una
+            copia de la base antes de tocar nada.
+          </p>
+        )}
       </section>
 
       {/* `paidCents` es una copia del libro de abonos, y una copia se puede
           desviar. Aquí se ve, y no se corrige sola: un descuadre puede ser un
           abono que falta o uno que sobra, y taparlo sería peor (§22.5). */}
       <section className="card p-4" aria-label="Cuadre de saldos">
-        <h2 className="text-sm font-semibold">Cuadre de saldos</h2>
+        <h2 className="text-sm font-semibold">Los saldos cuadran con los abonos</h2>
         <p className="mt-1 text-xs text-muted">
-          El saldo de cada pagaré tiene que ser la suma de sus abonos. La verdad son las filas del
-          libro; si no cuadran, aquí salen.
+          Cada pagaré guarda su saldo aparte para no sumar el libro entero cada vez que se abre una
+          pantalla. Aquí se comprueba que esa copia sigue coincidiendo con la suma real. Si no
+          coincide, el saldo que estás cobrando no es el que dice el libro.
         </p>
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <span
             className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
               balances.balanced ? 'bg-ok-soft text-ok' : 'bg-crit-soft text-crit'
@@ -170,7 +259,34 @@ export default async function SettingsPage() {
           </>
         )}
       </section>
-      </Bloque>
+    </>
+  );
+}
+
+/** Mientras se recorren la cadena y el libro, con la forma de lo que viene. */
+function ComprobacionesCargando() {
+  return (
+    <div className="space-y-5 motion-safe:animate-pulse" role="status" aria-label="Comprobando">
+      <div className="card overflow-hidden">
+        <div className="h-16 border-b border-line bg-surface-2" />
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="flex items-center gap-3 border-b border-line px-5 py-3 last:border-0">
+            <div className="h-3 w-52 rounded bg-surface-2" />
+            <div className="ml-auto h-3 w-28 rounded bg-surface-2" />
+          </div>
+        ))}
+      </div>
+      <div className="card space-y-3 p-4">
+        <div className="h-3 w-48 rounded bg-surface-2" />
+        <div className="h-3 w-full rounded bg-surface-2" />
+        <div className="h-6 w-32 rounded bg-surface-2" />
+      </div>
+      <div className="card space-y-3 p-4">
+        <div className="h-3 w-56 rounded bg-surface-2" />
+        <div className="h-3 w-full rounded bg-surface-2" />
+        <div className="h-6 w-32 rounded bg-surface-2" />
+      </div>
+      <span className="sr-only">Comprobando la bitácora y los saldos…</span>
     </div>
   );
 }

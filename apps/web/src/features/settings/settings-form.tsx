@@ -21,6 +21,7 @@ export interface SettingsValues {
   interestWarningThresholdPct: string;
   applyPaymentToInterestFirst: boolean;
   prescriptionYears: number;
+  settlementToleranceCents: string;
   bankName: string | null;
   bankAccount: string | null;
   bankClabe: string | null;
@@ -58,15 +59,23 @@ function Panel({
   );
 }
 
+/**
+ * Un campo con su etiqueta y, si el servidor lo rechazó, el motivo debajo.
+ *
+ * El error va pegado al campo y no sólo en la barra de abajo: con quince campos
+ * en pantalla, «no se pudieron guardar los ajustes» no dice cuál hay que tocar.
+ */
 function Field({
   id,
   label,
   hint,
+  error,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
+  error?: string | undefined;
   children: React.ReactNode;
 }) {
   return (
@@ -75,7 +84,13 @@ function Field({
         {label}
       </label>
       {children}
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+      {error ? (
+        <p className="mt-1 text-xs font-medium text-crit" role="alert">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="mt-1 text-xs text-muted">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -85,6 +100,9 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
 
   useActionToast(state, 'Ajustes guardados.');
 
+  // El servidor nombra el campo que rechazó; aquí sólo se busca por su nombre.
+  const err = (field: string): string | undefined => state.fieldErrors?.[field];
+
   return (
     <form action={action} className="space-y-5">
       <Panel
@@ -93,16 +111,16 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
         icon={<NavIcon.settings />}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="legalName" label="Razón social">
+          <Field id="legalName" error={err('legalName')} label="Razón social">
             <input id="legalName" name="legalName" required defaultValue={values.legalName} className={INPUT} />
           </Field>
-          <Field id="address" label="Domicilio" hint="Aparece al pie de los documentos.">
+          <Field id="address" error={err('address')} label="Domicilio" hint="Aparece al pie de los documentos.">
             <input id="address" name="address" required defaultValue={values.address} className={INPUT} />
           </Field>
-          <Field id="phone" label="Teléfono" hint="Va al pie del pagaré y de los documentos.">
+          <Field id="phone" error={err('phone')} label="Teléfono" hint="Va al pie del pagaré y de los documentos.">
             <input id="phone" name="phone" defaultValue={values.phone ?? ''} className={INPUT} />
           </Field>
-          <Field id="email" label="Correo" hint="También al pie: a dónde escribe quien tenga dudas.">
+          <Field id="email" error={err('email')} label="Correo" hint="También al pie: a dónde escribe quien tenga dudas.">
             <input id="email" name="email" type="email" defaultValue={values.email ?? ''} className={INPUT} />
           </Field>
         </div>
@@ -114,19 +132,19 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
         icon={<NavIcon.notes />}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="defaultIssuePlace" label="Lugar de expedición">
+          <Field id="defaultIssuePlace" error={err('defaultIssuePlace')} label="Lugar de expedición">
             <input id="defaultIssuePlace" name="defaultIssuePlace" required
                    defaultValue={values.defaultIssuePlace} className={INPUT} />
           </Field>
-          <Field id="defaultPaymentPlace" label="Lugar de pago">
+          <Field id="defaultPaymentPlace" error={err('defaultPaymentPlace')} label="Lugar de pago">
             <input id="defaultPaymentPlace" name="defaultPaymentPlace" required
                    defaultValue={values.defaultPaymentPlace} className={INPUT} />
           </Field>
-          <Field id="defaultTermDays" label="Plazo habitual (días)">
+          <Field id="defaultTermDays" error={err('defaultTermDays')} label="Plazo habitual (días)">
             <input id="defaultTermDays" name="defaultTermDays" type="number" min={1} max={3650}
                    defaultValue={values.defaultTermDays} className={`${INPUT} tnum`} />
           </Field>
-          <Field id="defaultInterestPeriod" label="La tasa se pacta por" hint="En México lo habitual es por mes.">
+          <Field id="defaultInterestPeriod" error={err('defaultInterestPeriod')} label="La tasa se pacta por" hint="En México lo habitual es por mes.">
             <select
               id="defaultInterestPeriod"
               name="defaultInterestPeriod"
@@ -145,7 +163,7 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
             <input id="defaultInterestRateAnnualPct" name="defaultInterestRateAnnualPct" inputMode="decimal"
                    defaultValue={values.defaultInterestRateAnnualPct ?? ''} className={`${INPUT} tnum`} />
           </Field>
-          <Field id="interestBasis" label="Base de cálculo" hint="360 es lo habitual en México.">
+          <Field id="interestBasis" error={err('interestBasis')} label="Base de cálculo" hint="360 es lo habitual en México.">
             <select id="interestBasis" name="interestBasis" defaultValue={values.interestBasis} className={INPUT}>
               <option value={360}>360 días</option>
               <option value={365}>365 días</option>
@@ -181,6 +199,23 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
           <input id="prescriptionYears" name="prescriptionYears" type="number" min={1} max={20}
                  defaultValue={values.prescriptionYears} className={`${INPUT} tnum sm:w-40`} />
         </Field>
+
+        <div className="mt-4">
+          <Field
+            id="settlementTolerance"
+            error={err('settlementToleranceCents')}
+            label="Tolerancia para dar por liquidado (pesos)"
+            hint="El deudor consulta el lunes y transfiere el jueves: el interés de esos días deja unos pesos de saldo. Hasta este importe, el pagaré ofrece cerrarse condonando el remanente. Tú confirmas; nunca se cierra solo. En cero, no se ofrece nunca."
+          >
+            <input
+              id="settlementTolerance"
+              name="settlementTolerance"
+              inputMode="decimal"
+              defaultValue={(Number(values.settlementToleranceCents ?? '0') / 100).toFixed(2)}
+              className={`${INPUT} tnum sm:w-40`}
+            />
+          </Field>
+        </div>
       </Panel>
 
       <Panel
@@ -188,17 +223,31 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
         hint="Aparecen en la aplicación del cliente y dentro del correo de recordatorio."
         icon={<NavIcon.check />}
       >
+        {/* Sin estos datos la sección «cómo pagar» no existe para el deudor, y
+            el administrador no tiene forma de enterarse: la pantalla se limita a
+            no aparecer, en un teléfono que él no ve. */}
+        {!values.bankClabe && !values.bankAccount ? (
+          <p className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
+            Mientras esto esté vacío, tus deudores no ven a dónde transferir: ni en la aplicación
+            ni en el correo de recordatorio. Tendrán que llamarte para preguntarlo.
+          </p>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="bankName" label="Banco">
+          <Field id="bankName" error={err('bankName')} label="Banco">
             <input id="bankName" name="bankName" defaultValue={values.bankName ?? ''} className={INPUT} />
           </Field>
-          <Field id="bankAccount" label="Cuenta">
+          <Field id="bankAccount" error={err('bankAccount')} label="Cuenta">
             <input id="bankAccount" name="bankAccount" defaultValue={values.bankAccount ?? ''} className={`${INPUT} tnum`} />
           </Field>
-          <Field id="bankClabe" label="CLABE">
+          <Field
+            id="bankClabe"
+            error={err('bankClabe')}
+            label="CLABE"
+            hint="18 dígitos. Se comprueba el dígito verificador antes de guardar."
+          >
             <input id="bankClabe" name="bankClabe" defaultValue={values.bankClabe ?? ''} className={`${INPUT} tnum`} />
           </Field>
-          <Field id="paymentReference" label="Referencia">
+          <Field id="paymentReference" error={err('paymentReference')} label="Referencia">
             <input id="paymentReference" name="paymentReference" defaultValue={values.paymentReference ?? ''} className={INPUT} />
           </Field>
         </div>

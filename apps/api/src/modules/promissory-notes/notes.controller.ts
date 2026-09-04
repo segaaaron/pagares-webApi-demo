@@ -25,6 +25,7 @@ import { ExtendNoteUseCase } from './application/extend-note.use-case.js';
 import { RenewNoteUseCase } from './application/renew-note.use-case.js';
 import { CreateSettlementUseCase } from '../settlements/application/create-settlement.use-case.js';
 import { VoidPaymentUseCase } from '../payments/application/void-payment.use-case.js';
+import { ForgiveRemainderUseCase } from '../payments/application/forgive-remainder.use-case.js';
 import { DispatchPendingService } from '../notifications/application/dispatch-pending.service.js';
 
 const extendSchema = z
@@ -62,6 +63,7 @@ export class NotesController {
   constructor(
     private readonly issueNote: IssueNoteUseCase,
     private readonly registerPayment: RegisterPaymentUseCase,
+    private readonly forgiveRemainder: ForgiveRemainderUseCase,
     private readonly listNotes: ListNotesUseCase,
     private readonly getDetail: GetNoteDetailUseCase,
     private readonly simulate: SimulateSettlementUseCase,
@@ -131,6 +133,28 @@ export class NotesController {
   ) {
     const result = await this.registerPayment.execute({ ...body, noteId }, this.contextOf(actor, request));
     // El aviso quedó en la transacción; ahora que confirmó, se intenta enviar.
+    await this.dispatcher.dispatchPending();
+    return result;
+  }
+
+  /**
+   * Cerrar el pagaré condonando lo que falta (§25.16).
+   *
+   * Sólo dentro de la tolerancia de Ajustes, y con motivo: es una decisión con
+   * efecto económico, no un botón de limpieza.
+   */
+  @Post(':id/forgive-remainder')
+  @UseInterceptors(IdempotencyInterceptor)
+  async forgive(
+    @Param('id') noteId: string,
+    @Body(new ZodValidationPipe(reasonSchema.strict())) body: z.infer<typeof reasonSchema>,
+    @CurrentActor() actor: Actor,
+    @Req() request: Request & { traceId?: string },
+  ) {
+    const result = await this.forgiveRemainder.execute(
+      { noteId, reason: `${body.reasonCode}: ${body.reasonNote}` },
+      this.contextOf(actor, request),
+    );
     await this.dispatcher.dispatchPending();
     return result;
   }

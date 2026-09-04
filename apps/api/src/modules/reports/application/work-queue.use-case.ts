@@ -22,6 +22,8 @@ export interface WorkQueues {
   pendingSignature: QueueItem[];
   noChannel: QueueItem[];
   prescribing: QueueItem[];
+  /** Ya pasó el plazo del art. 165 y nadie demandó: cobrable sólo de buena fe. */
+  prescribed: QueueItem[];
 }
 
 const DAY_MS = 86_400_000;
@@ -54,6 +56,9 @@ export class WorkQueueUseCase extends BaseUseCase<Record<string, never>, WorkQue
       include: {
         debtor: true,
         activities: { orderBy: { createdAt: 'desc' }, take: 1 },
+        // Demandar interrumpe la prescripción (art. 1041 C.Com.): mientras el
+        // expediente siga abierto, el reloj del art. 165 no corre.
+        legalCase: { select: { closedOn: true } },
         payments: { orderBy: { paidOn: 'desc' }, take: 1 },
       },
       orderBy: { dueDate: 'asc' },
@@ -72,6 +77,7 @@ export class WorkQueueUseCase extends BaseUseCase<Record<string, never>, WorkQue
       pendingSignature: [],
       noChannel: [],
       prescribing: [],
+      prescribed: [],
     };
 
     const toItem = (note: (typeof open)[number], detail?: string): QueueItem => {
@@ -117,9 +123,20 @@ export class WorkQueueUseCase extends BaseUseCase<Record<string, never>, WorkQue
         }
       }
 
-      if (note.prescribesOn) {
+      // Un expediente abierto interrumpe el plazo: seguir avisando de un pagaré
+      // ya demandado manda al administrador a apagar un fuego que no existe, y
+      // esconde los que sí corren peligro entre el ruido.
+      const interrumpido = note.legalCase !== null && note.legalCase.closedOn === null;
+
+      if (note.prescribesOn && balance > 0n && !interrumpido) {
         const daysLeft = Math.round((note.prescribesOn.getTime() - todayDate.getTime()) / DAY_MS);
-        if (daysLeft <= PRESCRIPTION_ALERTS_DAYS && daysLeft >= 0 && balance > 0n) {
+        if (daysLeft < 0) {
+          // Prescrito no es incobrable: el deudor puede pagar, y muchos pagan.
+          // Lo que ya no se puede es demandar, y eso cambia cómo se gestiona.
+          queues.prescribed.push(
+            toItem(note, `Prescribió hace ${Math.abs(daysLeft)} días: ya no es exigible en juicio`),
+          );
+        } else if (daysLeft <= PRESCRIPTION_ALERTS_DAYS) {
           queues.prescribing.push(toItem(note, `Prescribe en ${daysLeft} días`));
         }
       }
