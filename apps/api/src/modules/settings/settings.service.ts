@@ -77,6 +77,7 @@ const EN_BLANCO = {
   interestWarningThresholdPct: '60',
   applyPaymentToInterestFirst: true,
   prescriptionYears: 3,
+  issueNonNegotiable: false,
   settlementToleranceCents: '0',
   timezone: 'America/Mexico_City',
   noteFolioPrefix: 'PAG',

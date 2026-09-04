@@ -17,6 +17,12 @@ export interface NoteDocumentModel {
   paymentPlace: string;
   dueDateFormatted: string;
   interestRateLabel: string;
+  /**
+   * Si el título circula por endoso (art. 25 LGTOC). Cuando es falso, el
+   * documento lleva la cláusula "no a la orden" y deja de transmitirse por
+   * endoso: sólo por cesión, y el suscriptor conserva sus defensas.
+   */
+  negotiable: boolean;
   observations: string | null;
   debtor: { fullName: string; address: string; phone: string };
   /**

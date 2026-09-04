@@ -45,13 +45,26 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
         <Text style={s.title}>{model.amountFormatted}</Text>
         <Text style={s.words}>{model.amountInWords}</Text>
 
-        {/* Requisitos I y II del art. 170: la mención y la promesa incondicional. */}
+        {/* Requisitos I y II del art. 170: la mención y la promesa incondicional.
+            La forma "a la orden" es la de un título que circula por endoso; con
+            la cláusula "no a la orden" (art. 25) sólo se cede, y el suscriptor
+            conserva frente al cesionario las defensas que tenía. */}
         <Text style={s.promise}>
-          Debo(emos) y pagaré(mos) incondicionalmente a la orden de{' '}
+          Debo(emos) y pagaré(mos) incondicionalmente{' '}
+          {model.negotiable ? 'a la orden de' : 'a'}{' '}
           <Text style={{ fontWeight: 'bold' }}>{model.creditorName}</Text> la cantidad de{' '}
           {model.amountFormatted} ({model.amountInWords}) en {model.paymentPlace} el día{' '}
           {model.dueDateFormatted}.
         </Text>
+
+        {model.negotiable ? null : (
+          <Text style={s.promise}>
+            <Text style={{ fontWeight: 'bold' }}>NO A LA ORDEN — NO NEGOCIABLE.</Text> Este título
+            no es transmisible por endoso; sólo puede cederse en los términos del artículo 25 de
+            la Ley General de Títulos y Operaciones de Crédito, con los efectos de una cesión
+            ordinaria.
+          </Text>
+        )}
 
         <View style={s.row}>
           <Field label="Lugar de expedición" value={model.issuePlace} />

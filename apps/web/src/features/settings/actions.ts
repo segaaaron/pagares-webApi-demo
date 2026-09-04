@@ -56,6 +56,7 @@ export async function saveSettingsAction(
         interestWarningThresholdPct: num(formData, 'interestWarningThresholdPct'),
         applyPaymentToInterestFirst: formData.get('applyPaymentToInterestFirst') === 'on',
         prescriptionYears: num(formData, 'prescriptionYears'),
+        issueNonNegotiable: formData.get('issueNonNegotiable') === 'on',
         // En centavos hacia el servidor: el formulario habla en pesos porque es
         // como se piensa un importe, pero el dinero nunca viaja en coma flotante.
         settlementToleranceCents: toCents(str(formData, 'settlementTolerance')),

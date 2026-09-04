@@ -37,6 +37,8 @@ export interface NoteDetail {
   interestRateAnnualPct: number | null;
   /** Cómo se firmó: "3% mensual (36% anual)". Es lo que va en el documento. */
   interestRateLabel: string;
+  /** Si circula por endoso o lleva la cláusula "no a la orden" (art. 25 LGTOC). */
+  negotiable: boolean;
   interestPeriod: 'MONTHLY' | 'ANNUAL';
   amountInWords: string;
   observations: string | null;
@@ -164,6 +166,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
       interestRateAnnualPct:
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
       interestPeriod: note.interestPeriod,
+      negotiable: note.negotiable,
       interestRateLabel: describeRate(
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
         note.interestPeriod,

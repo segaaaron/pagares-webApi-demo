@@ -62,6 +62,7 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
         note.interestPeriod,
       ),
+      negotiable: note.negotiable,
       observations: note.observations,
       debtor: {
         fullName: note.debtor.fullName,

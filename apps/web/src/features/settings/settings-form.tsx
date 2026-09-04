@@ -22,6 +22,7 @@ export interface SettingsValues {
   applyPaymentToInterestFirst: boolean;
   prescriptionYears: number;
   settlementToleranceCents: string;
+  issueNonNegotiable: boolean;
   bankName: string | null;
   bankAccount: string | null;
   bankClabe: string | null;
@@ -199,6 +200,26 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
           <input id="prescriptionYears" name="prescriptionYears" type="number" min={1} max={20}
                  defaultValue={values.prescriptionYears} className={`${INPUT} tnum sm:w-40`} />
         </Field>
+
+        <div className="mt-4 border-t border-line pt-4">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="issueNonNegotiable"
+              defaultChecked={values.issueNonNegotiable}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              <span className="font-medium text-ink">Emitir como «no negociable»</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Un pagaré es «a la orden» por defecto: quien lo tenga en la mano puede endosarlo, y
+                si se pierde o se lo roban, un tercero puede acabar cobrándolo. Con esta cláusula el
+                título sólo se cede, no se endosa. Márcala si prestas y cobras tú mismo. Sólo
+                afecta a los pagarés que emitas después: lo que ya está firmado no cambia.
+              </span>
+            </span>
+          </label>
+        </div>
 
         <div className="mt-4">
           <Field

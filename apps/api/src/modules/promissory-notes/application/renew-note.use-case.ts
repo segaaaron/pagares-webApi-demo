@@ -83,6 +83,9 @@ export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; 
           dueDate: new Date(`${input.newDueDate}T00:00:00Z`),
           prescribesOn: new Date(`${addYears(input.newDueDate, prescriptionYears)}T00:00:00Z`),
           creditorName: previous.creditorName,
+          // La renovación conserva la forma del título que sustituye: es el
+          // mismo trato, con otra fecha.
+          negotiable: previous.negotiable,
           amountCents,
           currency: previous.currency,
           amountInWords: amountToWords(amountCents),

@@ -21,6 +21,7 @@ export interface NoteDetail {
   accruedInterest: { cents: string; formatted: string };
   interestRateAnnualPct: number | null;
   interestRateLabel: string;
+  negotiable: boolean;
   guarantors: {
     position: number;
     fullName: string;

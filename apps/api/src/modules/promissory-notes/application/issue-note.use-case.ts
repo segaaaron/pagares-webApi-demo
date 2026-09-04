@@ -79,6 +79,9 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
           dueDate: new Date(`${input.dueDate}T00:00:00Z`),
           prescribesOn: new Date(`${addYears(input.dueDate, prescriptionYears)}T00:00:00Z`),
           creditorName: input.creditorName,
+          // La forma del título se congela al emitir: cambiar la preferencia
+          // mañana no puede cambiar lo que dice un documento ya firmado.
+          negotiable: !(settings?.issueNonNegotiable ?? false),
           amountCents,
           currency: input.currency,
           amountInWords: amountToWords(amountCents),

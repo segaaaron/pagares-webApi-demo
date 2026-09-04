@@ -23,6 +23,12 @@ const updateSchema = z
     applyPaymentToInterestFirst: z.boolean(),
     prescriptionYears: z.number().int().min(1).max(20),
     /**
+     * Emitir los pagarés nuevos con la cláusula "no a la orden" (art. 25 LGTOC).
+     * Sólo afecta a los que se emitan después: el texto de un documento firmado
+     * no cambia porque cambie una preferencia.
+     */
+    issueNonNegotiable: z.boolean(),
+    /**
      * Hasta cuánto se puede condonar para cerrar un pagaré (§25.16). En
      * centavos, como todo el dinero del sistema. Cero apaga la propuesta.
      */

@@ -266,6 +266,21 @@ model PromissoryNote {
   acceptedAt         DateTime?
   scrolledToEndAt    DateTime? // evidencia de lectura (§24.1)
 
+  /**
+   * Si el título circula por endoso (art. 25 LGTOC).
+   *
+   * Un pagaré es "a la orden" por defecto: quien lo tenga en la mano puede
+   * endosarlo, y el suscriptor pierde frente al endosatario de buena fe las
+   * defensas que tenía contra el acreedor original. Para quien presta y cobra
+   * él mismo, eso no aporta nada y sí abre un riesgo: un documento extraviado o
+   * robado puede acabar cobrándolo un tercero.
+   *
+   * Se guarda por pagaré y no sólo en Ajustes porque forma parte del texto que
+   * se firmó: cambiar la preferencia mañana no puede cambiar lo que dice un
+   * documento de ayer.
+   */
+  negotiable Boolean @default(true)
+
   prescribesOn             DateTime? @db.Date // dueDate + plazo de settings (§25.13)
   inLitigation             Boolean   @default(false)
   physicalDocumentLocation String?
@@ -666,6 +681,16 @@ model OrganizationSettings {
   applyPaymentToInterestFirst  Boolean  @default(true)
 
   prescriptionYears Int    @default(3) // se avisa, no se aplica sola (§25.13)
+
+  /**
+   * Emitir los pagarés como NO negociables (art. 25 LGTOC).
+   *
+   * Falso por defecto, que es la forma clásica. Activarlo hace que los pagarés
+   * nuevos lleven la cláusula "no a la orden": dejan de transmitirse por endoso
+   * y sólo pueden cederse, con lo que el deudor conserva sus defensas y un
+   * documento robado deja de ser cobrable por quien lo encuentre.
+   */
+  issueNonNegotiable Boolean @default(false)
 
   /**
    * Hasta cuánto se puede condonar para dar por liquidado un pagaré (§25.16).

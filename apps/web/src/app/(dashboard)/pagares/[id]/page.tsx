@@ -203,6 +203,12 @@ export default async function NoteDetailPage({
                 ['Lugar y fecha de pago', `${note.paymentPlace} · ${shortDate(note.dueDate)}`],
                 ['Interés moratorio', note.interestRateLabel],
                 ['Prescribe', note.prescribesOn ? shortDate(note.prescribesOn) : '—'],
+                // Cómo circula el título: quien lo tenga puede endosarlo, o no.
+                // No es un detalle: decide quién puede acabar cobrándolo.
+                [
+                  'Forma del título',
+                  note.negotiable ? 'A la orden (endosable)' : 'No a la orden (no negociable)',
+                ],
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
