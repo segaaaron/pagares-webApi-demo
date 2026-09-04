@@ -17,6 +17,8 @@ interface PageProps {
 function toParams(input: Record<string, string | string[] | undefined>): URLSearchParams {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(input)) {
+    // `aviso` es cosa de esta pantalla; mandarlo como filtro lo rechazaría la API.
+    if (key === 'aviso') continue;
     if (typeof value === 'string' && value !== '') params.set(key, value);
   }
   return params;
@@ -51,11 +53,24 @@ async function NotesList({ params }: { params: URLSearchParams }) {
   );
 }
 
+/** Motivos con los que la descarga masiva devuelve al administrador aquí. */
+const AVISOS: Record<string, string> = {
+  'sin-pagares': 'No hay pagarés que descargar con los filtros puestos.',
+  'descarga-fallida': 'No se pudo armar la descarga. Inténtalo de nuevo en un momento.',
+};
+
 export default async function NotesPage({ searchParams }: PageProps) {
-  const params = toParams(await searchParams);
+  const consulta = await searchParams;
+  const params = toParams(consulta);
+  const aviso = typeof consulta['aviso'] === 'string' ? AVISOS[consulta['aviso']] : undefined;
 
   return (
     <div className="space-y-5">
+      {aviso ? (
+        <p role="status" className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+          {aviso}
+        </p>
+      ) : null}
       <PageHeader
         crumbs={[{ label: 'Pagarés' }]}
         title="Pagarés"

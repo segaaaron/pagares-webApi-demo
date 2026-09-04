@@ -18,15 +18,23 @@ const MAX_NOTES = 100;
 export async function GET(request: Request): Promise<Response> {
   const session = await readSession();
   if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   const params = new URL(request.url).searchParams;
   params.set('limit', String(MAX_NOTES));
   const page = await listNotes(params);
 
+  /**
+   * Nada que empaquetar: se vuelve a la cartera con el motivo, no a un JSON.
+   *
+   * Esta ruta se abre en una pestaña —es una descarga—, así que un cuerpo de
+   * error deja al administrador mirando un objeto crudo en pantalla, sin
+   * navegación y sin saber qué hacer. La respuesta útil es devolverlo a donde
+   * estaba, con el aviso puesto.
+   */
   if (page.data.length === 0) {
-    return NextResponse.json({ error: 'No hay pagarés con esos filtros' }, { status: 404 });
+    return redireccionConAviso(request, 'sin-pagares');
   }
 
   const ids = page.data.map((note) => note.id).join(',');
@@ -36,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
   );
 
   if (!upstream.ok) {
-    return NextResponse.json({ error: 'No se pudo armar la descarga' }, { status: upstream.status });
+    return redireccionConAviso(request, 'descarga-fallida');
   }
 
   return new NextResponse(await upstream.arrayBuffer(), {
@@ -48,4 +56,14 @@ export async function GET(request: Request): Promise<Response> {
       'X-Bundle-Failed': upstream.headers.get('x-bundle-failed') ?? '0',
     },
   });
+}
+
+/** De vuelta a la cartera conservando los filtros, con el motivo en la URL. */
+function redireccionConAviso(request: Request, motivo: string): Response {
+  const destino = new URL('/pagares', request.url);
+  for (const [clave, valor] of new URL(request.url).searchParams) {
+    if (clave !== 'limit') destino.searchParams.set(clave, valor);
+  }
+  destino.searchParams.set('aviso', motivo);
+  return NextResponse.redirect(destino);
 }
