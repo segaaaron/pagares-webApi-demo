@@ -14,17 +14,26 @@ import type { ThrottlerModuleOptions } from '@nestjs/throttler';
  * rutas sensibles no añaden un throttler propio, sino que **estrechan** el
  * global con `@Throttle`.
  */
+/**
+ * Cuántos minutos de ráfaga se toleran en la ventana de quince.
+ *
+ * El sostenido se deriva de la ráfaga en vez de tener su propia variable: son
+ * el mismo criterio mirado en dos escalas, y separarlos sólo daba una segunda
+ * cifra que mantener coherente a mano. Con la ráfaga de producción (120 por
+ * minuto) salen 960 cada quince minutos.
+ */
+const SUSTAINED_BURST_MINUTES = 8;
+
 export function throttlerConfigFor(
   authPer15m: number,
   burstPerMinute = 120,
-  sustainedPer15m = 1_000,
 ): ThrottlerModuleOptions {
   return {
     throttlers: [
       // Ventana corta contra ráfagas.
       { name: 'short', ttl: 60_000, limit: burstPerMinute },
       // Ventana larga contra el goteo sostenido.
-      { name: 'long', ttl: 900_000, limit: sustainedPer15m },
+      { name: 'long', ttl: 900_000, limit: burstPerMinute * SUSTAINED_BURST_MINUTES },
     ],
   };
 }

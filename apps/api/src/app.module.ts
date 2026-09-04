@@ -36,11 +36,7 @@ import { OtpModule } from './modules/otp/otp.module.js';
       imports: [ConfigModule],
       inject: [ENV],
       useFactory: (env: Env) =>
-        throttlerConfigFor(
-          env.RATE_LIMIT_AUTH_PER_15M,
-          env.RATE_LIMIT_BURST_PER_MIN,
-          env.RATE_LIMIT_SUSTAINED_PER_15M,
-        ),
+        throttlerConfigFor(env.RATE_LIMIT_AUTH_PER_15M, env.RATE_LIMIT_BURST_PER_MIN),
     }),
     SharedModule,
     NotificationsModule,

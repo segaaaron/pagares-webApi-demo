@@ -94,12 +94,11 @@ RATE_LIMIT_AUTH_PER_15M=10
 # en las anónimas: los deudores entran desde el móvil y las operadoras comparten
 # IP entre miles de abonados (CGNAT).
 RATE_LIMIT_BURST_PER_MIN=120
-# Goteo sostenido **por IP** cada 15 minutos (§25.7). Es la defensa contra quien
-# fabrica identificadores para estrenar cubo, así que se cuenta por dirección y
-# no por usuario. Súbelo si varios administradores comparten una misma salida a
-# internet, y súbelo de verdad para correr la prueba de carga de §22.1, que sale
-# entera de una IP.
-RATE_LIMIT_SUSTAINED_PER_15M=1000
+# De esta cifra sale también el goteo sostenido: ocho minutos de ráfaga en una
+# ventana de quince, o sea 960 por IP con el valor de arriba. Ése se cuenta por
+# dirección y no por usuario, y es la defensa contra quien fabrica
+# identificadores para estrenar cubo. Sube la ráfaga si varios administradores
+# comparten una misma salida a internet.
 # **Obligatorio en el VPS**: hay un proxy delante (Dokploy). Sin esto, `request.ip`
 # es la del proxy para todo el mundo: el límite de tasa se convierte en uno solo
 # para toda la instalación y la bitácora anota la IP equivocada en cada acción

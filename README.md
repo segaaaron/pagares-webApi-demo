@@ -279,9 +279,13 @@ pnpm test:a11y      # y las de accesibilidad, con la web ya compilada
 La mitad de S3 del contrato se salta con aviso si MinIO no responde; levántalo con
 `pnpm services:minio` para cubrirla (ADR 0014).
 
-La prueba de carga sale entera de una IP, así que exige subir `RATE_LIMIT_BURST_PER_MIN` y
-`RATE_LIMIT_SUSTAINED_PER_15M`; con los valores de producción se mide el límite de tasa y
-no la API.
+La prueba de carga sale entera de una IP, así que exige subir `RATE_LIMIT_BURST_PER_MIN`
+—de ella se deriva también el cupo sostenido—; con el valor de producción se mide el
+límite de tasa y no la API. Para eso está `.env.load`:
+
+```bash
+dotenv -e .env -e .env.load -- pnpm --filter @pagares/api start
+```
 
 ---
 
