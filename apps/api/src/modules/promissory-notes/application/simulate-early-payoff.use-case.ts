@@ -12,11 +12,26 @@ import {
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import { NoteNotFoundError, SimulationDateInPastError } from '../domain/note.errors.js';
+import { isSigned, type NoteStatus } from '../domain/note-status.js';
 
 export interface SimulateEarlyPayoffInput {
   noteId: string;
   /** Fecha civil de la liquidación. Por omisión, hoy. */
   onDate?: string | undefined;
+  /**
+   * Cuando lo pregunta el deudor desde su aplicación: el filtro por dueño va en
+   * la consulta y no en un `if` posterior, que es la defensa contra ver el
+   * pagaré de otro (§9.1, API1).
+   */
+  ownerId?: string | undefined;
+  /**
+   * Contestar sólo por lo que el deudor ya firmó.
+   *
+   * El plan es por folio y sólo con el folio firmado: lo que no ha firmado no
+   * es deuda suya, así que meterlo en la cifra de liquidación sería cobrarle
+   * por algo que todavía puede rechazar (§12).
+   */
+  signedOnly?: boolean | undefined;
 }
 
 interface Money {
@@ -84,7 +99,9 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
     input: SimulateEarlyPayoffInput,
     _ctx: ExecutionContext,
   ): Promise<EarlyPayoffSimulation> {
-    const note = await this.prisma.promissoryNote.findUnique({ where: { id: input.noteId } });
+    const note = await this.prisma.promissoryNote.findFirst({
+      where: { id: input.noteId, ...(input.ownerId ? { ownerId: input.ownerId } : {}) },
+    });
     if (!note) throw new NoteNotFoundError();
 
     const today = businessToday(this.clock.now());
@@ -97,13 +114,15 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
      */
     const hermanos = note.seriesId
       ? await this.prisma.promissoryNote.findMany({
-          where: { seriesId: note.seriesId },
+          where: { seriesId: note.seriesId, ...(input.ownerId ? { ownerId: input.ownerId } : {}) },
           orderBy: { seriesIndex: 'asc' },
         })
       : [note];
 
     // Un anulado no se debe y un renovado se debe en el documento nuevo (§13.7).
-    const vivos = hermanos.filter((n) => n.status !== 'VOID' && n.status !== 'RENEWED');
+    const vivos = hermanos
+      .filter((n) => n.status !== 'VOID' && n.status !== 'RENEWED')
+      .filter((n) => !input.signedOnly || isSigned(n.status as NoteStatus));
 
     const settings = await this.prisma.organizationSettings.findUnique({
       where: { id: 'singleton' },

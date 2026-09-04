@@ -53,6 +53,18 @@ export function allowedTransitions(from: NoteStatus): readonly NoteStatus[] {
   return TRANSITIONS[from];
 }
 
+/**
+ * Firmado, es decir: aceptado por el deudor.
+ *
+ * Mientras la firma no está, el título no obliga a nadie y no se le puede
+ * cobrar. Es la línea que separa lo que el deudor **ya aceptó** de lo que
+ * todavía se le está pidiendo, y por eso decide qué se le enseña como plan de
+ * pagos y qué como folios sueltos pendientes de firma (§12).
+ */
+export function isSigned(status: NoteStatus): boolean {
+  return status !== 'PENDING_SIGNATURE' && status !== 'PROCESSING_SIGNATURE';
+}
+
 /** Un pagaré admite abonos salvo en los finales; sobre castigado, como recuperación. */
 export function acceptsPayments(status: NoteStatus): boolean {
   return !FINAL_STATUSES.has(status) && status !== 'PENDING_SIGNATURE' && status !== 'PROCESSING_SIGNATURE';

@@ -16,7 +16,9 @@ import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
 import { OBJECT_STORAGE, type ObjectStorage } from '../media/domain/ports/object-storage.js';
 import { NOTE_DOCUMENTS, type NoteDocuments } from '../../shared/domain/note-documents.port.js';
-import { withClock } from '../promissory-notes/domain/note-status.js';
+import { withClock, isSigned, type NoteStatus } from '../promissory-notes/domain/note-status.js';
+import { planOf, type PlanMember, type PlanView } from './plan-view.js';
+import { SimulateEarlyPayoffUseCase } from '../promissory-notes/application/simulate-early-payoff.use-case.js';
 
 const OPEN = ['ISSUED', 'PARTIALLY_PAID', 'RESTRUCTURED'] as const;
 
@@ -34,6 +36,7 @@ export class ClientController {
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
     @Inject(NOTE_DOCUMENTS) private readonly documents: NoteDocuments,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly earlyPayoff: SimulateEarlyPayoffUseCase,
   ) {}
 
   /**
@@ -106,6 +109,34 @@ export class ClientController {
    * el desglose entre interés y capital sólo tiene sentido verlo aquí: es la
    * respuesta a "abonué 5 000 y el saldo bajó 3 800" (§12.3).
    */
+  /**
+   * «¿Cuánto es si lo pago todo hoy?» (§12, ADR 0017).
+   *
+   * Hasta ahora sólo se podía contestar llamando al prestamista. Es lectura: no
+   * cobra, no cambia estados y otro día da otro número.
+   *
+   * Contesta **sólo por lo que el deudor ya firmó**: lo pendiente de firma no
+   * es deuda suya, y meterlo en la cifra sería cobrarle por algo que todavía
+   * puede rechazar.
+   */
+  @Get('notes/:id/early-payoff')
+  async earlyPayoffOf(
+    @Param('id') id: string,
+    @Query('date') date: string | undefined,
+    @CurrentActor() actor: Actor,
+    @Req() request: Request & { traceId?: string },
+  ) {
+    return this.earlyPayoff.execute(
+      {
+        noteId: id,
+        ownerId: actor.id,
+        signedOnly: true,
+        ...(date !== undefined ? { onDate: date } : {}),
+      },
+      { actorId: actor.id, actorRole: actor.role, traceId: request.traceId ?? 'sin-traza' },
+    );
+  }
+
   @Get('notes/:id/payments')
   async payments(@Param('id') id: string, @CurrentActor() actor: Actor) {
     // El filtro por dueño va en la consulta del pagaré, no en un `if` posterior.
@@ -320,8 +351,23 @@ export class ClientController {
         seriesId: true,
         seriesIndex: true,
         seriesSize: true,
+        planModel: true,
       },
     });
+
+    /*
+     * El plan se arma aquí, con los pagarés que ya vienen: sumarlo en el
+     * cliente sería reimplementar en dos aplicaciones una cuenta de dinero, y
+     * la primera vez que una cambiara enseñarían cifras distintas.
+     */
+    const planes = new Map<string, PlanView | null>();
+    for (const fila of rows) {
+      if (!fila.seriesId || planes.has(fila.seriesId)) continue;
+      planes.set(
+        fila.seriesId,
+        planOf(rows.filter((otra) => otra.seriesId === fila.seriesId) as PlanMember[]),
+      );
+    }
 
     return rows.map((r) => {
       const dueDate = r.dueDate.toISOString().slice(0, 10);
@@ -342,6 +388,14 @@ export class ClientController {
           r.seriesId && r.seriesIndex && r.seriesSize
             ? { seriesId: r.seriesId, index: r.seriesIndex, size: r.seriesSize }
             : null,
+        /*
+         * El plan sólo viaja con la cuota firmada. Una serie a medio firmar se
+         * ve partida a propósito: lo firmado es el plan que el deudor aceptó, y
+         * lo pendiente son folios sueltos cuya única acción es firmarlos (§12).
+         */
+        plan: presentPlan(
+          r.seriesId && isSigned(r.status as NoteStatus) ? (planes.get(r.seriesId) ?? null) : null,
+        ),
       };
     });
   }
@@ -367,6 +421,21 @@ export class ClientController {
     const dueDate = note.dueDate.toISOString().slice(0, 10);
     const overdue = daysOverdue(dueDate, now);
     const balance = note.amountCents - note.paidCents;
+
+    const hermanos = note.seriesId
+      ? await this.prisma.promissoryNote.findMany({
+          where: { seriesId: note.seriesId, ownerId: actor.id },
+          orderBy: { seriesIndex: 'asc' },
+          select: {
+            status: true,
+            amountCents: true,
+            paidCents: true,
+            seriesId: true,
+            seriesSize: true,
+            planModel: true,
+          },
+        })
+      : [];
 
     return {
       id: note.id,
@@ -400,6 +469,12 @@ export class ClientController {
         note.seriesId && note.seriesIndex && note.seriesSize
           ? { seriesId: note.seriesId, index: note.seriesIndex, size: note.seriesSize }
           : null,
+      /**
+       * Las cifras del plan, calculadas aquí y **sólo sobre lo firmado** (§12).
+       * Un pagaré todavía sin firmar no enseña plan: es un folio suelto cuya
+       * única acción es firmarlo.
+       */
+      plan: isSigned(note.status as NoteStatus) ? presentPlan(planOf(hermanos as PlanMember[])) : null,
       /*
        * Del aval, sólo quién es. No se manda estado de firma porque el sistema
        * no puede capturarla: prometerla en la aplicación era enseñar un paso
@@ -448,4 +523,22 @@ export class ClientController {
         : null,
     };
   }
+}
+
+/**
+ * El plan, en la forma en que viaja: importes como objeto de dinero, igual que
+ * el resto de `/me`, para que la aplicación no formatee centavos a mano.
+ */
+function presentPlan(plan: PlanView | null) {
+  if (!plan) return null;
+  return {
+    seriesId: plan.seriesId,
+    size: plan.size,
+    signedCount: plan.signedCount,
+    paidCount: plan.paidCount,
+    model: plan.model,
+    total: money(plan.totalCents),
+    paid: money(plan.paidCents),
+    pending: money(plan.pendingCents),
+  };
 }

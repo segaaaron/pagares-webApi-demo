@@ -372,3 +372,174 @@ describe('§17.1 · los documentos del deudor', () => {
     expect(respuesta.status).toBe(400);
   });
 });
+
+/**
+ * El plan de pagos que ve el deudor (§12).
+ *
+ * Regla del negocio: **el plan es por folio y sólo con el folio firmado**. Lo
+ * que todavía no ha firmado no es deuda suya, así que agruparlo dentro del plan
+ * sería enseñarle como aceptado algo que aún puede rechazar, y sumarle un saldo
+ * que no debe. Una serie a medio firmar se ve partida a propósito.
+ */
+describe('§12 · el plan sólo con el folio firmado', () => {
+  let cuotas: Record<string, unknown>[] = [];
+  let primera = '';
+
+  beforeAll(async () => {
+    const perfil = await call('/me/profile', { token: clienteToken });
+    const phone = String((perfil.body as Record<string, unknown>)['phone']);
+    const email = String((perfil.body as Record<string, unknown>)['email']);
+
+    const emitido = await call('/admin/notes', {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: {
+        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-2),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '6000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+        installments: 3,
+        plan: { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
+      },
+    });
+    expect(emitido.status).toBe(201);
+    cuotas = (emitido.body['series'] as { notes: Record<string, unknown>[] }).notes;
+    primera = String(cuotas[0]?.['id']);
+
+    // Firma sólo la primera: es el caso que importa, la serie a medio firmar.
+    const sharp = (await import('sharp')).default;
+    const trazo = await sharp({
+      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+    })
+      .png()
+      .toBuffer();
+
+    const form = new FormData();
+    form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+    form.append(
+      'payload',
+      JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'REMOTE' }),
+    );
+
+    const firmado = await fetch(`${API}/notes/${primera}/signature`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${clienteToken}` },
+      body: form,
+    });
+    expect(firmado.status, 'la primera cuota queda firmada').toBe(201);
+  });
+
+  it('la cuota firmada trae el plan, con el tamaño pactado', async () => {
+    const suyos = await call('/me/notes', { token: clienteToken });
+    const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
+      (n) => n['id'] === primera,
+    );
+    const plan = fila?.['plan'] as Record<string, unknown>;
+
+    expect(plan, 'la cuota firmada trae plan').toBeTruthy();
+    // Tres cuotas pactadas, una firmada: la app puede decir «1 de 3 firmados»
+    // en vez de fingir que el plan tiene una sola cuota.
+    expect(plan['size']).toBe(3);
+    expect(plan['signedCount']).toBe(1);
+    expect(plan['paidCount']).toBe(0);
+    expect(plan['model']).toBe('INSOLUTOS');
+    esDinero(plan['total'], 'plan.total');
+    esDinero(plan['paid'], 'plan.paid');
+    esDinero(plan['pending'], 'plan.pending');
+  });
+
+  it('el total del plan es el de lo firmado, no el de la deuda entera', async () => {
+    // Sumar las tres cuotas le enseñaría un saldo que todavía no aceptó.
+    const suyos = await call('/me/notes', { token: clienteToken });
+    const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
+      (n) => n['id'] === primera,
+    );
+    const plan = fila?.['plan'] as Record<string, Record<string, string>>;
+    const importe = (fila?.['amount'] as Record<string, string>)['cents'];
+
+    expect(plan['total']?.['cents']).toBe(importe);
+    expect(plan['pending']?.['cents']).toBe(importe);
+  });
+
+  it('las cuotas sin firmar son folios sueltos, sin plan', async () => {
+    const suyos = await call('/me/notes', { token: clienteToken });
+    const filas = suyos.body as unknown as Record<string, unknown>[];
+
+    for (const cuota of cuotas.slice(1)) {
+      const fila = filas.find((n) => n['id'] === cuota['id']);
+      expect(fila?.['plan'], 'sin firma no hay plan').toBeNull();
+      // Pero siguen sabiendo de qué serie son: es «Pago 2 de 3» pendiente de firma.
+      expect(fila?.['installment']).toBeTruthy();
+    }
+  });
+
+  it('el detalle de la cuota firmada trae el mismo plan', async () => {
+    const detalle = await call(`/me/notes/${primera}`, { token: clienteToken });
+    const plan = detalle.body['plan'] as Record<string, unknown>;
+
+    expect(plan['signedCount']).toBe(1);
+    expect(plan['size']).toBe(3);
+  });
+
+  it('liquidar por anticipado contesta sólo por lo firmado', async () => {
+    /*
+     * La pregunta que hoy sólo se contesta llamando al prestamista. Con una
+     * cuota firmada de tres, la cifra es la de esa cuota: cobrarle las otras dos
+     * sería cobrarle por lo que aún no aceptó (ADR 0017).
+     */
+    const respuesta = await call(`/me/notes/${primera}/early-payoff`, { token: clienteToken });
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body['pendingCount']).toBe(1);
+    expect(respuesta.body['planModel']).toBe('INSOLUTOS');
+
+    const suyos = await call('/me/notes', { token: clienteToken });
+    const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
+      (n) => n['id'] === primera,
+    );
+    const saldo = BigInt((fila?.['balance'] as Record<string, string>)['cents'] ?? '0');
+    const ahorro = BigInt((respuesta.body['saved'] as Record<string, string>)['cents'] ?? '0');
+    const total = BigInt((respuesta.body['total'] as Record<string, string>)['cents'] ?? '0');
+
+    /*
+     * Sobre saldos insolutos, la cuota que aún no vence no cobra su interés: el
+     * tiempo que no transcurre no se causa. Así que paga el capital y se ahorra
+     * exactamente el interés que llevaba dentro.
+     */
+    expect(ahorro).toBeGreaterThan(0n);
+    expect(total + ahorro).toBe(saldo);
+  });
+
+  it('el pagaré de otro no se liquida', async () => {
+    // BOLA: el filtro por dueño va en la consulta, y responde 404 para no
+    // confirmar siquiera que el pagaré existe (§9.1, API1).
+    const ajeno = await call('/admin/notes', {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: {
+        debtor: {
+          fullName: 'Otro deudor',
+          address: 'Calle ajena 2',
+          phone: `+52443${String(Date.now()).slice(-7)}`,
+        },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-2),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        interestRate: { value: 2, period: 'MONTHLY' },
+      },
+    });
+
+    const respuesta = await call(`/me/notes/${String(ajeno.body['id'])}/early-payoff`, {
+      token: clienteToken,
+    });
+    expect(respuesta.status).toBe(404);
+  });
+});

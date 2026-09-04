@@ -555,6 +555,8 @@ Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pag
 
 **Liquidar antes de tiempo** (ADR 0017) se consulta con `GET /admin/notes/:id/early-payoff`, y contesta por la serie entera aunque se pregunte desde una cuota. Sobre saldos insolutos el interés de las cuotas futuras no se cobra —el tiempo que no transcurre no se causa—; sobre saldo global sí, porque se pactó de una vez sobre el importe original. La cuota ya vencida se debe entera, lo abonado se imputa primero a intereses (art. 2094 CCF) y el moratorio se suma aparte y no se perdona. Es una consulta: no cobra, no cambia estados y otro día da otro número.
 
+**El plan es por folio y sólo con el folio firmado** (ADR 0018). Mientras el deudor no firma una cuota, ese título no le obliga: en `/me/notes` y `/me/notes/:id` el objeto `plan` —`{seriesId, size, signedCount, paidCount, model, total, paid, pending}`— viaja sólo con la cuota firmada, y sus cifras salen únicamente de lo firmado. Una serie a medio firmar se ve partida: lo firmado como plan, lo pendiente como folios sueltos cuya única acción es firmarlos. `GET /me/notes/:id/early-payoff` sigue la misma regla; el panel ve la serie entera.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**
