@@ -7,7 +7,13 @@ import { ChangeCollectionStageUseCase } from './application/change-collection-st
 
 const stageSchema = z
   .object({
-    stage: z.enum(['PREVENTIVA', 'ADMINISTRATIVA', 'EXTRAJUDICIAL', 'JUDICIAL', 'CASTIGO']).optional(),
+    /**
+     * `CASTIGO` no está: esa etapa la fija el castigo del pagaré, que es otra
+     * decisión —con motivo de catálogo y folio escrito— y cambia también su
+     * estado. Permitirla aquí dejaría la etapa diciendo una cosa y el estado
+     * otra.
+     */
+    stage: z.enum(['PREVENTIVA', 'ADMINISTRATIVA', 'EXTRAJUDICIAL', 'JUDICIAL']).optional(),
     /**
      * Congelada, la etapa deja de subir con el calendario. Es la herramienta
      * para el deudor que sí responde: sin ella acaba en judicial por la simple

@@ -27,8 +27,13 @@ export async function DueCalendar() {
   });
   const pagina = await listNotes(params);
 
-  // Sólo lo que sigue vivo: un pagaré pagado o anulado no vence.
-  const vivos = pagina.data.filter((n) => n.balance.cents !== '0');
+  /**
+   * Sólo lo que de verdad puede vencer. Mirar el saldo no basta: un pagaré
+   * anulado o castigado conserva saldo y aparecería aquí como cobro esperado,
+   * inflando la previsión de las próximas semanas.
+   */
+  const VIVOS = new Set(['ISSUED', 'PARTIALLY_PAID', 'OVERDUE', 'PENDING_SIGNATURE']);
+  const vivos = pagina.data.filter((n) => VIVOS.has(n.status) && n.balance.cents !== '0');
 
   const semanas = Array.from({ length: SEMANAS }, (_, i) => {
     const inicio = new Date(desde.getTime() + i * 7 * DIA_MS);

@@ -31,6 +31,17 @@ export interface FilaCobranza {
 export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }) {
   const [abierto, setAbierto] = useState<'gestion' | 'etapa' | 'convenio' | null>(null);
   const telefono = fila.debtorPhone?.replace(/[^\d+]/g, '') ?? '';
+  /**
+   * WhatsApp exige el número internacional completo. El contrato acepta de 7 a
+   * 15 dígitos, así que un teléfono mexicano capturado como diez dígitos —lo
+   * normal— abriría un chat inexistente. Se le antepone 52 sólo en ese caso: si
+   * ya trae prefijo, no se toca.
+   */
+  const paraWhatsApp = telefono.startsWith('+')
+    ? telefono.slice(1)
+    : telefono.length === 10
+      ? `52${telefono}`
+      : telefono;
 
   return (
     <li className="border-b border-line last:border-0">
@@ -55,7 +66,7 @@ export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }
               Llamar
             </a>
             <a
-              href={`https://wa.me/${telefono.replace('+', '')}`}
+              href={`https://wa.me/${paraWhatsApp}`}
               target="_blank"
               rel="noopener"
               className="btn btn-ghost btn-sm"

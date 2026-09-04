@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   BaseUseCase,
@@ -60,6 +60,12 @@ export class ChangeCollectionStageUseCase extends BaseUseCase<
     input: ChangeCollectionStageInput,
     ctx: ExecutionContext,
   ): Promise<ChangeCollectionStageResult> {
+    if (input.stage === 'CASTIGO') {
+      throw new BadRequestException(
+        'La etapa de castigo la fija el castigo del pagaré, no este cambio de etapa',
+      );
+    }
+
     const previo = await this.prisma.promissoryNote.findUniqueOrThrow({
       where: { id: input.noteId },
       select: { id: true, collectionStage: true, stageFrozen: true },
