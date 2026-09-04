@@ -131,15 +131,28 @@ La web habla con la API por la red interna de Docker, no por internet: no hace f
 
 ## 4. Migraciones
 
-Desde la terminal del contenedor de la API, después de cada despliegue que traiga
-migraciones nuevas:
+**Se aplican solas al arrancar el contenedor** (ADR 0013). No hay que entrar a la terminal
+después de cada despliegue: `docker/arranque.sh` corre `prisma migrate deploy` antes de
+levantar la API y el panel.
+
+Si una migración falla, **el contenedor no arranca**. Es deliberado: servir la aplicación
+contra un esquema que no le corresponde produce errores que parecen de datos y no lo son.
+El orquestador deja corriendo la versión anterior, y el motivo está en los logs del
+contenedor.
+
+Antes se hacían a mano, por miedo a que dos réplicas migraran a la vez. Ese miedo ya no
+aplica: `prisma migrate deploy` toma un bloqueo de aviso en Postgres, así que la segunda
+réplica espera y encuentra el trabajo hecho. Y las migraciones de este repositorio se
+escriben repetibles, para poder aplicarlas antes por fuera si hiciera falta.
+
+Para saltárselas en un arranque concreto —depurar sin tocar la base—, `SKIP_MIGRATIONS=1`
+en las variables de entorno. No es para dejarlo puesto.
+
+Para aplicarlas a mano de todas formas, desde la terminal del contenedor:
 
 ```
 ./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 ```
-
-A mano y nunca al arrancar el contenedor: si algún día hay dos réplicas, ambas migrarían a
-la vez y romperían la base.
 
 ## 5. Primer administrador
 

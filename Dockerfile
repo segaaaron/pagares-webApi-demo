@@ -97,7 +97,11 @@ EXPOSE 3000 3001
 
 # Sanos los dos o el contenedor no lo está: si el panel responde pero la API no,
 # lo que ve el usuario son errores en cada pantalla.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+# El margen de arranque cubre ahora también las migraciones, que corren antes de
+# levantar los dos procesos: una migración sobre una tabla grande puede tardar
+# más que el arranque entero, y darla por muerta a los 30 segundos reiniciaría el
+# contenedor en mitad del trabajo.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD node -e "Promise.all([fetch('http://127.0.0.1:3001/api/v1/health'),fetch('http://127.0.0.1:3000/login')]).then(([a,w])=>process.exit(a.ok&&w.status<500?0:1)).catch(()=>process.exit(1))"
 
 CMD ["./arranque.sh"]
