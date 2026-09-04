@@ -1,5 +1,6 @@
 import { IssueForm } from '@/features/notes/issue-form';
 import { getNote } from '@/features/notes/detail-queries';
+import { getDebtor } from '@/features/debtors/queries';
 import { getSettings } from '@/features/settings/queries';
 import { todayInBusinessZone } from '@/shared/lib/today';
 import { PageHeader } from '@/shared/ui/page-header';
@@ -14,10 +15,13 @@ export default async function NewNotePage({
 }) {
   const consulta = await searchParams;
   const duplicarDe = typeof consulta['duplicar'] === 'string' ? consulta['duplicar'] : null;
+  // Desde la ficha de un deudor: llega elegido, sin importe ni observaciones.
+  const deudorDe = typeof consulta['deudor'] === 'string' ? consulta['deudor'] : null;
 
-  const [settings, origen] = await Promise.all([
+  const [settings, origen, deudor] = await Promise.all([
     getSettings(),
     duplicarDe ? getNote(duplicarDe) : Promise.resolve(null),
+    deudorDe ? getDebtor(deudorDe) : Promise.resolve(null),
   ]);
   const today = todayInBusinessZone();
 
@@ -60,7 +64,20 @@ export default async function NewNotePage({
           defaultDueDate: due.toISOString().slice(0, 10),
         }}
         plantilla={
-          origen
+          deudor
+            ? {
+                debtor: {
+                  id: deudor.id,
+                  fullName: deudor.fullName,
+                  phone: deudor.phone,
+                  email: deudor.email,
+                  address: deudor.address,
+                  activeCount: 0,
+                  overdueCount: 0,
+                  behavior: '',
+                },
+              }
+            : origen
             ? {
                 debtor: {
                   id: origen.debtor.id,

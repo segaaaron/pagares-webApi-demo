@@ -1,4 +1,4 @@
-import { GrantAccess } from '@/features/debtors/grant-access';
+import { CreateUserForm } from '@/features/users/user-forms';
 import { RouteNotice } from '@/shared/ui/route-notice';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -137,12 +137,17 @@ export default async function DebtorPage({
         description={`${debtor.address} · ${debtor.phone}${debtor.email ? ` · ${debtor.email}` : ''}`}
         actions={
           <>
+            {/* El mismo diálogo que en Accesos: un solo flujo para dar acceso,
+                aquí con la persona ya puesta. */}
             {!debtor.hasAccount ? (
-              <GrantAccess
-                debtorId={debtor.id}
-                fullName={debtor.fullName}
-                email={debtor.email}
-                phone={debtor.phone}
+              <CreateUserForm
+                debtor={{
+                  id: debtor.id,
+                  fullName: debtor.fullName,
+                  phone: debtor.phone,
+                  email: debtor.email,
+                }}
+                label="Dar acceso a la app"
               />
             ) : null}
             <a
@@ -154,7 +159,9 @@ export default async function DebtorPage({
               <NavIcon.download />
               Estado de cuenta
             </a>
-            <Link href="/pagares/nuevo" className="btn btn-primary">
+            {/* Con el deudor puesto: venir desde su ficha y tener que buscarlo
+                otra vez es teclear lo que el sistema ya sabe. */}
+            <Link href={`/pagares/nuevo?deudor=${debtor.id}`} className="btn btn-primary">
               Nuevo pagaré
             </Link>
           </>

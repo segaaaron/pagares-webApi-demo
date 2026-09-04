@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import {
   createUserAction,
@@ -30,7 +31,18 @@ function CredentialNotice({ credential }: { credential: NonNullable<UserActionSt
   );
 }
 
-export function CreateUserForm() {
+export function CreateUserForm({
+  debtor,
+  label,
+}: {
+  /**
+   * Cuando el alta sale de la ficha de un deudor: la cuenta se enlaza con esa
+   * persona y sus pagarés vuelven a ser suyos. Sin esto, el alta crea a alguien
+   * nuevo, que es lo correcto desde la lista de accesos.
+   */
+  debtor?: { id: string; fullName: string; phone: string; email: string | null } | undefined;
+  label?: string | undefined;
+} = {}) {
   const [state, action, pending] = useActionState<UserActionState, FormData>(createUserAction, {});
   const modal = useModal();
 
@@ -49,38 +61,81 @@ export function CreateUserForm() {
       <div className="flex justify-end">
         <button type="button" onClick={modal.show} className="btn btn-primary">
           <NavIcon.users />
-          Nueva cuenta
+          {label ?? 'Nueva cuenta'}
         </button>
       </div>
 
       <Modal
         open={modal.open}
         onClose={modal.hide}
-        title="Dar de alta un cliente"
+        title={debtor ? `Dar acceso a ${debtor.fullName}` : 'Dar de alta un cliente'}
         description="Se genera una contraseña temporal, se le envía por correo y se muestra aquí una vez."
       >
         <form action={action}>
           <div className="space-y-4 px-5 py-5">
+            {debtor ? (
+              <input type="hidden" name="debtorId" value={debtor.id} />
+            ) : (
+              /*
+               * Desde la lista, el alta es para gente nueva. A quien ya está en
+               * la cartera se le da acceso desde su ficha: la cuenta se enlaza
+               * con la persona, y creada aquí quedaría suelta y sus pagarés sin
+               * dueño.
+               */
+              <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-xs text-muted">
+                ¿Es alguien que ya tiene pagarés?{' '}
+                <Link href="/clientes?acceso=sin" className="font-medium text-accent-ink hover:underline">
+                  Dale acceso desde su ficha
+                </Link>{' '}
+                para que sus pagarés sigan siendo suyos.
+              </p>
+            )}
+
             <div>
               <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-ink">
                 Nombre completo
               </label>
-              <input id="fullName" name="fullName" required minLength={3} autoComplete="off" className="input" />
+              <input
+                id="fullName"
+                name="fullName"
+                required
+                minLength={3}
+                autoComplete="off"
+                defaultValue={debtor?.fullName ?? ''}
+                readOnly={Boolean(debtor)}
+                className={`input ${debtor ? 'bg-surface-2 text-muted' : ''}`}
+              />
             </div>
             <div>
               <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-ink">
                 Correo
               </label>
-              <input id="email" name="email" type="email" required placeholder="correo@ejemplo.mx" className="input" />
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                placeholder="correo@ejemplo.mx"
+                defaultValue={debtor?.email ?? ''}
+                className="input"
+              />
               <p className="mt-1 text-xs text-muted">
-                Ahí llegan la contraseña temporal y los avisos de sus pagarés.
+                {debtor
+                  ? 'Puede ser distinto del que tenía antes: sus pagarés van con la persona, no con el correo.'
+                  : 'Ahí llegan la contraseña temporal y los avisos de sus pagarés.'}
               </p>
             </div>
             <div>
               <label htmlFor="phone" className="mb-1.5 block text-sm font-medium text-ink">
                 Teléfono <span className="font-normal text-muted">(opcional)</span>
               </label>
-              <input id="phone" name="phone" placeholder="+524431234567" className="input" />
+              <input
+                id="phone"
+                name="phone"
+                placeholder="+524431234567"
+                defaultValue={debtor?.phone ?? ''}
+                className="input"
+              />
             </div>
 
             <div aria-live="polite" className="space-y-2">
@@ -96,7 +151,7 @@ export function CreateUserForm() {
               {state.credential ? 'Cerrar' : 'Cancelar'}
             </button>
             <button type="submit" disabled={pending} className="btn btn-primary btn-sm">
-              {pending ? 'Creando…' : 'Crear cuenta'}
+              {pending ? 'Creando…' : debtor ? 'Dar acceso' : 'Crear cuenta'}
             </button>
           </footer>
         </form>
