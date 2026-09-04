@@ -44,6 +44,8 @@ export class ListNotesUseCase extends BaseUseCase<ListNotesQuery, NotesPage> {
       bucket: input.bucket,
       from: input.from,
       to: input.to,
+      dueFrom: input.dueFrom,
+      dueTo: input.dueTo,
       limit: input.limit,
       cursor: input.cursor ? (decodeCursor(input.cursor) ?? undefined) : undefined,
       today,

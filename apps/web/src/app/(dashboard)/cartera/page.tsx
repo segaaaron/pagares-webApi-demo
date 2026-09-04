@@ -5,6 +5,7 @@ import { StatCard } from '@/shared/ui/stat-card';
 import { TrendChart } from '@/shared/ui/charts/trend-chart';
 import { DonutChart } from '@/shared/ui/charts/donut-chart';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
+import { DueCalendar } from '@/features/portfolio/due-calendar';
 import { PageHeader } from '@/shared/ui/page-header';
 
 export const metadata = { title: 'Cartera' };
@@ -137,6 +138,10 @@ export default async function PortfolioPage() {
           })}
         </ul>
       </section>
+
+      {/* Mirar hacia delante: la antigüedad dice lo que ya se debe, esto lo que
+          está por vencer, que es sobre lo que todavía se puede actuar. */}
+      <DueCalendar />
     </div>
   );
 }

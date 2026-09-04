@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import {
   changeCollectionStageAction,
+  createSettlementAction,
   registerActivityAction,
   type ActionState,
 } from '@/features/notes/lifecycle-actions';
@@ -28,7 +29,7 @@ export interface FilaCobranza {
 }
 
 export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }) {
-  const [abierto, setAbierto] = useState<'gestion' | 'etapa' | null>(null);
+  const [abierto, setAbierto] = useState<'gestion' | 'etapa' | 'convenio' | null>(null);
   const telefono = fila.debtorPhone?.replace(/[^\d+]/g, '') ?? '';
 
   return (
@@ -87,10 +88,23 @@ export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }
         >
           Etapa
         </button>
+
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => (v === 'convenio' ? null : 'convenio'))}
+          aria-expanded={abierto === 'convenio'}
+          className="btn btn-ghost btn-sm"
+          title="Pactar monto, quita y fecha"
+        >
+          Convenio
+        </button>
       </div>
 
       {abierto === 'gestion' ? <FormularioGestion noteId={fila.noteId} hoy={hoy} /> : null}
       {abierto === 'etapa' ? <FormularioEtapa noteId={fila.noteId} /> : null}
+      {abierto === 'convenio' ? (
+        <FormularioConvenio noteId={fila.noteId} folio={fila.folio} hoy={hoy} saldo={fila.balance} />
+      ) : null}
     </li>
   );
 }
@@ -228,6 +242,101 @@ function FormularioEtapa({ noteId }: { noteId: string }) {
 
       <button type="submit" disabled={pending} className="btn btn-primary btn-sm">
         {pending ? 'Guardando…' : 'Guardar etapa'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * Convenio y quita, desde la lista (§13.4).
+ *
+ * Se negocia por teléfono y, si no se captura en ese momento, se negocia otra
+ * vez el mes siguiente. Pide el folio escrito porque la quita es dinero que se
+ * perdona: un clic de más no debería otorgarla.
+ */
+function FormularioConvenio({
+  noteId,
+  folio,
+  hoy,
+  saldo,
+}: {
+  noteId: string;
+  folio: string;
+  hoy: string;
+  saldo: string;
+}) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(
+    createSettlementAction.bind(null, noteId, folio),
+    {},
+  );
+
+  return (
+    <form action={action} className="space-y-3 bg-surface-2 px-4 py-3">
+      <p className="text-xs text-muted">
+        Saldo actual {saldo}. Si el convenio se incumple en su fecha, el pagaré vuelve a vencido con
+        el saldo original y sale el aviso. Nadie tiene que acordarse.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label htmlFor={`acordado-${noteId}`} className={ETIQUETA}>
+            Monto convenido
+          </label>
+          <input
+            id={`acordado-${noteId}`}
+            name="agreed"
+            inputMode="decimal"
+            required
+            placeholder="0.00"
+            className={CAMPO}
+          />
+        </div>
+        <div>
+          <label htmlFor={`quita-${noteId}`} className={ETIQUETA}>
+            Quita otorgada
+          </label>
+          <input
+            id={`quita-${noteId}`}
+            name="forgiven"
+            inputMode="decimal"
+            defaultValue="0"
+            className={CAMPO}
+          />
+        </div>
+        <div>
+          <label htmlFor={`vence-${noteId}`} className={ETIQUETA}>
+            Vence el
+          </label>
+          <DateField id={`vence-${noteId}`} name="dueOn" min={hoy} required />
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor={`terminos-${noteId}`} className={ETIQUETA}>
+          Términos
+        </label>
+        <input
+          id={`terminos-${noteId}`}
+          name="terms"
+          placeholder="Parcialidades, forma de pago, lo que se acordó"
+          className={CAMPO}
+        />
+      </div>
+
+      <div>
+        <label htmlFor={`confirmar-${noteId}`} className={ETIQUETA}>
+          Escribe {folio} para confirmar
+        </label>
+        <input id={`confirmar-${noteId}`} name="confirm" required className={CAMPO} />
+      </div>
+
+      <div aria-live="polite" className="text-xs">
+        {state.error ? <p className="text-crit">{state.error}</p> : null}
+        {state.ok ? <p className="text-ok">{state.ok}</p> : null}
+      </div>
+
+      <button type="submit" disabled={pending} className="btn btn-primary btn-sm">
+        {pending ? 'Registrando…' : 'Registrar convenio'}
       </button>
     </form>
   );

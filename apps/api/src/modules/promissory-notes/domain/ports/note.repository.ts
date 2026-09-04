@@ -22,6 +22,9 @@ export interface NoteListQuery {
   q?: string | undefined;
   bucket?: AgingBucket | undefined;
   from?: string | undefined;
+  /** Por fecha de vencimiento, no de emisión. */
+  dueFrom?: string | undefined;
+  dueTo?: string | undefined;
   to?: string | undefined;
   limit: number;
   cursor?: { value: string; id: string } | undefined;

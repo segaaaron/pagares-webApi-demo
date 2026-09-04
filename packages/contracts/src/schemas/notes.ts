@@ -135,6 +135,12 @@ export const noteFiltersSchema = z
     bucket: agingBucketSchema.optional(),
     from: civilDateSchema.optional(),
     to: civilDateSchema.optional(),
+    /**
+     * Por fecha de **vencimiento**, no de emisión: es lo que responde «qué me
+     * vence esta semana», que es la pregunta con la que se abre el día.
+     */
+    dueFrom: civilDateSchema.optional(),
+    dueTo: civilDateSchema.optional(),
   })
   .strict();
 

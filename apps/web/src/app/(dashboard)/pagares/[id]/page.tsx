@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { RouteNotice } from '@/shared/ui/route-notice';
 import { notFound } from 'next/navigation';
 import { getNote } from '@/features/notes/detail-queries';
@@ -119,15 +120,25 @@ export default async function NoteDetailPage({
         }
         description={presentation.description}
         actions={
-          <a
-            href={`/pagares/${note.id}/pdf?type=note`}
-            target="_blank"
-            rel="noopener"
-            className="btn btn-primary"
-          >
-            <NavIcon.download />
-            Descargar pagaré
-          </a>
+          <>
+            {/* Emitir otro al mismo deudor sin volver a teclear sus datos (§19.6). */}
+            <Link
+              href={`/pagares/nuevo?duplicar=${note.id}`}
+              className="btn btn-secondary"
+              title="Emitir otro pagaré con estos mismos datos"
+            >
+              Duplicar
+            </Link>
+            <a
+              href={`/pagares/${note.id}/pdf?type=note`}
+              target="_blank"
+              rel="noopener"
+              className="btn btn-primary"
+            >
+              <NavIcon.download />
+              Descargar pagaré
+            </a>
+          </>
         }
       />
 

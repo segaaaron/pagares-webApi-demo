@@ -147,6 +147,16 @@ export class PrismaNoteRepository implements NoteRepository {
       }
     }
 
+    // Vencimiento y emisión son dos preguntas distintas y se filtran aparte:
+    // «qué vence esta semana» no es «qué emití esta semana».
+    if (query.dueFrom || query.dueTo) {
+      where.dueDate = {
+        ...(typeof where.dueDate === 'object' && where.dueDate !== null ? where.dueDate : {}),
+        ...(query.dueFrom ? { gte: new Date(`${query.dueFrom}T00:00:00Z`) } : {}),
+        ...(query.dueTo ? { lte: new Date(`${query.dueTo}T00:00:00Z`) } : {}),
+      };
+    }
+
     if (query.from || query.to) {
       where.issueDate = {
         ...(query.from ? { gte: new Date(`${query.from}T00:00:00Z`) } : {}),

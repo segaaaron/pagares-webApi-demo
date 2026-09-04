@@ -27,14 +27,17 @@ export interface DebtorHit {
 export function DebtorPicker({
   inputClassName,
   errors,
+  preselected,
 }: {
   inputClassName: string;
   errors: Record<string, string>;
+  /** Al duplicar un pagaré el deudor ya se sabe: se muestra elegido de entrada. */
+  preselected?: DebtorHit | undefined;
 }) {
   const id = useId();
   const [term, setTerm] = useState('');
   const [hits, setHits] = useState<DebtorHit[]>([]);
-  const [chosen, setChosen] = useState<DebtorHit | null>(null);
+  const [chosen, setChosen] = useState<DebtorHit | null>(preselected ?? null);
   const [loading, setLoading] = useState(false);
   // El alta manual no se enseña de entrada: aparece cuando la búsqueda no da
   // con nadie o cuando se pide expresamente. Así el caso normal —un cliente que

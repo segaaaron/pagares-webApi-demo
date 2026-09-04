@@ -3,9 +3,21 @@
 import { useActionState, useState } from 'react';
 import { issueNoteAction, type IssueState } from './issue-actions';
 import { DateField } from '@/shared/ui/date-field';
-import { DebtorPicker } from './debtor-picker';
+import { DebtorPicker, type DebtorHit } from './debtor-picker';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { toAnnualRatePct } from '@pagares/domain-rules';
+
+/**
+ * Datos con los que llega el formulario cuando se duplica un pagaré (§19.6).
+ *
+ * Emitir tres pagarés al mismo deudor obligaba a teclear tres veces los mismos
+ * ocho campos, y ahí es donde se cuela el error de importe.
+ */
+export interface Plantilla {
+  debtor?: DebtorHit | undefined;
+  amount?: string | undefined;
+  observations?: string | undefined;
+}
 
 interface Defaults {
   creditorName: string;
@@ -75,7 +87,13 @@ function Section({
 }
 
 /** Los valores por defecto vienen de Ajustes: no se teclean en cada pagaré (§19.6). */
-export function IssueForm({ defaults }: { defaults: Defaults }) {
+export function IssueForm({
+  defaults,
+  plantilla,
+}: {
+  defaults: Defaults;
+  plantilla?: Plantilla | undefined;
+}) {
   const [state, action, pending] = useActionState<IssueState, FormData>(issueNoteAction, {});
 
   // Aviso de tasa (§25.14): avisa, no impide. La decisión es del administrador,
@@ -95,6 +113,7 @@ export function IssueForm({ defaults }: { defaults: Defaults }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <Field id="amount" label="Importe (pesos)" error={state.fieldErrors?.amountCents ?? state.fieldErrors?.amount}>
             <input id="amount" name="amount" inputMode="decimal" required placeholder="0.00"
+                   defaultValue={plantilla?.amount ?? ''}
                    className={`${INPUT} tnum text-right`} />
           </Field>
           <div>
@@ -176,7 +195,11 @@ export function IssueForm({ defaults }: { defaults: Defaults }) {
         title="Suscriptor"
         hint="Quien firma y debe. Con correo se le crea la cuenta y firma desde la aplicación; sin correo, firmará presencialmente."
       >
-        <DebtorPicker inputClassName={INPUT} errors={state.fieldErrors ?? {}} />
+        <DebtorPicker
+          inputClassName={INPUT}
+          errors={state.fieldErrors ?? {}}
+          preselected={plantilla?.debtor}
+        />
       </Section>
 
       {/* Avales: cero, uno o dos, como el formulario impreso (§25.15). Si el

@@ -28,7 +28,17 @@ export async function listNotes(params: URLSearchParams): Promise<NotesPage> {
   const query = new URLSearchParams();
   // Los nombres en la URL están en español; el contrato usa from/to.
   const mapping: Record<string, string> = { desde: 'from', hasta: 'to' };
-  for (const key of ['tab', 'q', 'bucket', 'desde', 'hasta', 'cursor', 'limit'] as const) {
+  for (const key of [
+    'tab',
+    'q',
+    'bucket',
+    'desde',
+    'hasta',
+    'dueFrom',
+    'dueTo',
+    'cursor',
+    'limit',
+  ] as const) {
     const value = params.get(key);
     if (value) query.set(mapping[key] ?? key, value);
   }
