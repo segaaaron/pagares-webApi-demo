@@ -131,7 +131,7 @@ export function NotesTable({
       empty={
         <EmptyState
           title="No hay pagarés con estos filtros"
-          hint="Prueba con otra pestaña o limpia la búsqueda."
+          hint="Cambia el estado o limpia la búsqueda."
         />
       }
       footer={footer}

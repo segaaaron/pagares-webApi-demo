@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { DateField } from '@/shared/ui/date-field';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
-import { TABS } from './queries';
+import { TABS } from './tab-list';
+import { StateFilter } from './state-filter';
 
 /**
  * Filtros de la cartera (§19.3).
@@ -70,35 +71,11 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
   return (
     <div className="space-y-3">
       <div className="card space-y-3 px-4 py-3.5">
-        {/* El estado es un filtro más, no una sección aparte: por eso vive dentro
-            de la tarjeta, con su etiqueta y su ficha retirable, y no en una barra
-            de pestañas que se lee como navegación. */}
-        <div>
-          <span id="filtro-estado" className="mb-1.5 block text-sm font-medium text-ink">
-            Estado
-          </span>
-          <div role="group" aria-labelledby="filtro-estado" className="flex flex-wrap gap-1.5">
-            {TABS.map((tab) => {
-              const isActive = tab.id === active;
-              return (
-                <Link
-                  key={tab.id}
-                  href={withParam('tab', tab.id)}
-                  aria-pressed={isActive}
-                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                    isActive
-                      ? 'border-accent bg-accent-soft font-semibold text-accent-ink'
-                      : 'border-line text-ink-2 hover:bg-surface-2'
-                  }`}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+        <StateFilter params={params} />
 
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 border-t border-line pt-3">
+        <span className="mb-1 hidden h-9 w-px bg-line lg:block" aria-hidden />
+
         <form action="/pagares" method="get" className="flex items-end gap-2">
           <Hidden params={params} except={['q']} />
           <div>
