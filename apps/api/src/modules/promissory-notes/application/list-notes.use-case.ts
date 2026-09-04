@@ -8,7 +8,7 @@ import {
   type ExecutionContext,
 } from '@pagares/api-core';
 import type { ListNotesQuery, NoteSummary, Paginated } from '@pagares/contracts';
-import { businessToday, classifyAging, classifyPortfolio, daysOverdue, formatMxn } from '@pagares/domain-rules';
+import { businessToday, classifyAging, classifyPortfolio, daysOverdue, money } from '@pagares/domain-rules';
 import { withClock } from '../domain/note-status.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import { OBJECT_STORAGE, type ObjectStorage } from '../../media/domain/ports/object-storage.js';
@@ -74,9 +74,9 @@ export class ListNotesUseCase extends BaseUseCase<ListNotesQuery, NotesPage> {
           collectionStage: row.collectionStage,
           debtorName: row.debtorName,
           debtorPhone: row.debtorPhone,
-          amount: { cents: row.amountCents.toString(), currency: 'MXN', formatted: formatMxn(row.amountCents) },
-          paid: { cents: row.paidCents.toString(), currency: 'MXN', formatted: formatMxn(row.paidCents) },
-          balance: { cents: balance.toString(), currency: 'MXN', formatted: formatMxn(balance) },
+          amount: money(row.amountCents),
+          paid: money(row.paidCents),
+          balance: money(balance),
           dueDate: row.dueDate,
           daysOverdue: overdue,
           // El pagaré importado se firmó en papel: no tiene miniatura y sí está

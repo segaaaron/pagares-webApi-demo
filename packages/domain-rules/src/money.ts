@@ -17,3 +17,29 @@ export function formatMxn(cents: bigint): string {
   const grouped = pesos.toLocaleString('es-MX');
   return `${negative ? '-' : ''}$${grouped}.${centavos.toString().padStart(2, '0')} MXN`;
 }
+
+/**
+ * Moneda única de la instalación (§25.15). El importe en letra está escrito para
+ * pesos; añadir otra moneda exige su propia regla y hoy no aporta nada.
+ */
+export const CURRENCY = 'MXN' as const;
+
+export interface Money {
+  /** Centavos como cadena: un pagaré grande no cabe en el entero seguro (§12.1). */
+  cents: string;
+  currency: typeof CURRENCY;
+  formatted: string;
+}
+
+/**
+ * El dinero, tal como sale de la API.
+ *
+ * Las dos formas viajan juntas a propósito: el texto para leerlo y los centavos
+ * para calcular con ellos. Mandar sólo el texto obliga a quien lo recibe a
+ * deshacer el formato —y a equivocarse por un factor de cien el día que cambie
+ * el separador—, y mandar sólo el número obliga a cada cliente a reinventar el
+ * formato de pesos, que ya vive aquí.
+ */
+export function money(cents: bigint): Money {
+  return { cents: cents.toString(), currency: CURRENCY, formatted: formatMxn(cents) };
+}

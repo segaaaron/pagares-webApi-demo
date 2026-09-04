@@ -10,7 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { accrueInterest, businessToday, daysOverdue, formatMxn } from '@pagares/domain-rules';
+import { accrueInterest, businessToday, daysOverdue, formatMxn, money } from '@pagares/domain-rules';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
@@ -55,7 +55,7 @@ export class ClientController {
 
     const next = notes[0];
     return {
-      totalBalance: { cents: balance.toString(), formatted: formatMxn(balance) },
+      totalBalance: money(balance),
       activeNotes: notes.length,
       pendingSignature,
       nextDueDate: next?.dueDate.toISOString().slice(0, 10) ?? null,
@@ -90,14 +90,12 @@ export class ClientController {
 
     return payments.map((payment) => ({
       id: payment.id,
-      amount: formatMxn(payment.amountCents),
-      // También en centavos: el cliente que necesite sumar o comparar no debería
-      // tener que deshacer el formato de pesos para recuperar el número.
-      amountCents: payment.amountCents.toString(),
-      appliedToInterest: formatMxn(payment.appliedToInterestCents),
-      appliedToPrincipal: formatMxn(payment.appliedToPrincipalCents),
-      appliedToInterestCents: payment.appliedToInterestCents.toString(),
-      appliedToPrincipalCents: payment.appliedToPrincipalCents.toString(),
+      // Cada importe lleva el número y el texto en el mismo objeto (§12.1): una
+      // sola forma de dinero en toda la API, la misma que usa el listado de
+      // administración.
+      amount: money(payment.amountCents),
+      appliedToInterest: money(payment.appliedToInterestCents),
+      appliedToPrincipal: money(payment.appliedToPrincipalCents),
       paidOn: payment.paidOn.toISOString().slice(0, 10),
       method: payment.method,
       reference: payment.reference,
@@ -276,8 +274,9 @@ export class ClientController {
         folio: r.folio,
         status: withClock(r.status, overdue),
         creditorName: r.creditorName,
-        amount: formatMxn(r.amountCents),
-        balance: formatMxn(balance),
+        amount: money(r.amountCents),
+        paid: money(r.paidCents),
+        balance: money(balance),
         dueDate,
         daysOverdue: overdue,
       };
@@ -304,11 +303,11 @@ export class ClientController {
       folio: note.folio,
       status: withClock(note.status, overdue),
       creditorName: note.creditorName,
-      amount: formatMxn(note.amountCents),
-      paid: formatMxn(note.paidCents),
-      balance: formatMxn(balance),
+      amount: money(note.amountCents),
+      paid: money(note.paidCents),
+      balance: money(balance),
       amountInWords: note.amountInWords,
-      accruedInterest: formatMxn(
+      accruedInterest: money(
         accrueInterest({
           balanceCents: balance,
           annualRatePct: note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
@@ -322,12 +321,15 @@ export class ClientController {
       paymentPlace: note.paymentPlace,
       signatureUrl: note.signature ? await this.storage.signedUrl(note.signature.assetId) : null,
       payments: note.payments.map((p) => ({
-        amount: formatMxn(p.amountCents),
+        // El identificador va aquí porque el recibo se pide por abono: sin él,
+        // el detalle enseñaba una lista de la que no se podía descargar nada.
+        id: p.id,
+        amount: money(p.amountCents),
         // El reparto va aquí y no sólo en la lista aparte: sin él, un abono que
         // se consumió entero en interés deja al deudor mirando un capital que no
         // se movió, y concluyendo que su dinero no llegó.
-        appliedToInterest: formatMxn(p.appliedToInterestCents),
-        appliedToPrincipal: formatMxn(p.appliedToPrincipalCents),
+        appliedToInterest: money(p.appliedToInterestCents),
+        appliedToPrincipal: money(p.appliedToPrincipalCents),
         paidOn: p.paidOn.toISOString().slice(0, 10),
         method: p.method,
         // Las mismas banderas que en el libro: un array donde la anulación llega
