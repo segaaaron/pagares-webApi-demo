@@ -6,3 +6,4 @@ export * from './portfolio.js';
 export * from './reminders.js';
 export * from './clabe.js';
 export * from './installments.js';
+export * from './payment-plan.js';

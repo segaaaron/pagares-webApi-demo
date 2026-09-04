@@ -551,6 +551,8 @@ Un pagaré es un título de **pago único**: la ley no admite un calendario dent
 
 Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pagos parciales.
 
+**El interés del plan es el ordinario**, el precio del préstamo, y no el moratorio de §12.3. Se pacta al emitir y se reparte dentro de las cuotas, de dos formas (ADR 0016): sobre **saldos insolutos** —cada mes sobre lo que queda, sistema francés de cuota fija— o sobre **saldo global** —siempre sobre el importe original—. Con la misma tasa, Banxico documenta que el global casi duplica el costo, así que la pantalla lo avisa antes de emitir. El desglose de cada cuota se guarda con el pagaré: es lo pactado, no algo que se recalcule después.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**

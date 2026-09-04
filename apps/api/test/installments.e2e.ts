@@ -68,12 +68,14 @@ async function emitir(
   installments: number,
   amountCents: string,
   dueDate = futureDate(30),
+  plan?: { model: 'NONE' | 'INSOLUTOS' | 'GLOBAL'; rate?: { value: number; period: 'MONTHLY' } },
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return call('/admin/notes', {
     method: 'POST',
     token: adminToken,
     idempotencyKey: randomUUID(),
     body: {
+      ...(plan ? { plan: { model: plan.model, rate: plan.rate ?? null } } : {}),
       debtor: {
         fullName: `Serie ${Date.now()}`,
         address: 'Calle de prueba 1',
@@ -200,3 +202,82 @@ describe('§12 · emitir la deuda en varios pagos', () => {
     }
   });
 });
+
+describe('§12 · el plan de pagos y lo que gana quien presta', () => {
+  it('sobre saldos insolutos, la cuota lleva interés y capital', async () => {
+    /*
+     * El interés **ordinario** es el precio del préstamo: lo que gana el
+     * prestamista desde que entrega el dinero hasta que se lo devuelven. No es
+     * el moratorio, que sólo castiga el atraso (§12.3).
+     */
+    const resultado = await emitir(12, '6000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    expect(resultado.status).toBe(201);
+
+    const serie = resultado.body['series'] as {
+      notes: SerieNota[];
+      plan: { model: string; principalCents: string; totalInterestCents: string; totalCents: string };
+    };
+
+    expect(serie.plan.model).toBe('INSOLUTOS');
+    expect(serie.plan.principalCents).toBe('6000000');
+    // 60,000 a 3 % mensual en 12 cuotas: la ganancia ronda los 12,300.
+    expect(BigInt(serie.plan.totalInterestCents)).toBeGreaterThan(1_200_000n);
+    expect(BigInt(serie.plan.totalCents)).toBe(
+      BigInt(serie.plan.principalCents) + BigInt(serie.plan.totalInterestCents),
+    );
+
+    // Y cada pagaré vale su cuota, no su parte del capital.
+    const suma = serie.notes.reduce((total, nota) => total + BigInt(nota.amountCents), 0n);
+    expect(suma).toBe(BigInt(serie.plan.totalCents));
+  });
+
+  it('sobre saldo global sale más caro con la misma tasa', async () => {
+    // Es el hecho que la pantalla enseña antes de emitir: con la misma tasa
+    // nominal, el deudor paga bastante más.
+    const insolutos = await emitir(12, '6000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const global = await emitir(12, '6000000', futureDate(30), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+
+    const ganancia = (r: typeof insolutos): bigint =>
+      BigInt((r.body['series'] as { plan: { totalInterestCents: string } }).plan.totalInterestCents);
+
+    expect(ganancia(global)).toBeGreaterThan(ganancia(insolutos));
+    // 60,000 × 3 % × 12 = 21,600, calculado siempre sobre el importe original.
+    expect(ganancia(global)).toBe(2_160_000n);
+  });
+
+  it('sin plan, las cuotas siguen repartiendo sólo el préstamo', async () => {
+    const resultado = await emitir(6, '6000000');
+    const serie = resultado.body['series'] as {
+      notes: SerieNota[];
+      plan: { totalInterestCents: string };
+    };
+
+    expect(serie.plan.totalInterestCents).toBe('0');
+    const suma = serie.notes.reduce((total, nota) => total + BigInt(nota.amountCents), 0n);
+    expect(suma).toBe(6_000_000n);
+  });
+
+  it('un plan con interés y sin tasa es 422', async () => {
+    // Sería un plan sin interés con más pasos, y con una promesa falsa dentro.
+    const resultado = await emitir(12, '6000000', futureDate(30), { model: 'INSOLUTOS' });
+    expect(resultado.status).toBe(422);
+  });
+
+  it('un plan con interés sobre un solo pago es 422', async () => {
+    const resultado = await emitir(1, '6000000', futureDate(30), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    expect(resultado.status).toBe(422);
+  });
+});
+

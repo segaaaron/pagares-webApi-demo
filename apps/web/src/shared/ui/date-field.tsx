@@ -61,6 +61,7 @@ export function DateField({
   required = false,
   min,
   max,
+  onChange,
 }: {
   name: string;
   /** Si el campo ya vive dentro de un `<Field>`, la etiqueta la pone él. */
@@ -71,6 +72,14 @@ export function DateField({
   /** Límites en ISO; los días fuera de rango salen deshabilitados. */
   min?: string;
   max?: string;
+  /**
+   * Avisa de la fecha elegida, en ISO y sólo cuando es válida.
+   *
+   * El campo sigue gobernándose solo —lo que se teclea a medias es asunto
+   * suyo—; esto existe para que la pantalla pueda reaccionar a la fecha, como
+   * el calendario de pagos, sin volverlo controlado desde fuera.
+   */
+  onChange?: (iso: string) => void;
 }) {
   const generated = useId();
   const id = givenId ?? generated;
@@ -112,12 +121,14 @@ export function DateField({
     // El calendario sigue a lo que se escribe: en cuanto la fecha es válida se
     // planta en su mes, así que abrirlo ya no obliga a navegar hasta ella.
     if (parsed) setCursor(new Date(`${parsed}T00:00:00Z`));
+    onChange?.(parsed ?? '');
   };
 
   const pick = (day: Date): void => {
     const picked = day.toISOString().slice(0, 10);
     setIso(picked);
     setText(toCivil(picked));
+    onChange?.(picked);
     setOpen(false);
   };
 

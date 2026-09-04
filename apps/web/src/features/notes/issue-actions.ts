@@ -69,6 +69,29 @@ export async function issueNoteAction(_prev: IssueState, formData: FormData): Pr
          * el importe, porque mandar las cuotas desde aquí invita a que no sumen.
          */
         installments: Math.max(1, Number(formData.get('installments') ?? 1) || 1),
+        /*
+         * El interés del préstamo —lo que gana quien presta— y cómo se calcula.
+         * Va aparte del moratorio a propósito: uno es el precio de prestar y el
+         * otro la sanción por pagar tarde (§12).
+         */
+        plan: (() => {
+          const model = String(formData.get('planModel') ?? 'NONE');
+          const valor = String(formData.get('planRate') ?? '').trim();
+          if (model !== 'INSOLUTOS' && model !== 'GLOBAL') return { model: 'NONE', rate: null };
+          return {
+            model,
+            rate:
+              valor === ''
+                ? null
+                : {
+                    value: Number(valor),
+                    period:
+                      String(formData.get('planPeriod') ?? 'MONTHLY') === 'ANNUAL'
+                        ? ('ANNUAL' as const)
+                        : ('MONTHLY' as const),
+                  },
+          };
+        })(),
         requiresGuarantors: guarantors.length,
         guarantors,
         ...(String(formData.get('observations') ?? '').trim()

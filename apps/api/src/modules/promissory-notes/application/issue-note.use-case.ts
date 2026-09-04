@@ -13,9 +13,9 @@ import type { DomainEvent } from '@pagares/api-core';
 import {
   addYears,
   amountToWords,
+  buildPaymentPlan,
   businessToday,
   installmentDates,
-  splitAmount,
   toAnnualRatePct,
 } from '@pagares/domain-rules';
 import {
@@ -46,6 +46,14 @@ export interface IssueNoteOutput {
     id: string;
     size: number;
     notes: { id: string; folio: string; index: number; dueDate: string; amountCents: string }[];
+    /** Lo pactado: cuánto se presta, cuánto se gana y cuánto se cobra. */
+    plan: {
+      model: string;
+      principalCents: string;
+      /** El precio del préstamo: lo que gana quien presta. */
+      totalInterestCents: string;
+      totalCents: string;
+    };
   } | null;
 }
 
@@ -88,7 +96,21 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
      * dinero es exactamente el tipo de cuenta que no puede estar en un caso de
      * uso, donde nadie la prueba.
      */
-    const importes = splitAmount(amountCents, input.installments);
+    /*
+     * El plan decide cuánto dice cada pagaré. Sin interés ordinario es el
+     * reparto del capital de siempre; con él, cada cuota lleva además el precio
+     * del préstamo —lo que gana quien presta— calculado sobre saldos insolutos
+     * o sobre el importe original, según lo pactado (§12).
+     */
+    const plan = buildPaymentPlan({
+      principalCents: amountCents,
+      annualRatePct:
+        input.plan.model === 'NONE' || input.plan.rate === null
+          ? null
+          : toAnnualRatePct(input.plan.rate.value, input.plan.rate.period),
+      installments: input.installments,
+      model: input.plan.model,
+    });
     const vencimientos = installmentDates(input.dueDate, input.installments);
     const enSerie = input.installments > 1;
     const seriesId = enSerie ? randomUUID() : null;
@@ -108,7 +130,8 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
         amountInWords: string;
       }[] = [];
 
-      for (const [posicion, importe] of importes.entries()) {
+      for (const [posicion, cuota] of plan.rows.entries()) {
+        const importe = cuota.paymentCents;
         const vencimiento = vencimientos[posicion] as string;
         // Un folio por título: cada pagaré de la serie es un documento
         // independiente y se reclama por separado.
@@ -148,6 +171,10 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
             ...(seriesId
               ? { seriesId, seriesIndex: posicion + 1, seriesSize: input.installments }
               : {}),
+            // De qué está hecha la cuota, tal como se pactó (§12).
+            planModel: input.plan.model,
+            planInterestCents: cuota.interestCents,
+            planPrincipalCents: cuota.principalCents,
             guarantors: {
               create: input.guarantors.map((g) => ({
                 position: g.position,
@@ -225,6 +252,12 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
                 dueDate,
                 amountCents: importe,
               })),
+              plan: {
+                model: plan.model,
+                principalCents: plan.principalCents.toString(),
+                totalInterestCents: plan.totalInterestCents.toString(),
+                totalCents: plan.totalCents.toString(),
+              },
             }
           : null,
       };

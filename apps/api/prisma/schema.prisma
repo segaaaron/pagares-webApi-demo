@@ -315,6 +315,18 @@ model PromissoryNote {
   seriesIndex Int? // 1..seriesSize
   seriesSize  Int?
 
+  /*
+   * Desglose de la cuota cuando el plan lleva interés ordinario (§12).
+   *
+   * `amountCents` es lo que dice el título —lo que hay que pagar ese mes—, y
+   * esto explica de qué está hecho: cuánto es precio del préstamo y cuánto baja
+   * la deuda. Se guarda porque es lo que se pactó: recalcularlo después con la
+   * tasa de hoy daría otra cifra.
+   */
+  planModel        String? // NONE | INSOLUTOS | GLOBAL
+  planInterestCents BigInt?
+  planPrincipalCents BigInt?
+
   voidedAt     DateTime?
   voidReason   String?
   voidedBy     String?

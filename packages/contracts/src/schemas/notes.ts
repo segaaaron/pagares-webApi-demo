@@ -61,6 +61,31 @@ export const createNoteRequestSchema = z
      * porque dejar que el cliente mande las cuotas invita a que no sumen.
      */
     installments: z.number().int().min(1).max(24).default(1),
+    /**
+     * Cómo se cobra el **interés ordinario** del plan, que es lo que gana quien
+     * presta por prestar (§12). No es el moratorio: aquél sanciona el atraso y
+     * se pacta en `interestRate`.
+     *
+     * · `NONE` — sin precio por prestar: las cuotas sólo reparten el capital.
+     * · `INSOLUTOS` — se calcula cada mes sobre lo que aún se debe.
+     * · `GLOBAL` — siempre sobre el importe original, aunque ya se haya pagado
+     *   la mitad. Con la misma tasa sale bastante más caro, y el sistema lo
+     *   enseña antes de emitir en vez de esconderlo.
+     */
+    plan: z
+      .object({
+        model: z.enum(['NONE', 'INSOLUTOS', 'GLOBAL']).default('NONE'),
+        rate: z
+          .object({
+            value: z.number().min(0).max(100),
+            period: z.enum(['MONTHLY', 'ANNUAL']),
+          })
+          .strict()
+          .nullable()
+          .default(null),
+      })
+      .strict()
+      .default({ model: 'NONE', rate: null }),
     requiresGuarantors: z.number().int().min(0).max(2).default(0),
     guarantors: z
       .array(
@@ -85,6 +110,16 @@ export const createNoteRequestSchema = z
   .refine((v) => v.guarantors.length === v.requiresGuarantors, {
     path: ['guarantors'],
     message: 'El número de avales debe coincidir con los declarados',
+  })
+  .refine((v) => v.plan.model === 'NONE' || (v.plan.rate?.value ?? 0) > 0, {
+    // Un plan con interés y sin tasa es un plan sin interés con más pasos.
+    path: ['plan', 'rate'],
+    message: 'Un plan con interés necesita su tasa',
+  })
+  .refine((v) => v.plan.model === 'NONE' || v.installments > 1, {
+    // El interés del plan se reparte entre cuotas: sin plazos no hay plan.
+    path: ['plan', 'model'],
+    message: 'El interés del plan sólo aplica a pagos en varias cuotas',
   })
   .refine(
     (v) => {

@@ -1,0 +1,183 @@
+/**
+ * Plan de pagos pactado (§12).
+ *
+ * Un pagaré es de pago único, así que un préstamo a plazos se documenta con una
+ * serie de pagarés (ADR 0015). Lo que decide **cuánto** dice cada uno es esto:
+ * el reparto del préstamo y del interés ordinario a lo largo del plazo.
+ *
+ * Ojo con no confundir dos intereses distintos:
+ *
+ * · El **ordinario** es el precio del préstamo, lo que gana el prestamista por
+ *   prestar desde que entrega el dinero hasta que se lo devuelven. Va dentro de
+ *   las cuotas y se pacta aquí.
+ * · El **moratorio** (§12.3, art. 174 LGTOC) es la sanción por pagar tarde.
+ *   Corre sólo después del vencimiento y sobre lo que se deba entonces.
+ *
+ * Banxico distingue dos formas de calcular el ordinario, y la diferencia no es
+ * de matiz: sobre **saldos insolutos** se calcula cada mes sobre lo que aún se
+ * debe; sobre **saldo global**, siempre sobre el importe original aunque ya se
+ * haya pagado la mitad. Con la misma tasa nominal, su ejemplo da 77.1 % de CAT
+ * por saldos insolutos y 147 % global. Aquí están las dos porque las dos se
+ * usan en la calle, nombradas por lo que son.
+ */
+import { MAX_INSTALLMENTS, splitAmount } from './installments.js';
+
+export const PLAN_MODELS = ['NONE', 'INSOLUTOS', 'GLOBAL'] as const;
+export type PlanModel = (typeof PLAN_MODELS)[number];
+
+export interface PlanRow {
+  /** 1..n */
+  index: number;
+  /** Lo que paga ese mes: interés más capital. */
+  paymentCents: bigint;
+  /** La parte que es precio del préstamo. */
+  interestCents: bigint;
+  /** La parte que baja la deuda. */
+  principalCents: bigint;
+  /** Lo que queda debiendo después de pagar esta cuota. */
+  balanceCents: bigint;
+}
+
+export interface PaymentPlan {
+  model: PlanModel;
+  rows: PlanRow[];
+  /** Lo prestado. */
+  principalCents: bigint;
+  /** El precio del préstamo: lo que gana quien presta. */
+  totalInterestCents: bigint;
+  /** Lo que el deudor acaba pagando. */
+  totalCents: bigint;
+}
+
+export interface PaymentPlanInput {
+  principalCents: bigint;
+  /** Tasa **ordinaria** anual pactada. Cero o nula: sin precio por prestar. */
+  annualRatePct: number | null;
+  installments: number;
+  model: PlanModel;
+}
+
+/** Redondeo a centavo entero con aritmética exacta: nada de coma flotante. */
+function redondear(numerador: bigint, denominador: bigint): bigint {
+  return (numerador + denominador / 2n) / denominador;
+}
+
+export function buildPaymentPlan(input: PaymentPlanInput): PaymentPlan {
+  const { principalCents, installments, model } = input;
+
+  if (!Number.isInteger(installments) || installments < 1 || installments > MAX_INSTALLMENTS) {
+    throw new RangeError('installments_out_of_range');
+  }
+  if (principalCents <= 0n) throw new RangeError('principal_not_positive');
+
+  const anual = input.annualRatePct ?? 0;
+  // La tasa mensual en diezmilésimas de punto: 3 % → 300. Entero, para que el
+  // interés de cada mes no dependa de cómo redondee la coma flotante.
+  const mensualBps = BigInt(Math.round((anual / 12) * 10_000));
+  const sinInteres = model === 'NONE' || mensualBps === 0n;
+
+  const filas: PlanRow[] = [];
+  const veces = BigInt(installments);
+
+  if (sinInteres) {
+    /*
+     * Reparto del capital y nada más: el interés sólo corre si hay atraso.
+     *
+     * Lo hace `splitAmount` y no un bucle propio: repartir un importe entre
+     * cuotas ya era una regla con su nombre y sus pruebas, y tenerla dos veces
+     * garantizaba que un día dijeran cosas distintas —de hecho lo hicieron: una
+     * dejaba el sobrante en la primera cuota y la otra en la última.
+     */
+    let saldo = principalCents;
+    for (const [i, capital] of splitAmount(principalCents, installments).entries()) {
+      saldo -= capital;
+      filas.push({
+        index: i + 1,
+        paymentCents: capital,
+        interestCents: 0n,
+        principalCents: capital,
+        balanceCents: saldo,
+      });
+    }
+    return resumen(model, principalCents, filas);
+  }
+
+  if (model === 'GLOBAL') {
+    /*
+     * Interés sobre el importe original, todo el plazo. Abonar no lo baja, y
+     * por eso sale más caro con la misma tasa: es el dato que la pantalla tiene
+     * que enseñar, no esconder.
+     */
+    const interesTotal = redondear(principalCents * mensualBps * veces, 1_000_000n);
+    const totalAPagar = principalCents + interesTotal;
+    const cuota = totalAPagar / veces;
+
+    let saldo = principalCents;
+    let interesRepartido = 0n;
+    const interesPorCuota = interesTotal / veces;
+
+    for (let i = 0; i < installments; i += 1) {
+      const ultima = i === installments - 1;
+      const interes = ultima ? interesTotal - interesRepartido : interesPorCuota;
+      interesRepartido += interes;
+
+      // La última cuota carga con lo que la división haya dejado suelto, para
+      // que el capital sume el préstamo exacto y el saldo acabe en cero.
+      const capital = ultima ? saldo : cuota - interesPorCuota;
+      saldo -= capital;
+
+      filas.push({
+        index: i + 1,
+        paymentCents: interes + capital,
+        interestCents: interes,
+        principalCents: capital,
+        balanceCents: saldo,
+      });
+    }
+    return resumen(model, principalCents, filas);
+  }
+
+  /*
+   * Saldos insolutos, cuota fija (sistema francés):
+   *
+   *   cuota = P · i / (1 − (1 + i)^−n)
+   *
+   * El factor se calcula en coma flotante —es una potencia— pero **sólo** para
+   * fijar la cuota; el resto de la tabla se arma con enteros, así que ningún
+   * centavo se pierde por el camino.
+   */
+  const i = Number(mensualBps) / 1_000_000;
+  const factor = (i * (1 + i) ** installments) / ((1 + i) ** installments - 1);
+  const cuota = BigInt(Math.round(Number(principalCents) * factor));
+
+  let saldo = principalCents;
+  for (let k = 0; k < installments; k += 1) {
+    const ultima = k === installments - 1;
+    const interes = redondear(saldo * mensualBps, 1_000_000n);
+    // La última cancela lo que quede: así el saldo cierra en cero aunque la
+    // cuota redondeada no encaje al centavo.
+    const capital = ultima ? saldo : cuota - interes;
+    saldo -= capital;
+
+    filas.push({
+      index: k + 1,
+      paymentCents: interes + capital,
+      interestCents: interes,
+      principalCents: capital,
+      balanceCents: saldo,
+    });
+  }
+
+  return resumen(model, principalCents, filas);
+}
+
+function resumen(model: PlanModel, principalCents: bigint, rows: PlanRow[]): PaymentPlan {
+  const totalInterestCents = rows.reduce((suma, fila) => suma + fila.interestCents, 0n);
+  return {
+    model,
+    rows,
+    principalCents,
+    totalInterestCents,
+    totalCents: rows.reduce((suma, fila) => suma + fila.paymentCents, 0n),
+  };
+}

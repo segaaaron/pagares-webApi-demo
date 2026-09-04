@@ -3,10 +3,10 @@
 import {useState} from 'react';
 import { issueNoteAction, type IssueState } from './issue-actions';
 import { DateField } from '@/shared/ui/date-field';
+import { PlanPreview } from './plan-preview';
 import { DebtorPicker, type DebtorHit } from './debtor-picker';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { toAnnualRatePct } from '@pagares/domain-rules';
-import { money } from '@/shared/lib/format';
 import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
@@ -121,22 +121,11 @@ export function IssueForm({
   const [rate, setRate] = useState(defaults.interestRate);
   const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>(defaults.interestPeriod);
   const [pagos, setPagos] = useState(1);
+  const [modeloPlan, setModeloPlan] = useState<'NONE' | 'INSOLUTOS' | 'GLOBAL'>('NONE');
+  const [tasaPlan, setTasaPlan] = useState('');
+  const [vencimiento, setVencimiento] = useState(defaults.defaultDueDate);
+  const [periodoPlan, setPeriodoPlan] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
   const [importe, setImporte] = useState(plantilla?.amount ?? '');
-  /**
-   * Cuánto sale cada pagaré, para enseñarlo antes de emitir.
-   *
-   * El reparto de verdad lo hace el servidor —es dinero y su regla vive en
-   * `domain-rules`—; esto es sólo la vista previa, y por eso redondea hacia
-   * abajo y no promete el centavo suelto, que va en el primero.
-   */
-  const cuota = (() => {
-    const centavos = Math.round(Number(importe.replace(/[^\d.]/g, '')) * 100);
-    if (!Number.isFinite(centavos) || centavos <= 0 || pagos < 2) return null;
-    const base = Math.floor(centavos / pagos);
-    if (base <= 0) return null;
-    return money(String(base));
-  })();
-
   const annual = rate === '' ? null : toAnnualRatePct(Number(rate), period);
   const aboveThreshold = annual !== null && annual > defaults.interestWarningThresholdPct;
 
@@ -211,7 +200,9 @@ export function IssueForm({
           </Field>
           <Field id="dueDate" label="Fecha de vencimiento" error={state.fieldErrors?.dueDate}>
             <DateField id="dueDate" name="dueDate" required
-                       defaultValue={defaults.defaultDueDate} min={defaults.today} />
+                       defaultValue={defaults.defaultDueDate}
+                       onChange={setVencimiento}
+                       min={defaults.today} />
           </Field>
           {/*
             * Pagos: un pagaré es de pago único, así que doce mensualidades son
@@ -235,22 +226,79 @@ export function IssueForm({
             </select>
           </Field>
           {/*
-            * Lo que se va a firmar, dicho antes de firmarlo: cuántos documentos
-            * son y de cuánto sale cada uno. Elegir «12 pagos» sin ver que eso
-            * son doce pagarés de $5,000 es el malentendido caro de esta
-            * pantalla.
+            * El plan sólo aparece si hay más de un pago: enseñar cinco campos
+            * de amortización a quien emite un pagaré suelto es ruido.
             */}
           {pagos > 1 ? (
-            <p className="sm:col-span-2 rounded-lg border border-accent bg-accent-soft px-3 py-2 text-xs text-accent-ink">
-              Se emitirán <strong>{pagos} pagarés</strong> firmados hoy, con vencimientos mes a mes
-              desde la fecha de arriba
-              {cuota ? (
-                <>
-                  , de <strong>{cuota}</strong> cada uno
-                </>
-              ) : null}
-              . Cada uno se cobra y se reclama por separado.
-            </p>
+            <div className="sm:col-span-2 rounded-lg border border-line bg-surface-2/40 p-3">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="planModel" className="mb-1 block text-xs font-medium text-ink-2">
+                    Interés del préstamo
+                  </label>
+                  <select
+                    id="planModel"
+                    name="planModel"
+                    className={INPUT}
+                    value={modeloPlan}
+                    onChange={(event) =>
+                      setModeloPlan(event.target.value as 'NONE' | 'INSOLUTOS' | 'GLOBAL')
+                    }
+                  >
+                    <option value="NONE">Sin interés: sólo reparte el préstamo</option>
+                    <option value="INSOLUTOS">Sobre saldos insolutos (recomendado)</option>
+                    <option value="GLOBAL">Sobre saldo global</option>
+                  </select>
+                  <p className="mt-1 text-xs text-muted">
+                    Lo que ganas por prestar, repartido en las cuotas. Es distinto del interés
+                    moratorio, que sólo castiga el atraso.
+                  </p>
+                </div>
+
+                {modeloPlan !== 'NONE' ? (
+                  <div>
+                    <label htmlFor="planRate" className="mb-1 block text-xs font-medium text-ink-2">
+                      Tasa del préstamo
+                    </label>
+                    <div className="flex">
+                      <input
+                        id="planRate"
+                        name="planRate"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={tasaPlan}
+                        onChange={(event) => setTasaPlan(event.target.value)}
+                        className={`${INPUT} tnum rounded-r-none text-right`}
+                      />
+                      <select
+                        name="planPeriod"
+                        aria-label="Periodicidad del interés del préstamo"
+                        value={periodoPlan}
+                        onChange={(event) =>
+                          setPeriodoPlan(event.target.value === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY')
+                        }
+                        className="input w-32 rounded-l-none border-l-0"
+                      >
+                        <option value="MONTHLY">% mensual</option>
+                        <option value="ANNUAL">% anual</option>
+                      </select>
+                    </div>
+                    {state.fieldErrors?.['plan.rate'] ? (
+                      <p className="mt-1 text-xs text-crit">{state.fieldErrors['plan.rate']}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <PlanPreview
+                amount={importe}
+                installments={pagos}
+                model={modeloPlan}
+                rate={tasaPlan}
+                period={periodoPlan}
+                firstDueDate={vencimiento}
+              />
+            </div>
           ) : null}
           <Field id="issuePlace" label="Lugar de expedición" error={state.fieldErrors?.issuePlace}>
             <input id="issuePlace" name="issuePlace" required defaultValue={defaults.issuePlace} className={INPUT} />
