@@ -259,6 +259,81 @@ describe('§12.1 · el dinero del deudor se puede leer y calcular', () => {
   });
 });
 
+describe('§25.2 · sus propios datos', () => {
+  it('trae el domicilio y el teléfono que registró el acreedor', async () => {
+    // Los tiene delante en el pagaré impreso: ocultárselos en la aplicación no
+    // protege nada y le impide comprobar que están bien escritos.
+    const perfil = await call('/me/profile', { token: clienteToken });
+
+    expect(perfil.status).toBe(200);
+    expect(perfil.body['fullName']).toBe('Cliente de contrato');
+    expect(String(perfil.body['address']).length).toBeGreaterThan(0);
+    expect(String(perfil.body['phone'])).toMatch(/^\+52/);
+    expect(perfil.body['registeredByCreditor']).toBe(true);
+  });
+
+  it('sin sesión no responde', async () => {
+    expect((await call('/me/profile')).status).toBe(401);
+  });
+});
+
+describe('§13 · la bitácora trae el importe como dato, no dentro de la frase', () => {
+  it('los movimientos con dinero lo traen en centavos', async () => {
+    /*
+     * Sacarlo de `detail` con una expresión regular es un acuerdo que se rompe
+     * en cuanto alguien mejora la redacción del texto.
+     */
+    const actividad = await call('/me/activity', { token: clienteToken });
+    expect(actividad.status).toBe(200);
+
+    const eventos = actividad.body as unknown as Record<string, unknown>[];
+    expect(eventos.length).toBeGreaterThan(0);
+
+    for (const evento of eventos) {
+      expect(Object.keys(evento), 'el campo existe siempre').toContain('amount');
+      if (evento['kind'] === 'note-signed') {
+        // Firmar no mueve dinero.
+        expect(evento['amount']).toBeNull();
+      } else {
+        esDinero(evento['amount'], `activity.${String(evento['kind'])}`);
+      }
+    }
+  });
+
+  it('el abono de la bitácora coincide con el del libro', async () => {
+    const [actividad, abonos] = await Promise.all([
+      call('/me/activity', { token: clienteToken }),
+      call(`/me/notes/${noteId}/payments`, { token: clienteToken }),
+    ]);
+
+    const registrado = (actividad.body as unknown as Record<string, unknown>[]).find(
+      (evento) => evento['kind'] === 'payment-registered',
+    );
+    const primerAbono = (abonos.body as unknown as Record<string, Record<string, string>>[])[0];
+
+    expect((registrado?.['amount'] as Record<string, string>)['cents']).toBe(
+      primerAbono?.['amount']?.['cents'],
+    );
+  });
+});
+
+describe('§25.15 · el aval que firmó con él', () => {
+  it('el detalle lo lista con su nombre y si ya firmó', async () => {
+    // Firmar sin ver quién más queda obligado es firmar a medias.
+    const detalle = await call(`/me/notes/${noteId}`, { token: clienteToken });
+    expect(Array.isArray(detalle.body['guarantors'])).toBe(true);
+
+    for (const aval of detalle.body['guarantors'] as Record<string, unknown>[]) {
+      expect(aval['fullName']).toBeTypeOf('string');
+      expect(Object.keys(aval)).toContain('signedAt');
+      // Del tercero, lo justo: su domicilio y su teléfono están en el papel y
+      // no hacen falta aquí (§9.1).
+      expect(Object.keys(aval)).not.toContain('phone');
+      expect(Object.keys(aval)).not.toContain('address');
+    }
+  });
+});
+
 describe('§17.1 · los documentos del deudor', () => {
   it('sirve su pagaré en PDF', async () => {
     const respuesta = await fetch(`${API}/me/notes/${noteId}/documents/note`, {

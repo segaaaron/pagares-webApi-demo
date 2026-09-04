@@ -36,6 +36,38 @@ export class ClientController {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
+  /**
+   * Sus propios datos, los que el acreedor registró (§25.2).
+   *
+   * El deudor los tiene delante en el pagaré impreso, así que no hay nada que
+   * ocultarle; lo que no puede es cambiarlos desde la aplicación, porque el
+   * documento ya se firmó con ellos. La app los enseña bloqueados y dice quién
+   * los registró.
+   */
+  @Get('profile')
+  async profile(@CurrentActor() actor: Actor) {
+    const debtor = await this.prisma.debtor.findFirst({
+      where: { userId: actor.id },
+      select: { fullName: true, address: true, phone: true, email: true },
+    });
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: { fullName: true, email: true },
+    });
+
+    return {
+      fullName: debtor?.fullName ?? user.fullName,
+      // Nulos y no ausentes: la cuenta puede existir sin ficha de deudor —un
+      // administrador entrando por aquí—, y la app tiene que poder decirlo.
+      address: debtor?.address ?? null,
+      phone: debtor?.phone ?? null,
+      email: debtor?.email ?? user.email,
+      /** Los datos vienen de la ficha que llevó el acreedor, no de la cuenta. */
+      registeredByCreditor: debtor !== null,
+    };
+  }
+
   /** "Cuánto debo": la pregunta que abre la app. */
   @Get('summary')
   async summary(@CurrentActor() actor: Actor) {
@@ -193,6 +225,8 @@ export class ClientController {
         acceptedAt: true,
         updatedAt: true,
         status: true,
+        // El importe acompaña al movimiento en la línea de tiempo.
+        amountCents: true,
       },
     });
     const byId = new Map(notes.map((note) => [note.id, note]));
@@ -203,7 +237,19 @@ export class ClientController {
       take: limit,
     });
 
-    const events: { at: string; kind: string; folio: string; detail: string }[] = [];
+    /*
+     * El importe va como dato además de dentro de `detail`: la aplicación lo
+     * pinta alineado a la derecha de la fila, y sacarlo de la frase con una
+     * expresión regular es exactamente el tipo de acuerdo que se rompe en
+     * cuanto alguien mejora la redacción.
+     */
+    const events: {
+      at: string;
+      kind: string;
+      folio: string;
+      detail: string;
+      amount: ReturnType<typeof money> | null;
+    }[] = [];
 
     for (const note of notes) {
       events.push({
@@ -211,6 +257,7 @@ export class ClientController {
         kind: 'note-issued',
         folio: note.folio,
         detail: 'Pagaré emitido',
+        amount: money(note.amountCents),
       });
       if (note.acceptedAt) {
         events.push({
@@ -218,6 +265,8 @@ export class ClientController {
           kind: 'note-signed',
           folio: note.folio,
           detail: 'Pagaré firmado',
+          // Firmar no mueve dinero: el importe iría de adorno.
+          amount: null,
         });
       }
       if (note.status === 'PAID') {
@@ -228,6 +277,7 @@ export class ClientController {
           kind: 'note-settled',
           folio: note.folio,
           detail: 'Pagaré liquidado',
+          amount: money(note.amountCents),
         });
       }
     }
@@ -242,6 +292,9 @@ export class ClientController {
         detail: esReversa
           ? `Abono anulado por ${formatMxn(-payment.amountCents)}`
           : `Abono de ${formatMxn(payment.amountCents)}`,
+        // La reversa llega en negativo, como en el libro (§12.2): el signo es
+        // parte del dato y no algo que la aplicación tenga que deducir.
+        amount: money(payment.amountCents),
       });
     }
 
@@ -289,7 +342,14 @@ export class ClientController {
     const note = await this.prisma.promissoryNote.findFirst({
       // El filtro por dueño va en la consulta, no en un `if` posterior.
       where: { id, ownerId: actor.id },
-      include: { debtor: true, signature: true, payments: { orderBy: { paidOn: 'desc' } } },
+      include: {
+        debtor: true,
+        signature: true,
+        payments: { orderBy: { paidOn: 'desc' } },
+        // Quién más quedó obligado. Va en el documento que el deudor firma, así
+        // que ocultárselo era pedirle que firmara sin verlo entero (§25.15).
+        guarantors: { include: { signature: true }, orderBy: { position: 'asc' } },
+      },
     });
     if (!note) throw new NotFoundException();
 
@@ -319,6 +379,16 @@ export class ClientController {
       dueDate,
       daysOverdue: overdue,
       paymentPlace: note.paymentPlace,
+      /*
+       * Del aval sólo el nombre y si ya firmó. El domicilio y el teléfono están
+       * en el papel, pero son datos de un tercero: enseñarlos en la aplicación
+       * del deudor no le añade nada y multiplica dónde viven (§9.1).
+       */
+      guarantors: note.guarantors.map((guarantor) => ({
+        position: guarantor.position,
+        fullName: guarantor.fullName,
+        signedAt: guarantor.signature?.capturedAt.toISOString() ?? null,
+      })),
       signatureUrl: note.signature ? await this.storage.signedUrl(note.signature.assetId) : null,
       payments: note.payments.map((p) => ({
         // El identificador va aquí porque el recibo se pide por abono: sin él,
