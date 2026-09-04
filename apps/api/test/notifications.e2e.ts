@@ -86,11 +86,47 @@ describe('§18.1 · el panel ve los avisos que no salieron', () => {
       expect(fila['eventType']).toBeTypeOf('string');
       expect(['stuck', 'pending']).toContain(fila['state']);
       expect(fila['attempts']).toBeTypeOf('number');
-      // El destinatario puede no constar —hay eventos que lo resuelven al
-      // enviarlo—, pero el campo tiene que estar para que el panel no adivine.
+      // El destinatario puede no constar —una cuenta sin correo es un caso
+      // real—, pero el campo tiene que estar para que el panel no adivine.
       expect(Object.keys(fila)).toContain('recipient');
+      expect(Object.keys(fila)).toContain('recipientName');
+      expect(Object.keys(fila)).toContain('folio');
       expect(Object.keys(fila)).toContain('lastError');
     }
+  });
+
+  it('cada fila trae el motivo traducido y qué hacer, no sólo el error del proveedor', async () => {
+    /*
+     * El panel enseñaba el texto de Resend tal cual, en inglés y hablando de
+     * dominios y cabeceras. Quien opera la cobranza no tiene por qué traducir
+     * eso para saber si el problema lo arregla él o se arregla solo.
+     */
+    const vista = await call('/admin/notifications', { token: adminToken });
+    const filas = [
+      ...(vista.body['stuck'] as Record<string, unknown>[]),
+      ...(vista.body['pending'] as Record<string, unknown>[]),
+    ];
+
+    for (const fila of filas) {
+      const causa = fila['failure'] as Record<string, unknown>;
+      expect(causa, 'toda fila lleva diagnóstico').toBeTypeOf('object');
+      expect(String(causa['title']).length).toBeGreaterThan(0);
+      expect(String(causa['action']).length).toBeGreaterThan(0);
+      expect(causa['retryHelps']).toBeTypeOf('boolean');
+    }
+  });
+
+  it('los motivos repetidos se agrupan: cinco fallos iguales son un problema', async () => {
+    const vista = await call('/admin/notifications', { token: adminToken });
+    const causas = vista.body['causes'] as Record<string, unknown>[];
+    expect(Array.isArray(causas)).toBe(true);
+
+    const filas =
+      (vista.body['stuck'] as unknown[]).length + (vista.body['pending'] as unknown[]).length;
+    // Nunca puede haber más motivos que avisos, y la suma de los agrupados
+    // tiene que dar el total: si no, alguno se quedó sin contar.
+    expect(causas.length).toBeLessThanOrEqual(filas);
+    expect(causas.reduce((total, causa) => total + Number(causa['count']), 0)).toBe(filas);
   });
 });
 

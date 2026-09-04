@@ -108,13 +108,20 @@ export default async function TodayPage() {
           aria-label="Avisos sin entregar"
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-crit bg-crit-soft px-4 py-3"
         >
-          <p className="text-sm text-crit">
-            <span className="font-semibold">
-              {avisos.counts.stuck}{' '}
-              {avisos.counts.stuck === 1 ? 'aviso no llegó' : 'avisos no llegaron'}
-            </span>{' '}
-            a su destinatario y ya no se reintentan solos.
-          </p>
+          <div className="min-w-0">
+            <p className="text-sm text-crit">
+              <span className="font-semibold">
+                {avisos.counts.stuck}{' '}
+                {avisos.counts.stuck === 1 ? 'aviso no llegó' : 'avisos no llegaron'}
+              </span>{' '}
+              a su destinatario y ya no se reintentan solos.
+            </p>
+            {/* El motivo principal, aquí mismo: si todo falla por lo mismo, se
+                sabe qué arreglar sin abrir la pantalla. */}
+            {avisos.causes[0] ? (
+              <p className="mt-0.5 text-xs text-crit">{avisos.causes[0].title}</p>
+            ) : null}
+          </div>
           <Link href="/avisos" className="btn btn-secondary btn-sm">
             Ver y reenviar
           </Link>
