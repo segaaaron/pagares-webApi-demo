@@ -48,6 +48,9 @@ packages/*/dist/
 .env
 .env.*
 !.env.example
+# Perfil de la prueba de carga: sólo límites de tasa, ningún secreto. Se versiona
+# porque el README lo cita como la forma de correr §22.1.
+!.env.load
 
 # datos locales
 docker/data/
@@ -61,3 +64,7 @@ CLAUDE.md
 
 # datos de servicios locales
 .local/
+
+# salidas de las pruebas de navegador
+test-results/
+playwright-report/

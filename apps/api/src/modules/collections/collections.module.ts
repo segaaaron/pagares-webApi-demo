@@ -12,7 +12,11 @@ import {
 } from './application/reminder-rules.use-case.js';
 import { PreviewReminderUseCase } from './application/preview-reminder.use-case.js';
 import { SendReminderUseCase } from './application/send-reminder.use-case.js';
-import { TodaysRemindersUseCase } from './application/todays-reminders.use-case.js';
+import {
+  SendTodaysRemindersUseCase,
+  TodaysRemindersUseCase,
+} from './application/todays-reminders.use-case.js';
+import { ReminderCandidatesService } from './application/reminder-candidates.service.js';
 import { REMINDER_RULES } from './domain/ports/reminder-rule.repository.js';
 import { PrismaReminderRuleRepository } from './infrastructure/prisma-reminder-rule.repository.js';
 
@@ -37,6 +41,8 @@ import { PrismaReminderRuleRepository } from './infrastructure/prisma-reminder-r
     PreviewReminderUseCase,
     SendReminderUseCase,
     TodaysRemindersUseCase,
+    SendTodaysRemindersUseCase,
+    ReminderCandidatesService,
     { provide: REMINDER_RULES, useClass: PrismaReminderRuleRepository },
   ],
   exports: [SendReminderUseCase],

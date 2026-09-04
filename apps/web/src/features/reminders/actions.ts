@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { api, ApiError } from '@/shared/api/client';
 
 interface RunResult {
@@ -13,7 +13,8 @@ interface RunResult {
 }
 
 export interface RemindersState {
-  message?: string;
+  /** El nombre lo fija `useActionToast`: es el campo que dispara el aviso. */
+  ok?: string;
   error?: string;
 }
 
@@ -29,10 +30,11 @@ export async function sendTodaysRemindersAction(
 ): Promise<RemindersState> {
   try {
     const result = await api<RunResult>('/admin/reminders/today', { method: 'POST' });
-    revalidateTag('avisos-hoy');
-    revalidateTag('avisos');
+    // Por ruta y no por etiqueta: las consultas van con `cache: 'no-store'`.
+    revalidatePath('/');
+    revalidatePath('/avisos');
 
-    if (result.intentados === 0) return { message: 'Hoy no toca ningún recordatorio.' };
+    if (result.intentados === 0) return { ok: 'Hoy no toca ningún recordatorio.' };
     if (result.fallidos > 0) {
       return {
         error: result.primerError
@@ -41,10 +43,10 @@ export async function sendTodaysRemindersAction(
       };
     }
     if (result.enviados === 0) {
-      return { message: 'Los avisos de hoy ya habían salido; no se mandó ninguno otra vez.' };
+      return { ok: 'Los avisos de hoy ya habían salido; no se mandó ninguno otra vez.' };
     }
     return {
-      message:
+      ok:
         result.enviados === 1
           ? 'Salió el recordatorio de hoy.'
           : `Salieron los ${result.enviados} recordatorios de hoy.`,

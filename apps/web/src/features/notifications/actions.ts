@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { api, ApiError } from '@/shared/api/client';
 
 export interface RetryResult {
@@ -11,7 +11,8 @@ export interface RetryResult {
 }
 
 export interface RetryState {
-  message?: string;
+  /** El nombre lo fija `useActionToast`: es el campo que dispara el aviso. */
+  ok?: string;
   error?: string;
 }
 
@@ -25,13 +26,15 @@ export interface RetryState {
 async function retry(path: string): Promise<RetryState> {
   try {
     const result = await api<RetryResult>(path, { method: 'POST' });
-    revalidateTag('avisos');
+    // La convención de la aplicación es revalidar por ruta: las consultas van
+    // con `cache: 'no-store'`, así que una etiqueta no revalidaría nada.
+    revalidatePath('/avisos');
+    revalidatePath('/');
 
-    if (result.intentados === 0) return { message: 'No había ningún aviso atascado.' };
+    if (result.intentados === 0) return { ok: 'No había ningún aviso atascado.' };
     if (result.fallidos === 0) {
       return {
-        message:
-          result.enviados === 1 ? 'El aviso salió.' : `Salieron los ${result.enviados} avisos.`,
+        ok: result.enviados === 1 ? 'El aviso salió.' : `Salieron los ${result.enviados} avisos.`,
       };
     }
     return {

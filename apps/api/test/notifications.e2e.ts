@@ -46,10 +46,6 @@ async function call(
   return { status: response.status, body };
 }
 
-function problem(body: Record<string, unknown>): string {
-  return String(body['type'] ?? '').split('/').pop() ?? '';
-}
-
 function unique(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
@@ -99,31 +95,6 @@ describe('§18.1 · el panel ve los avisos que no salieron', () => {
 });
 
 describe('§18.1 · reintentar un aviso concreto', () => {
-  let outboxId = '';
-
-  beforeAll(async () => {
-    // Un alta de cliente deja su aviso en el outbox. En local sale a Mailpit, así
-    // que quedará como enviado: es el caso que interesa para la regla de abajo.
-    const creado = await call('/admin/users', {
-      method: 'POST',
-      token: adminToken,
-      idempotencyKey: randomUUID(),
-      body: {
-        email: `avisos-${unique()}@ejemplo.mx`,
-        fullName: 'Cliente de avisos',
-        role: 'CLIENT',
-      },
-    });
-    expect(creado.status).toBe(201);
-
-    const vista = await call('/admin/notifications', { token: adminToken });
-    const sinEnviar = [
-      ...(vista.body['stuck'] as Record<string, unknown>[]),
-      ...(vista.body['pending'] as Record<string, unknown>[]),
-    ];
-    outboxId = sinEnviar.length > 0 ? String(sinEnviar[0]?.['id']) : '';
-  });
-
   it('reintentar todo lo atascado responde con la cuenta de lo que salió', async () => {
     const resultado = await call('/admin/notifications/retry', {
       method: 'POST',
@@ -157,37 +128,33 @@ describe('§18.1 · reintentar un aviso concreto', () => {
     expect(resultado.status).toBe(404);
   });
 
-  it('reintentar uno ya entregado es 409, no un segundo correo al deudor', async () => {
+  it('la lista sólo trae lo que no ha salido, así que el botón nunca reenvía nada entregado', async () => {
     /*
-     * En local el correo sí sale, así que el aviso del alta queda entregado.
-     * Reenviarlo mandaría dos veces la misma contraseña temporal, y eso confunde
-     * más que no recibir nada.
+     * Es la otra mitad de la regla que cubre `outbox-state.test.ts`: allí se fija
+     * que un aviso entregado no es reintentable; aquí, que la pantalla ni
+     * siquiera lo ofrece. El 409 queda como defensa para la carrera de dos
+     * administradores pulsando a la vez.
      */
-    const entregados = await call('/admin/audit?limit=1', { token: adminToken });
-    expect(entregados.status).toBe(200);
-
-    if (outboxId === '') {
-      // Todo salió a la primera: se busca cualquier aviso ya publicado.
-      const resultado = await call(`/admin/notifications/${randomUUID()}/retry`, {
-        method: 'POST',
-        token: adminToken,
-      });
-      expect(resultado.status).toBe(404);
-      return;
-    }
-
-    const primero = await call(`/admin/notifications/${outboxId}/retry`, {
+    const creado = await call('/admin/users', {
       method: 'POST',
       token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: {
+        email: `avisos-${unique()}@ejemplo.mx`,
+        fullName: 'Cliente de avisos',
+        role: 'CLIENT',
+      },
     });
-    expect([200, 409]).toContain(primero.status);
+    expect(creado.status).toBe(201);
 
-    const segundo = await call(`/admin/notifications/${outboxId}/retry`, {
-      method: 'POST',
-      token: adminToken,
-    });
-    if (segundo.status === 409) {
-      expect(problem(segundo.body)).toBe('notification_already_delivered');
+    const vista = await call('/admin/notifications', { token: adminToken });
+    const listados = [
+      ...(vista.body['stuck'] as Record<string, unknown>[]),
+      ...(vista.body['pending'] as Record<string, unknown>[]),
+    ];
+
+    for (const fila of listados) {
+      expect(fila['publishedAt'], 'un aviso entregado no debe aparecer').toBeNull();
     }
   });
 });

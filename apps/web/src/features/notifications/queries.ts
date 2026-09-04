@@ -22,7 +22,7 @@ export interface NotificationsView {
 }
 
 export async function getNotifications(): Promise<NotificationsView> {
-  return api<NotificationsView>('/admin/notifications', { tags: ['avisos'] });
+  return api<NotificationsView>('/admin/notifications');
 }
 
 /**

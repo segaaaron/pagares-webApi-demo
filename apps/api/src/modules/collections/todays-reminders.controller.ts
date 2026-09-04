@@ -2,7 +2,10 @@ import { Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { DispatchPendingService } from '../notifications/application/dispatch-pending.service.js';
-import { TodaysRemindersUseCase } from './application/todays-reminders.use-case.js';
+import {
+  SendTodaysRemindersUseCase,
+  TodaysRemindersUseCase,
+} from './application/todays-reminders.use-case.js';
 
 /**
  * Los avisos del día, juntos (§13.1, §18).
@@ -15,20 +18,21 @@ import { TodaysRemindersUseCase } from './application/todays-reminders.use-case.
 @Roles('ADMIN')
 export class TodaysRemindersController {
   constructor(
-    private readonly reminders: TodaysRemindersUseCase,
+    private readonly todays: TodaysRemindersUseCase,
+    private readonly send: SendTodaysRemindersUseCase,
     private readonly dispatcher: DispatchPendingService,
   ) {}
 
   /** Qué se mandaría hoy. No escribe nada: es una pregunta. */
   @Get('today')
   async preview(@CurrentActor() actor: Actor, @Req() request: Request & { traceId?: string }) {
-    return this.reminders.execute({ commit: false }, this.contextOf(actor, request));
+    return this.todays.execute({}, this.contextOf(actor, request));
   }
 
   @Post('today')
   @HttpCode(200)
   async run(@CurrentActor() actor: Actor, @Req() request: Request & { traceId?: string }) {
-    const resultado = await this.reminders.execute({ commit: true }, this.contextOf(actor, request));
+    const resultado = await this.send.execute({}, this.contextOf(actor, request));
     // Los correos salen al confirmar, como el resto (§18.1).
     await this.dispatcher.dispatchPending();
     return resultado;

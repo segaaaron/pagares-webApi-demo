@@ -151,7 +151,7 @@ Para producción, `pnpm build` y después `pnpm start` en cada aplicación.
 | `pnpm verify` | lint + typecheck + pruebas + regla de arquitectura |
 | `pnpm test` | solo las pruebas unitarias |
 | `pnpm test:e2e` | extremo a extremo y contrato de puertos (requiere la API levantada) |
-| `pnpm test:a11y` | accesibilidad de las rutas críticas (requiere api y web levantadas) |
+| `pnpm test:a11y` | navegador: accesibilidad y flujos (requiere api y web levantadas) |
 | `pnpm perf:k6` | prueba de carga (requiere k6) |
 | `pnpm services:up` | Postgres y Mailpit por Homebrew |
 | `pnpm services:minio` | MinIO local, sólo para la mitad de S3 del contrato |
@@ -254,9 +254,9 @@ consumen tanto la API como el panel, de modo que no hay dos definiciones del mis
 ## 7. Pruebas
 
 ```bash
-pnpm verify         # 321 unitarias + lint + typecheck + arquitectura
-pnpm test:e2e       # 63 contra la API real: e2e, seguridad, concurrencia y contrato
-pnpm test:a11y      # 10 auditorías de accesibilidad sobre el panel
+pnpm verify         # 343 unitarias + lint + typecheck + arquitectura
+pnpm test:e2e       # 90 contra la API real: e2e, seguridad, concurrencia y contrato
+pnpm test:a11y      # 14 de navegador: accesibilidad y flujos del panel
 pnpm perf:k6        # carga: 100 usuarios, 30 minutos
 ```
 
@@ -267,7 +267,8 @@ pnpm perf:k6        # carga: 100 usuarios, 30 minutos
 | Seguridad | BOLA y BFLA por endpoint, enumeración, mass assignment | API levantada |
 | Concurrencia y sesión | Folio irrepetible, saldo que no se sobrepasa, refresh reutilizado, bloqueo por cuenta | API levantada |
 | Contrato de puertos | Las dos implementaciones de `ObjectStorage` pasan la misma batería | API levantada; MinIO para la mitad de S3 |
-| Accesibilidad | WCAG 2.1 AA en las diez rutas críticas | api y web levantadas |
+| Accesibilidad | WCAG 2.1 AA en las once rutas críticas | api y web levantadas |
+| Flujos de navegador | Lo que sólo se rompe en el navegador: que un botón confirme al terminar | api y web levantadas |
 | Carga | Objetivos de servicio de §22.1 | k6 y los límites de tasa subidos |
 
 ```bash
@@ -301,6 +302,7 @@ apps/
     src/app/            rutas (App Router)
     src/features/       vistas y acciones de servidor
     test/a11y/          auditorías de accesibilidad (Playwright + axe)
+    test/flujos/        flujos de navegador (Playwright)
 packages/
   contracts/            schemas zod, tipos y códigos de error
   domain-rules/         reglas puras: dinero, calendario, interés, cartera

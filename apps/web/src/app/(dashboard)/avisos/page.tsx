@@ -73,7 +73,7 @@ export default async function AvisosPage() {
         crumbs={[{ label: 'Avisos' }]}
         title="Avisos"
         description="Correos y notificaciones que aún no han llegado a su destinatario."
-        actions={counts.stuck > 0 ? <RetryAllButton count={counts.stuck} /> : null}
+        actions={<RetryAllButton count={counts.stuck} />}
         meta={
           <span className="tnum text-xs text-muted">
             {counts.stuck} atascados · {counts.pending} en cola

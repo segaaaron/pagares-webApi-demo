@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseUseCase } from '@pagares/api-core';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
-import { MAX_ATTEMPTS, outboxState, recipientOf, type OutboxState } from '../domain/outbox-state.js';
+import { outboxState, recipientOf, type OutboxState } from '../domain/outbox-state.js';
 
 export interface NotificationRow {
   id: string;
@@ -67,12 +67,5 @@ export class ListNotificationsUseCase extends BaseUseCase<Record<string, never>,
     }
 
     return { stuck, pending, counts: { stuck: stuck.length, pending: pending.length } };
-  }
-
-  /** El contador de la bandeja: una consulta barata, sin traerse las filas. */
-  async countStuck(): Promise<number> {
-    return this.prisma.outboxMessage.count({
-      where: { publishedAt: null, attempts: { gte: MAX_ATTEMPTS } },
-    });
   }
 }

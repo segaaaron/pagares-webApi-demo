@@ -128,7 +128,7 @@ export default async function TodayPage() {
         * viajes. Se enseña a quién le va a llegar **antes** de mandar nada, y
         * pulsarlo dos veces el mismo día no duplica ningún correo (§13.1).
         */}
-      {recordatorios.pending.length > 0 ? (
+      {recordatorios.pending.length + recordatorios.alreadySent.length > 0 ? (
         <section aria-labelledby="recordatorios-title" className="card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -136,10 +136,16 @@ export default async function TodayPage() {
                 Recordatorios de hoy
               </h2>
               <p className="text-sm text-muted">
-                {recordatorios.pending.length === 1
-                  ? 'Un deudor debe recibir aviso hoy.'
-                  : `${recordatorios.pending.length} deudores deben recibir aviso hoy.`}
-                {recordatorios.alreadySent.length > 0
+                {recordatorios.pending.length === 0
+                  ? // La tarjeta se queda aunque no falte ninguno: que salieron
+                    // es parte de la respuesta, igual que en las colas vacías.
+                    recordatorios.alreadySent.length === 1
+                    ? 'El aviso de hoy ya salió.'
+                    : `Los ${recordatorios.alreadySent.length} avisos de hoy ya salieron.`
+                  : recordatorios.pending.length === 1
+                    ? 'Un deudor debe recibir aviso hoy.'
+                    : `${recordatorios.pending.length} deudores deben recibir aviso hoy.`}
+                {recordatorios.pending.length > 0 && recordatorios.alreadySent.length > 0
                   ? ` Otros ${recordatorios.alreadySent.length} ya lo recibieron.`
                   : ''}
               </p>
@@ -148,18 +154,26 @@ export default async function TodayPage() {
           </div>
 
           <ul className="mt-3 divide-y divide-line border-t border-line">
-            {recordatorios.pending.slice(0, 6).map((aviso) => (
-              <li key={aviso.noteId} className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm">
-                <span className="tnum font-mono text-xs text-muted">{aviso.folio}</span>
-                <span className="font-medium text-ink">{aviso.debtorName}</span>
-                <span className="text-xs text-muted">{aviso.to}</span>
-                <span className="ml-auto text-xs text-ink-2">{tramoLabel(aviso.offsetDays)}</span>
-              </li>
-            ))}
+            {(recordatorios.pending.length > 0
+              ? recordatorios.pending
+              : recordatorios.alreadySent
+            )
+              .slice(0, 6)
+              .map((aviso) => (
+                <li
+                  key={aviso.noteId}
+                  className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm"
+                >
+                  <span className="tnum font-mono text-xs text-muted">{aviso.folio}</span>
+                  <span className="font-medium text-ink">{aviso.debtorName}</span>
+                  <span className="text-xs text-muted">{aviso.to}</span>
+                  <span className="ml-auto text-xs text-ink-2">{tramoLabel(aviso.offsetDays)}</span>
+                </li>
+              ))}
           </ul>
-          {recordatorios.pending.length > 6 ? (
+          {Math.max(recordatorios.pending.length, recordatorios.alreadySent.length) > 6 ? (
             <p className="mt-2 text-xs text-muted">
-              y {recordatorios.pending.length - 6} más.
+              y {Math.max(recordatorios.pending.length, recordatorios.alreadySent.length) - 6} más.
             </p>
           ) : null}
         </section>

@@ -20,7 +20,7 @@ export interface TodaysReminders {
 }
 
 export async function getTodaysReminders(): Promise<TodaysReminders> {
-  return api<TodaysReminders>('/admin/reminders/today', { tags: ['avisos-hoy'] });
+  return api<TodaysReminders>('/admin/reminders/today');
 }
 
 /** «Vence en 3 días» se entiende; «offset -3» no. */

@@ -618,7 +618,7 @@ Reglas **en tabla editable desde el dashboard**, nunca en código:
 | `condition` | `balance > 0`, opcionalmente por monto o por deudor |
 | `active` | Se apaga sin borrar el historial |
 
-El job `send-reminders` (§18) evalúa las reglas contra la cartera y encola los envíos, **idempotente por `(noteId, ruleId, fecha)`**: correrlo dos veces no manda dos correos. Un expediente judicial abierto **congela** los recordatorios automáticos.
+`GET /admin/reminders/today` evalúa las reglas contra la cartera y dice a quién le toca aviso hoy; `POST` los manda. No hay job ni reloj: lo dispara el administrador desde su bandeja (§18). Es **idempotente por `(noteId, ruleId, fecha)`**, así que pulsarlo dos veces el mismo día no manda dos correos. Un expediente judicial abierto **congela** los recordatorios de ese pagaré.
 
 ### 13.2 Etapas de gestión
 
@@ -877,6 +877,9 @@ Todos bajo `/api/v1`. `A` = JWT admin · `C` = JWT cliente · `P` = pública · 
 | `POST /uploads/presign` | C·A | URL de subida directa para archivos grandes (§8.5) |
 | `GET /public/notes/:publicToken` | P | Consulta de solo lectura, sin PII |
 | `GET /health` | P | Liveness y readiness |
+| `GET /admin/reminders/today` · `POST` | A | A quién le toca aviso hoy · los manda todos, sin duplicar (§13.1) |
+| `GET /admin/notifications` | A | Avisos que no salieron: atascados y en cola, con su motivo (§18.1) |
+| `POST /admin/notifications/retry` · `/:id/retry` | A | Reintenta los atascados, o uno. `409` si ya se entregó |
 | `POST /admin/notes` | A · **Idem** | Emite el pagaré, asigna folio, crea la cuenta si hace falta y manda a firmar |
 | `GET /admin/notes` · `/notes/:id` | A | Listado con cursor, filtros y pestañas de §19.4 · detalle |
 | `POST /admin/notes/:id/extensions` | A | Prórroga con motivo |
