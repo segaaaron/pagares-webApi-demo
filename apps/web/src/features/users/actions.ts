@@ -26,10 +26,16 @@ export async function createUserAction(
           fullName: String(formData.get('fullName') ?? '').trim(),
           ...(String(formData.get('phone') ?? '').trim() ? { phone: String(formData.get('phone')).trim() } : {}),
           role: 'CLIENT',
+          // Presente sólo cuando el alta sale de la ficha de un deudor: enlaza
+          // la cuenta con la persona y le devuelve sus pagarés.
+          ...(String(formData.get('debtorId') ?? '').trim()
+            ? { debtorId: String(formData.get('debtorId')).trim() }
+            : {}),
         },
       },
     );
     revalidatePath('/usuarios');
+    revalidatePath('/clientes');
     return {
       credential: {
         email: created.email,
@@ -68,6 +74,34 @@ export async function manageUserAction(
     return { ok: labels[action as keyof typeof labels] ?? 'Listo.' };
   } catch (error) {
     if (error instanceof ApiError) return { error: error.problem?.title ?? 'No se pudo completar la acción.' };
+    throw error;
+  }
+}
+
+/**
+ * Eliminar el acceso a la aplicación (§25.2).
+ *
+ * Borra la cuenta y libera el correo. El deudor y sus pagarés se quedan donde
+ * están: la deuda no depende de una credencial, y el acceso se vuelve a crear
+ * desde la ficha del deudor cuando haga falta.
+ */
+export async function deleteUserAccessAction(
+  userId: string,
+  _prev: UserActionState,
+): Promise<UserActionState> {
+  try {
+    const result = await api<{ notesKept: number }>(`/admin/users/${userId}`, { method: 'DELETE' });
+    revalidatePath('/usuarios');
+    revalidatePath('/clientes');
+
+    return {
+      ok:
+        result.notesKept > 0
+          ? `Acceso eliminado. Sus ${result.notesKept} ${result.notesKept === 1 ? 'pagaré sigue' : 'pagarés siguen'} en la cartera.`
+          : 'Acceso eliminado.',
+    };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.problem?.title ?? 'No se pudo eliminar el acceso.' };
     throw error;
   }
 }

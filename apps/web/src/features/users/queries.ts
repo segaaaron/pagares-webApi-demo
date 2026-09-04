@@ -11,6 +11,8 @@ export interface UserRow {
   lastLoginAt: string | null;
   mustChangePassword: boolean;
   notesCount: number;
+  /** Dispositivos desde los que ha entrado, del más reciente al más antiguo. */
+  devices: { platform: string; lastSeenAt: string }[];
   createdAt: string;
 }
 

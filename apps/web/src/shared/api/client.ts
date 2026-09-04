@@ -21,7 +21,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   idempotencyKey?: string;
   /** El listado se revalida al registrar un abono; el detalle no se cachea. */

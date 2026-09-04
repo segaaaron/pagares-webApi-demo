@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
   BaseUseCase,
   CLOCK,
@@ -20,6 +20,14 @@ export interface CreateUserInput {
   fullName: string;
   phone?: string | undefined;
   role?: 'ADMIN' | 'CLIENT' | undefined;
+  /**
+   * Ficha del deudor a la que pertenece esta cuenta (§25.2).
+   *
+   * El enlace se hace contra la persona, no contra el correo: quien ya tenía
+   * pagarés y vuelve con otra dirección los conserva. Sin esto, recrear un
+   * acceso borrado dejaba los pagarés sin dueño y el deudor no volvía a verlos.
+   */
+  debtorId?: string | undefined;
 }
 
 export interface CreateUserOutput {
@@ -86,6 +94,35 @@ export class CreateUserUseCase extends BaseUseCase<CreateUserInput, CreateUserOu
         },
         tx,
       );
+
+      if (input.debtorId) {
+        /**
+         * Una ficha, una cuenta.
+         *
+         * Enlazar a un deudor que ya tiene acceso dejaría la cuenta anterior
+         * huérfana —sin ficha y sin pagarés— y en silencio: dos credenciales
+         * vivas para la misma persona, y ninguna forma de saber cuál es la
+         * buena. Si hay que cambiarla, primero se elimina la que hay.
+         */
+        const ficha = await tx.debtor.findUnique({
+          where: { id: input.debtorId },
+          select: { userId: true },
+        });
+        if (!ficha) throw new BadRequestException('El deudor no existe');
+        if (ficha.userId) {
+          throw new BadRequestException(
+            'Ese deudor ya tiene acceso. Elimina el actual antes de crear otro.',
+          );
+        }
+
+        // Reenlaza también los pagarés que quedaron sin dueño al borrar el
+        // acceso anterior: son de esta persona, no de la cuenta que se fue.
+        await tx.debtor.update({ where: { id: input.debtorId }, data: { userId: user.id } });
+        await tx.promissoryNote.updateMany({
+          where: { debtorId: input.debtorId, ownerId: null },
+          data: { ownerId: user.id },
+        });
+      }
 
       // El correo lo manda quien escuche el evento, no este caso de uso (§3.3).
       scope.publish({

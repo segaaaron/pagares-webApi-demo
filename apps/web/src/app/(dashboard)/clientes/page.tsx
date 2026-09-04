@@ -36,8 +36,30 @@ export default async function DebtorsPage({
   const params = new URLSearchParams(
     Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v] as [string, string]] : [])),
   );
-  const debtors = await api<DebtorRow[]>('/admin/debtors');
+  const todos = await api<DebtorRow[]>('/admin/debtors');
+
+  /**
+   * Quién se quedó sin acceso a la aplicación.
+   *
+   * Al borrar una cuenta el deudor sigue aquí con sus pagarés, y sin este filtro
+   * habría que ir abriendo fichas para encontrarlo. Es la entrada natural a
+   * «devolverle el acceso» (§25.2).
+   */
+  const soloSinAcceso = params.get('acceso') === 'sin';
+  const debtors = soloSinAcceso ? todos.filter((d) => !d.hasAccount) : todos;
+  const sinAcceso = todos.filter((d) => !d.hasAccount).length;
   const { page, props } = paginate(debtors, params);
+
+  const conFiltro = (valor: string | null): string => {
+    const siguiente = new URLSearchParams(params);
+    if (valor) siguiente.set('acceso', valor);
+    else siguiente.delete('acceso');
+    // El paginador guarda la página en `p`: sin borrarla, filtrar desde la
+    // página 3 dejaba una lista vacía sin explicación.
+    siguiente.delete('p');
+    const consulta = siguiente.toString();
+    return consulta ? `/clientes?${consulta}` : '/clientes';
+  };
 
   const columns: Column<DebtorRow>[] = [
     {
@@ -130,6 +152,17 @@ export default async function DebtorsPage({
         crumbs={[{ label: 'Deudores' }]}
         title="Deudores"
         description="Quién debe y cuánto. El comportamiento se deriva del historial de pagos, no se captura."
+        actions={
+          sinAcceso > 0 ? (
+            <Link
+              href={conFiltro(soloSinAcceso ? null : 'sin')}
+              className={`btn btn-sm ${soloSinAcceso ? 'btn-primary' : 'btn-secondary'}`}
+              title="Deudores que no pueden entrar a la aplicación"
+            >
+              {soloSinAcceso ? 'Ver todos' : `Sin acceso (${sinAcceso})`}
+            </Link>
+          ) : null
+        }
       />
 
       {/* La importación vive aquí porque el alta masiva es lo primero que se

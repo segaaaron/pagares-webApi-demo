@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseInterceptors } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import { emailSchema, phoneSchema } from '@pagares/contracts';
@@ -7,6 +7,7 @@ import { ZodValidationPipe } from '../../shared/http/zod-validation.pipe.js';
 import { IdempotencyInterceptor } from '../../shared/http/idempotency.interceptor.js';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { CreateUserUseCase } from './application/create-user.use-case.js';
+import { DeleteUserAccessUseCase } from './application/delete-user-access.use-case.js';
 import { ManageUserUseCase, type UserAction } from './application/manage-user.use-case.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
 import { DispatchPendingService } from '../notifications/application/dispatch-pending.service.js';
@@ -17,6 +18,8 @@ const createUserSchema = z
     fullName: z.string().trim().min(3).max(160),
     phone: phoneSchema.optional(),
     role: z.enum(['ADMIN', 'CLIENT']).default('CLIENT'),
+    /** Enlaza la cuenta con la ficha del deudor, no con su correo (§25.2). */
+    debtorId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -27,6 +30,7 @@ export class UsersController {
     private readonly createUser: CreateUserUseCase,
     private readonly dispatcher: DispatchPendingService,
     private readonly manageUser: ManageUserUseCase,
+    private readonly deleteUserAccess: DeleteUserAccessUseCase,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -48,6 +52,19 @@ export class UsersController {
         mustChangePassword: true,
         createdAt: true,
         _count: { select: { ownedNotes: true } },
+        /**
+         * Desde dónde entra cada quien (§24.3).
+         *
+         * El administrador trabaja en el panel y el deudor en la aplicación, y
+         * la lista no lo distinguía: dos filas iguales para dos accesos que no
+         * se parecen en nada. El dispositivo lo registra el propio inicio de
+         * sesión, así que el dato ya estaba; sólo no se enseñaba.
+         */
+        deviceTokens: {
+          select: { platform: true, lastSeenAt: true },
+          orderBy: { lastSeenAt: 'desc' },
+          take: 5,
+        },
       },
     });
 
@@ -62,8 +79,36 @@ export class UsersController {
       lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
       mustChangePassword: u.mustChangePassword,
       notesCount: u._count.ownedNotes,
+      devices: u.deviceTokens.map((d) => ({
+        platform: d.platform,
+        lastSeenAt: d.lastSeenAt.toISOString(),
+      })),
       createdAt: u.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * Quitar el acceso a la aplicación sin tocar la deuda (§25.2).
+   *
+   * Borra la cuenta y libera el correo; el deudor y sus pagarés se quedan. Es
+   * `DELETE` sobre la cuenta, no sobre la persona: la persona no se borra
+   * porque tampoco desaparece el dinero que debe.
+   */
+  @Delete(':id')
+  async deleteAccess(
+    @Param('id') id: string,
+    @CurrentActor() actor: Actor,
+    @Req() request: Request & { traceId?: string },
+  ) {
+    return this.deleteUserAccess.execute(
+      { userId: id },
+      {
+        traceId: request.traceId ?? 'unknown',
+        actorId: actor.id,
+        actorRole: actor.role,
+        ...(request.ip !== undefined ? { ip: request.ip } : {}),
+      },
+    );
   }
 
   @Post(':id/:action')

@@ -1,7 +1,12 @@
 'use client';
 
-import { useActionState } from 'react';
-import { createUserAction, manageUserAction, type UserActionState } from './actions';
+import { useActionState, useState } from 'react';
+import {
+  createUserAction,
+  deleteUserAccessAction,
+  manageUserAction,
+  type UserActionState,
+} from './actions';
 import { dateTime } from '@/shared/lib/format';
 import { useActionToast } from '@/shared/ui/use-action-toast';
 import { Modal, useModal } from '@/shared/ui/modal';
@@ -104,20 +109,30 @@ export function UserActions({
   userId,
   status,
   locked,
+  fullName,
+  notesCount,
 }: {
   userId: string;
   status: string;
   locked: boolean;
+  fullName: string;
+  notesCount: number;
 }) {
   const [state, action, pending] = useActionState<UserActionState, FormData>(
-    async (prev, formData) =>
-      manageUserAction(
+    async (prev, formData) => {
+      const orden = String(formData.get('action'));
+      if (orden === 'delete') return deleteUserAccessAction(userId, prev);
+      return manageUserAction(
         userId,
-        String(formData.get('action')) as 'reset-password' | 'unlock' | 'suspend' | 'activate',
+        orden as 'reset-password' | 'unlock' | 'suspend' | 'activate',
         prev,
-      ),
+      );
+    },
     {},
   );
+  // Borrar el acceso no se deshace: se confirma con lo que se lleva por delante
+  // a la vista, no con un «¿estás seguro?» que nadie lee.
+  const [confirmando, setConfirmando] = useState(false);
 
   return (
     <form action={action} className="space-y-2">
@@ -149,7 +164,45 @@ export function UserActions({
             Suspender
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setConfirmando((v) => !v)}
+          disabled={pending}
+          className="btn btn-ghost btn-sm text-crit hover:bg-crit-soft"
+          title="Elimina la cuenta; el deudor y sus pagarés se quedan"
+        >
+          Eliminar acceso
+        </button>
       </div>
+
+      {confirmando ? (
+        <div className="rounded-lg border border-crit bg-crit-soft px-3 py-2.5 text-left">
+          <p className="text-xs text-ink">
+            Se elimina la cuenta de <strong>{fullName}</strong> y su correo queda libre.
+            {notesCount > 0
+              ? ` Sus ${notesCount} ${notesCount === 1 ? 'pagaré sigue' : 'pagarés siguen'} en la cartera, con su saldo y su historial.`
+              : ' No tiene pagarés a su nombre.'}{' '}
+            Podrás volver a darle acceso desde la ficha del deudor.
+          </p>
+          <div className="mt-2 flex justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setConfirmando(false)}
+              className="btn btn-secondary btn-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              name="action"
+              value="delete"
+              disabled={pending}
+              className="btn btn-sm border-crit bg-crit text-white hover:opacity-90"
+            >
+              {pending ? 'Eliminando…' : 'Eliminar acceso'}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div aria-live="polite">
         {state.error ? <p className="text-xs text-crit">{state.error}</p> : null}

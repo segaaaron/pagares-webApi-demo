@@ -1,3 +1,4 @@
+import { GrantAccess } from '@/features/debtors/grant-access';
 import { RouteNotice } from '@/shared/ui/route-notice';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -136,6 +137,14 @@ export default async function DebtorPage({
         description={`${debtor.address} · ${debtor.phone}${debtor.email ? ` · ${debtor.email}` : ''}`}
         actions={
           <>
+            {!debtor.hasAccount ? (
+              <GrantAccess
+                debtorId={debtor.id}
+                fullName={debtor.fullName}
+                email={debtor.email}
+                phone={debtor.phone}
+              />
+            ) : null}
             <a
               href={`/clientes/${debtor.id}/estado-cuenta`}
               target="_blank"

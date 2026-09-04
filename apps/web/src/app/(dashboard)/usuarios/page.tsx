@@ -70,6 +70,12 @@ export default async function UsersPage({
       },
     },
     {
+      key: 'desde',
+      header: 'Entra desde',
+      width: '10rem',
+      cell: (user) => <Origen user={user} />,
+    },
+    {
       key: 'notes',
       header: 'Pagarés',
       align: 'right',
@@ -97,7 +103,13 @@ export default async function UsersPage({
             —
           </span>
         ) : (
-          <UserActions userId={user.id} status={user.status} locked={isLocked(user)} />
+          <UserActions
+            userId={user.id}
+            status={user.status}
+            locked={isLocked(user)}
+            fullName={user.fullName}
+            notesCount={user.notesCount}
+          />
         ),
     },
   ];
@@ -129,5 +141,42 @@ export default async function UsersPage({
         }
       />
     </div>
+  );
+}
+
+/**
+ * Desde dónde trabaja cada cuenta.
+ *
+ * El administrador vive en el panel y el deudor en la aplicación: verlos
+ * idénticos en la lista invita a confundirlos y a reventar el acceso de alguien
+ * creyendo que era del otro tipo. La plataforma la registra el propio inicio de
+ * sesión, así que esto no pregunta nada: enseña lo que ya ocurrió.
+ */
+function Origen({ user }: { user: UserRow }) {
+  if (user.role === 'ADMIN') {
+    return <span className="chip bg-surface-2 text-muted">Panel</span>;
+  }
+
+  const plataformas = [...new Set(user.devices.map((d) => d.platform))];
+  if (plataformas.length === 0) {
+    return (
+      <span className="chip bg-surface-2 text-muted" title="Todavía no ha entrado desde ningún dispositivo">
+        Sin estrenar
+      </span>
+    );
+  }
+
+  // Las cuentas de cliente sólo sirven en la aplicación: el panel les cierra la
+  // puerta por rol. Cualquier plataforma que no sea una app es un dato viejo o
+  // un intento fallido, y se nombra como lo que es.
+  const NOMBRES: Record<string, string> = { ios: 'iOS', web: 'Sin app' };
+  return (
+    <span className="flex flex-wrap gap-1">
+      {plataformas.map((p) => (
+        <span key={p} className="chip bg-accent-soft text-accent-ink">
+          {NOMBRES[p] ?? p}
+        </span>
+      ))}
+    </span>
   );
 }
