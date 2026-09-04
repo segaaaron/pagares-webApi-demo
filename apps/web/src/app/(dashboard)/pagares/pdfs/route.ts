@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listNotes } from '@/features/notes/queries';
 import { readSession } from '@/shared/auth/session';
 import { todayInBusinessZone } from '@/shared/lib/today';
+import { fetchConLimite, PLAZO } from '@/shared/lib/fetch-con-limite';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -38,9 +39,11 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const ids = page.data.map((note) => note.id).join(',');
-  const upstream = await fetch(
+  const upstream = await fetchConLimite(
     `${API_URL}/api/v1/admin/documents/bundle?noteIds=${encodeURIComponent(ids)}`,
     { headers: { Authorization: `Bearer ${session.accessToken}` }, cache: 'no-store' },
+    // Cien PDFs comprimidos de dos en dos: es la descarga más lenta que hay.
+    PLAZO.documento,
   );
 
   if (!upstream.ok) {

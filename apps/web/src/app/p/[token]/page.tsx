@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { shortDate } from '@/shared/lib/format';
+import { fetchConLimite } from '@/shared/lib/fetch-con-limite';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -42,7 +43,9 @@ export const metadata = { title: 'Consulta de pagaré' };
 export default async function PublicNotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
 
-  const response = await fetch(`${API_URL}/api/v1/public/notes/${token}`, { cache: 'no-store' });
+  const response = await fetchConLimite(`${API_URL}/api/v1/public/notes/${token}`, {
+    cache: 'no-store',
+  });
   if (!response.ok) notFound();
   const note = (await response.json()) as PublicNote;
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readSession } from '@/shared/auth/session';
+import { fetchConLimite, PLAZO } from '@/shared/lib/fetch-con-limite';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -53,10 +54,13 @@ export async function GET(
   const document = DOCUMENTS[type];
   if (!document) return volverAlPagare(request, id, 'documento-desconocido');
 
-  const upstream = await fetch(`${API_URL}/api/v1${document.path(id, paymentId)}`, {
+  const upstream = await fetchConLimite(`${API_URL}/api/v1${document.path(id, paymentId)}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
     cache: 'no-store',
-  });
+  },
+  // Un pagaré con firma o un paquete de cien PDFs se generan al momento (§17.1).
+  PLAZO.documento,
+  );
 
   if (!upstream.ok) {
     return NextResponse.json(

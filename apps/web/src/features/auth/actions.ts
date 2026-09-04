@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { clearSession, readRefreshToken, writeSession } from '@/shared/auth/session';
+import { fetchConLimite } from '@/shared/lib/fetch-con-limite';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -45,7 +46,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   const password = String(formData.get('password') ?? '');
   if (!email || !password) return { error: 'Escribe tu correo y tu contraseña.' };
 
-  const response = await fetch(`${API_URL}/api/v1/auth/login`, {
+  const response = await fetchConLimite(`${API_URL}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -108,7 +109,7 @@ export async function changeInitialAction(
   if (newPassword !== repeat) return { error: 'Las dos contraseñas no coinciden.' };
   if (newPassword.length < 12) return { error: 'La contraseña debe tener al menos 12 caracteres.' };
 
-  const response = await fetch(`${API_URL}/api/v1/auth/password/change-initial`, {
+  const response = await fetchConLimite(`${API_URL}/api/v1/auth/password/change-initial`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changeToken, newPassword }),
@@ -146,7 +147,7 @@ export async function forgotPasswordAction(
   const email = String(formData.get('email') ?? '').trim();
   if (!email) return { step: 'request', error: 'Escribe tu correo.' };
 
-  const response = await fetch(`${API_URL}/api/v1/auth/password/forgot`, {
+  const response = await fetchConLimite(`${API_URL}/api/v1/auth/password/forgot`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -176,7 +177,7 @@ export async function resetPasswordAction(
     return { step: 'sent', email, error: 'La contraseña debe tener al menos 12 caracteres.' };
   }
 
-  const response = await fetch(`${API_URL}/api/v1/auth/password/reset`, {
+  const response = await fetchConLimite(`${API_URL}/api/v1/auth/password/reset`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, code, newPassword }),
@@ -197,7 +198,7 @@ export async function resetPasswordAction(
 
 export async function logoutAction(): Promise<void> {
   const refresh = await readRefreshToken();
-  await fetch(`${API_URL}/api/v1/auth/logout`, {
+  await fetchConLimite(`${API_URL}/api/v1/auth/logout`, {
     method: 'POST',
     headers: refresh ? { Cookie: `pagares_refresh=${refresh}` } : {},
     cache: 'no-store',

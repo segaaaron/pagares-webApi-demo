@@ -223,7 +223,11 @@ export function IssueForm({
               setAvales([]);
               return;
             }
-            fetch(`/pagares/nuevo/deudores/${hit.id}`)
+            fetch(`/pagares/nuevo/deudores/${hit.id}`, {
+              // Sin plazo, un servidor que no contesta deja los avales del
+              // formulario en el limbo, ni puestos ni descartados.
+              signal: AbortSignal.timeout(10_000),
+            })
               .then((r) => r.json())
               .then((d: { guarantors?: typeof avales }) => setAvales(d.guarantors ?? []))
               // Sin avales previos se emite igual: el formulario no depende de esto.

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { fetchConLimite, PLAZO } from '@/shared/lib/fetch-con-limite';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 const ACCESS = 'pg_access';
@@ -45,11 +46,16 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return response;
   }
 
-  const renewed = await fetch(`${API_URL}/api/v1/auth/refresh`, {
-    method: 'POST',
-    headers: { Cookie: `pagares_refresh=${refresh}` },
-    cache: 'no-store',
-  }).catch(() => null);
+  /*
+   * Con plazo corto: esto corre delante de **cada** petición, así que una API
+   * que no contesta dejaría la aplicación entera esperando. Si no llega a
+   * tiempo se trata como refresh fallido, que ya sabe volver al acceso.
+   */
+  const renewed = await fetchConLimite(
+    `${API_URL}/api/v1/auth/refresh`,
+    { method: 'POST', headers: { Cookie: `pagares_refresh=${refresh}` }, cache: 'no-store' },
+    PLAZO.sesion,
+  ).catch(() => null);
 
   if (!renewed?.ok) {
     // Refresh inválido o revocado: se limpia la sesión y se vuelve al acceso.

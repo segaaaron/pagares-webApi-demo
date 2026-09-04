@@ -57,13 +57,19 @@ export function DebtorPicker({
     const timer = setTimeout(() => {
       setLoading(true);
       const controller = new AbortController();
+      // El `AbortController` cancela la búsqueda anterior al seguir tecleando;
+      // el plazo corta la que no vuelve, que si no dejaba el buscador girando.
+      const plazo = setTimeout(() => controller.abort(), 10_000);
       fetch(`/pagares/nuevo/deudores?q=${encodeURIComponent(term.trim())}`, {
         signal: controller.signal,
       })
         .then((response) => (response.ok ? response.json() : { results: [] }))
         .then((data: { results: DebtorHit[] }) => setHits(data.results))
         .catch(() => setHits([]))
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(plazo);
+          setLoading(false);
+        });
       return () => controller.abort();
     }, 250);
     return () => clearTimeout(timer);
