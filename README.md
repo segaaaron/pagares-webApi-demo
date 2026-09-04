@@ -150,8 +150,11 @@ Para producción, `pnpm build` y después `pnpm start` en cada aplicación.
 | `pnpm build` | compila ambas aplicaciones |
 | `pnpm verify` | lint + typecheck + pruebas + regla de arquitectura |
 | `pnpm test` | solo las pruebas unitarias |
-| `pnpm test:e2e` | pruebas de extremo a extremo (requiere la API levantada) |
+| `pnpm test:e2e` | extremo a extremo y contrato de puertos (requiere la API levantada) |
+| `pnpm test:a11y` | accesibilidad de las rutas críticas (requiere api y web levantadas) |
 | `pnpm perf:k6` | prueba de carga (requiere k6) |
+| `pnpm services:up` | Postgres y Mailpit por Homebrew |
+| `pnpm services:minio` | MinIO local, sólo para la mitad de S3 del contrato |
 | `pnpm lint` · `pnpm typecheck` | por separado |
 | `pnpm arch` | verifica la regla de dependencias entre capas |
 | `pnpm db:migrate` | crea y aplica una migración de desarrollo |
@@ -251,18 +254,34 @@ consumen tanto la API como el panel, de modo que no hay dos definiciones del mis
 ## 7. Pruebas
 
 ```bash
-pnpm verify         # 265 unitarias + lint + typecheck + arquitectura
-pnpm test:e2e       # 37 de extremo a extremo contra la API real
+pnpm verify         # 321 unitarias + lint + typecheck + arquitectura
+pnpm test:e2e       # 63 contra la API real: e2e, seguridad, concurrencia y contrato
+pnpm test:a11y      # 10 auditorías de accesibilidad sobre el panel
+pnpm perf:k6        # carga: 100 usuarios, 30 minutos
 ```
 
-Las unitarias cubren las reglas puras, los contratos y las plantillas. Las de extremo a
-extremo necesitan la API levantada y la base sembrada, y comprueban lo que las unitarias no
-pueden: autorización por objeto y por función, idempotencia y el ciclo de vida completo.
+| Nivel | Qué comprueba | Qué necesita |
+|---|---|---|
+| Unitarias | Reglas puras, contratos, plantillas y presentación del panel | Nada |
+| Extremo a extremo | Ciclo de vida completo e idempotencia | API levantada y sembrada |
+| Seguridad | BOLA y BFLA por endpoint, enumeración, mass assignment | API levantada |
+| Concurrencia y sesión | Folio irrepetible, saldo que no se sobrepasa, refresh reutilizado, bloqueo por cuenta | API levantada |
+| Contrato de puertos | Las dos implementaciones de `ObjectStorage` pasan la misma batería | API levantada; MinIO para la mitad de S3 |
+| Accesibilidad | WCAG 2.1 AA en las diez rutas críticas | api y web levantadas |
+| Carga | Objetivos de servicio de §22.1 | k6 y los límites de tasa subidos |
 
 ```bash
 pnpm dev            # en una terminal
 pnpm test:e2e       # en otra
+pnpm test:a11y      # y las de accesibilidad, con la web ya compilada
 ```
+
+La mitad de S3 del contrato se salta con aviso si MinIO no responde; levántalo con
+`pnpm services:minio` para cubrirla (ADR 0014).
+
+La prueba de carga sale entera de una IP, así que exige subir `RATE_LIMIT_BURST_PER_MIN` y
+`RATE_LIMIT_SUSTAINED_PER_15M`; con los valores de producción se mide el límite de tasa y
+no la API.
 
 ---
 
@@ -273,10 +292,11 @@ apps/
   api/                  API NestJS
     prisma/             esquema y migraciones
     src/modules/        un módulo por responsabilidad
-    test/               pruebas de extremo a extremo y de carga
+    test/               extremo a extremo, contrato de puertos y carga
   web/                  Panel Next.js
     src/app/            rutas (App Router)
     src/features/       vistas y acciones de servidor
+    test/a11y/          auditorías de accesibilidad (Playwright + axe)
 packages/
   contracts/            schemas zod, tipos y códigos de error
   domain-rules/         reglas puras: dinero, calendario, interés, cartera

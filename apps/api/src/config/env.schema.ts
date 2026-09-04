@@ -70,6 +70,16 @@ export const envSchema = z.object({
   /** Ráfaga permitida por IP y minuto (§25.7). */
   RATE_LIMIT_BURST_PER_MIN: z.coerce.number().int().positive().default(120),
   /**
+   * Goteo sostenido permitido por IP cada quince minutos (§25.7).
+   *
+   * Es configurable por la misma razón que el de credenciales: la prueba de
+   * carga de §22.1 —cien usuarios durante media hora— sale toda de una IP y con
+   * el valor de producción se estrella contra el límite en el primer minuto,
+   * midiendo el throttler en vez de la API. También hace falta subirlo cuando
+   * varias personas trabajan detrás de una misma salida a internet.
+   */
+  RATE_LIMIT_SUSTAINED_PER_15M: z.coerce.number().int().positive().default(1000),
+  /**
    * Cuántos proxies hay delante de la API.
    *
    * `0` es acceso directo. En el VPS hay uno —el proxy de Dokploy—, y sin

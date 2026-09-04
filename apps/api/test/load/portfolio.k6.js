@@ -50,7 +50,19 @@ export function setup() {
   });
   const notes = list.json('data') || [];
 
-  return { token, noteIds: notes.map((note) => note.id) };
+  /*
+   * Un pagaré anulado o renovado no tiene liquidación que calcular y la API
+   * responde 400 a propósito. Meterlos en el reparto convertía ese 400 legítimo
+   * en un 10 % de "fallos" que tapaba los fallos de verdad.
+   */
+  const SIN_LIQUIDACION = ['VOID', 'RENEWED'];
+  const simulables = notes.filter((note) => !SIN_LIQUIDACION.includes(note.status));
+
+  return {
+    token,
+    noteIds: notes.map((note) => note.id),
+    simulableIds: simulables.map((note) => note.id),
+  };
 }
 
 export default function (data) {
@@ -70,8 +82,11 @@ export default function (data) {
     const detail = http.get(`${API}/admin/notes/${id}`, { headers, tags: { kind: 'read' } });
     readLatency.add(detail.timings.duration);
     check(detail, { 'detalle responde 200': (r) => r.status === 200 });
+  }
 
+  if (data.simulableIds.length > 0) {
     // El simulador recalcula interés en cada llamada: es la lectura más caliente.
+    const id = data.simulableIds[Math.floor(Math.random() * data.simulableIds.length)];
     const simulate = http.get(`${API}/admin/notes/${id}/simulate`, {
       headers,
       tags: { kind: 'read' },

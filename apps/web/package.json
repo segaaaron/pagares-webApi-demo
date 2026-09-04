@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:a11y": "playwright test"
   },
   "dependencies": {
     "@pagares/contracts": "workspace:*",
@@ -19,13 +20,18 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@pagares/config-ts": "workspace:*",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.1",
+    "tailwindcss": "^4.0.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   }

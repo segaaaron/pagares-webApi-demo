@@ -11,8 +11,12 @@ interface Configurados {
   throttlers: { name: string; ttl: number; limit: number }[];
 }
 
-const configurados = (authPer15m: number, burst?: number): Configurados['throttlers'] =>
-  (throttlerConfigFor(authPer15m, burst) as unknown as Configurados).throttlers;
+const configurados = (
+  authPer15m: number,
+  burst?: number,
+  sostenido?: number,
+): Configurados['throttlers'] =>
+  (throttlerConfigFor(authPer15m, burst, sostenido) as unknown as Configurados).throttlers;
 
 /**
  * Estas pruebas fijan una lección que costó cara: `@nestjs/throttler` aplica
@@ -40,9 +44,22 @@ describe('límites de tasa (§25.7)', () => {
     expect(AUTH_THROTTLE.short.ttl).toBe(900_000);
   });
 
-  it('la ráfaga es configurable y la ventana larga no', () => {
-    const config = configurados(10, 500);
+  it('la ráfaga y el goteo son configurables, con los valores de producción por omisión', () => {
+    const porOmision = configurados(10);
+    expect(porOmision[0]?.limit).toBe(120);
+    expect(porOmision[1]?.limit).toBe(1_000);
+
+    const config = configurados(10, 500, 50_000);
     expect(config[0]?.limit).toBe(500);
-    expect(config[1]?.limit).toBe(1_000);
+    // El goteo se sube para la prueba de carga de §22.1: cien usuarios durante
+    // media hora salen todos de una IP y con mil cada quince minutos se mide el
+    // throttler, no la API.
+    expect(config[1]?.limit).toBe(50_000);
+  });
+
+  it('las dos ventanas conservan su duración aunque cambien los cupos', () => {
+    const config = configurados(10, 500, 50_000);
+    expect(config[0]?.ttl).toBe(60_000);
+    expect(config[1]?.ttl).toBe(900_000);
   });
 });

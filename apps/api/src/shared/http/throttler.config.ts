@@ -17,13 +17,14 @@ import type { ThrottlerModuleOptions } from '@nestjs/throttler';
 export function throttlerConfigFor(
   authPer15m: number,
   burstPerMinute = 120,
+  sustainedPer15m = 1_000,
 ): ThrottlerModuleOptions {
   return {
     throttlers: [
       // Ventana corta contra ráfagas.
       { name: 'short', ttl: 60_000, limit: burstPerMinute },
       // Ventana larga contra el goteo sostenido.
-      { name: 'long', ttl: 900_000, limit: 1_000 },
+      { name: 'long', ttl: 900_000, limit: sustainedPer15m },
     ],
   };
 }

@@ -15,13 +15,15 @@
     "db:migrate": "prisma migrate dev --schema apps/api/prisma/schema.prisma",
     "perf:k6": "k6 run apps/api/test/load/portfolio.k6.js",
     "test:e2e": "pnpm --filter @pagares/api test:e2e",
+    "test:a11y": "pnpm --filter @pagares/web test:a11y",
     "db:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
-    "db:seed": "tsx apps/api/prisma/seed.ts",
-    "admin:create": "tsx apps/api/scripts/create-admin.ts",
+    "db:seed": "dotenv -e .env -- tsx apps/api/prisma/seed.ts",
+    "admin:create": "dotenv -e .env -- tsx apps/api/scripts/create-admin.ts",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm arch",
     "db:deploy": "prisma migrate deploy --schema apps/api/prisma/schema.prisma",
     "db:studio": "prisma studio --schema apps/api/prisma/schema.prisma",
-    "services:start": "brew services start postgresql@16 && brew services start redis && brew services start mailpit"
+    "services:up": "brew services start postgresql@16 && brew services start mailpit",
+    "services:minio": "MINIO_ROOT_USER=${STORAGE_ACCESS_KEY:-pagares} MINIO_ROOT_PASSWORD=${STORAGE_SECRET_KEY:-pagares_local} minio server .local/minio --address :9000 --console-address :9090"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

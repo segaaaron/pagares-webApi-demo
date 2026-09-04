@@ -35,7 +35,10 @@ module.exports = {
       comment: 'Archivo que nadie importa. Los puntos de entrada están exentos.',
       from: {
         orphan: true,
-        pathNot: '(\\.d\\.ts$)|(\\.config\\.(m|c)?(j|t)s$)|(/src/index\\.ts$)|(/src/main\\.ts$)|(/app/.*\\.tsx$)',
+        // El sustituto de `server-only` sólo lo referencia el alias de vitest:
+        // ningún import lo nombra, y ése es exactamente su cometido.
+        pathNot:
+          '(\\.d\\.ts$)|(\\.config\\.(m|c)?(j|t)s$)|(/src/index\\.ts$)|(/src/main\\.ts$)|(/app/.*\\.tsx$)|(/test/server-only-stub\\.ts$)',
       },
       to: {},
     },

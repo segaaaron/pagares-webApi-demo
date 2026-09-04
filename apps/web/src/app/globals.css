@@ -12,7 +12,10 @@
   --color-surface-2: #e8ede9;
   --color-ink: #121b17;
   --color-ink-2: #39473f;
-  --color-muted: #6a7a71;
+  /* Contraste medido: 4.9:1 sobre el menú, 5.0:1 sobre el papel y 5.5:1 sobre
+     blanco. El tono anterior (#6a7a71) se quedaba en 4.06 y no pasaba AA en el
+     texto pequeño, que es justo donde se usa. */
+  --color-muted: #5e6c65;
   --color-line: #d2dad4;
   --color-line-strong: #b6c2ba;
 

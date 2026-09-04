@@ -1475,7 +1475,7 @@ Contadores en memoria del proceso. Superarlos devuelve `429` con `Retry-After`; 
 | Nivel | Qué cubre | Dónde | Meta |
 |---|---|---|---|
 | **Unitarias de dominio** | Estados y transiciones (§11.3), saldo, interés, importe en letra, calendario, política de contraseña | Sin Nest, sin base | **100 % de las reglas**, no de las líneas |
-| **De contrato** | Cada implementación de un puerto pasa la misma batería (§7, L) | Con Testcontainers | Todas las implementaciones |
+| **De contrato** | Cada implementación de un puerto pasa la misma batería (§7, L) | Servicios locales (ADR 0014) | Todas las implementaciones |
 | **Integración** | Repositorios, transacciones, bloqueo de fila, secuencia de folio | Postgres real | Los caminos con concurrencia |
 | **E2E de API** | Los flujos de §0 de punta a punta | supertest + Postgres + MinIO | Los diez flujos principales |
 | **Seguridad** | BOLA y BFLA por endpoint, enumeración, fuerza bruta, refresh reutilizado, mass assignment | supertest | **Obligatorio por endpoint nuevo** |

@@ -126,7 +126,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               </ConfirmDialog>
             </form>
 
-            <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted/70">
+            <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
               Admin console · v1
             </p>
           </div>
