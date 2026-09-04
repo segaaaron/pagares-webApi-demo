@@ -7,6 +7,9 @@ import { Money } from '@/shared/ui/money';
 import { StatCard } from '@/shared/ui/stat-card';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { PageHeader } from '@/shared/ui/page-header';
+import { Suspense } from 'react';
+import { StageList } from '@/features/collections/stage-list';
+import { TableSkeleton } from '@/shared/ui/table-skeleton';
 
 export const metadata = { title: 'Cobranza' };
 
@@ -60,7 +63,14 @@ const TONES = {
   crit: { bar: 'bg-crit', pill: 'bg-crit-soft text-crit', stripe: 'var(--color-crit)' },
 } as const;
 
-export default async function CollectionsPage() {
+export default async function CollectionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const consulta = await searchParams;
+  const etapaAbierta = typeof consulta['etapa'] === 'string' ? consulta['etapa'] : null;
+
   const [portfolio, queues, settings, recovery, activity, settlements] = await Promise.all([
     getPortfolio(),
     getWorkQueues(),
@@ -143,8 +153,11 @@ export default async function CollectionsPage() {
           return (
             <Link
               key={stage.id}
-              href={`/pagares?bucket=${stage.buckets[0]}`}
-              className="card card-accent card-interactive block px-4 pb-4 pt-4 transition-shadow"
+              href={etapaAbierta === stage.id ? '/cobranza' : `/cobranza?etapa=${stage.id}`}
+              aria-expanded={etapaAbierta === stage.id}
+              className={`card card-accent card-interactive block px-4 pb-4 pt-4 transition-shadow ${
+                etapaAbierta === stage.id ? 'ring-2 ring-accent' : ''
+              }`}
               style={{ '--accent-stripe': tone.stripe } as React.CSSProperties}
             >
               <div className="flex items-start justify-between gap-2">
@@ -179,6 +192,12 @@ export default async function CollectionsPage() {
           );
         })}
       </section>
+
+      {etapaAbierta ? (
+        <Suspense key={etapaAbierta} fallback={<TableSkeleton rows={5} />}>
+          <StageList stageId={etapaAbierta} />
+        </Suspense>
+      ) : null}
 
       <QueueBoard
         organizationName={settings.legalName}
