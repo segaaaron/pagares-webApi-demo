@@ -181,3 +181,97 @@ function resumen(model: PlanModel, principalCents: bigint, rows: PlanRow[]): Pay
     totalCents: rows.reduce((suma, fila) => suma + fila.paymentCents, 0n),
   };
 }
+
+/** Una cuota que todavía no está saldada, tal como la guarda su pagaré. */
+export interface PendingInstallment {
+  /** Posición dentro de la serie: 1..n. */
+  index: number;
+  /** Vencimiento civil, `YYYY-MM-DD`. */
+  dueDate: string;
+  /** Lo que dice el título. */
+  amountCents: bigint;
+  /** Lo abonado hasta ahora. */
+  paidCents: bigint;
+  /** El interés ordinario que lleva dentro esa cuota, según el plan pactado. */
+  interestCents: bigint;
+}
+
+export interface EarlyPayoff {
+  model: PlanModel;
+  onDate: string;
+  /** El capital que queda por devolver. */
+  principalCents: bigint;
+  /** El interés ordinario que sí se debe pese a pagar antes. */
+  interestDueCents: bigint;
+  /** El interés que el deudor se ahorra por adelantar el pago. */
+  savedCents: bigint;
+  /** Lo que hay que entregar hoy: capital más el interés que se debe. */
+  payoffCents: bigint;
+  /** De las cuotas pendientes, cuántas ya vencieron a esa fecha. */
+  dueCount: number;
+  pendingCount: number;
+}
+
+/**
+ * Liquidación anticipada: qué pasa si el deudor paga hoy lo que le queda (§12).
+ *
+ * Que se ahorre algo o no **depende de cómo se pactó el interés**, y por eso no
+ * hay una sola respuesta honesta:
+ *
+ * · Sobre **saldos insolutos**, el interés es el precio del tiempo: si el
+ *   dinero se devuelve antes, el tiempo no transcurre y ese interés futuro no
+ *   se causa. Se ahorra.
+ * · Sobre **saldo global**, el interés se pactó de una vez sobre el importe
+ *   original, así que adelantar no lo baja. No es un descuido nuestro: es lo
+ *   que se firmó, y la pantalla lo dice con todas sus letras.
+ *
+ * Dentro de una cuota parcialmente abonada, lo pagado se imputa primero a
+ * intereses y después a capital (art. 2094 CCF), que es como se hace y como lo
+ * esperaría un juez si alguien revisa la cuenta.
+ *
+ * El **moratorio** no entra aquí: es sanción por atraso, no precio del
+ * préstamo, y se calcula sobre los días que corrieron (§12.3).
+ */
+export function settleEarly(input: {
+  model: PlanModel;
+  onDate: string;
+  pending: PendingInstallment[];
+}): EarlyPayoff {
+  const { model, onDate } = input;
+
+  let principalCents = 0n;
+  let interestDueCents = 0n;
+  let savedCents = 0n;
+  let dueCount = 0;
+
+  for (const cuota of input.pending) {
+    const resta = cuota.amountCents - cuota.paidCents;
+    if (resta <= 0n) continue;
+
+    // Lo abonado cubrió primero el interés; lo que sobre de él sigue debiéndose.
+    const interesPagado = cuota.paidCents < cuota.interestCents ? cuota.paidCents : cuota.interestCents;
+    const interesRestante = cuota.interestCents - interesPagado;
+    // Nunca más interés que lo que resta de la cuota: el resto es capital.
+    const interes = interesRestante > resta ? resta : interesRestante;
+    principalCents += resta - interes;
+
+    const vencida = cuota.dueDate <= onDate;
+    if (vencida) dueCount += 1;
+
+    // La cuota ya vencida se debe entera: su interés ya se causó. La futura
+    // sólo perdona el interés si se pactó sobre saldos insolutos.
+    if (vencida || model !== 'INSOLUTOS') interestDueCents += interes;
+    else savedCents += interes;
+  }
+
+  return {
+    model,
+    onDate,
+    principalCents,
+    interestDueCents,
+    savedCents,
+    payoffCents: principalCents + interestDueCents,
+    dueCount,
+    pendingCount: input.pending.filter((c) => c.amountCents > c.paidCents).length,
+  };
+}

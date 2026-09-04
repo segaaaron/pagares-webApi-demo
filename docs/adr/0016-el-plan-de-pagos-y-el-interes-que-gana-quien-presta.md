@@ -58,7 +58,6 @@ sumar los doce ya no da el préstamo sino el préstamo más el precio.
 
 El moratorio sigue corriendo aparte y sólo sobre la cuota que se pague tarde.
 
-Queda fuera, y a propósito: el pago anticipado. Si el deudor liquida antes de tiempo, sobre
-saldos insolutos debería ahorrarse el interés futuro y sobre global no. Hoy el sistema no
-recalcula nada: se registra el abono contra el pagaré que toque. Cuando alguien lo pida,
-se decide entonces y con su propio ADR.
+El pago anticipado quedó fuera de este ADR y se decidió en el **0017**: sobre saldos
+insolutos el interés futuro no se cobra, sobre global sí, y el moratorio no se perdona en
+ninguno de los dos.

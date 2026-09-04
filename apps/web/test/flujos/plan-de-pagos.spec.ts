@@ -83,3 +83,82 @@ test('sin interés, el plan reparte sólo el préstamo', async ({ page }) => {
   await expect(plan).toContainText('$5,000.00');
   await expect(plan).toContainText('$0.00');
 });
+
+/**
+ * Liquidación anticipada (§12): la pregunta que hace el deudor por teléfono.
+ *
+ * La respuesta no es la misma según cómo se pactó el interés, y ése es el punto:
+ * sobre saldos insolutos el interés que no transcurre no se cobra; sobre saldo
+ * global se pactó de una vez y adelantar no lo baja. La cifra la calcula el
+ * servidor —aquí sólo se comprueba que la pantalla dice la verdad—.
+ */
+const API = process.env.E2E_API_URL ?? 'http://localhost:3001/api/v1';
+
+/** Emite una serie por la API y devuelve el primer pagaré. */
+async function emitirSerie(
+  request: import('@playwright/test').APIRequestContext,
+  model: 'INSOLUTOS' | 'GLOBAL',
+): Promise<string> {
+  const login = await request.post(`${API}/auth/login`, { data: ADMIN });
+  const { accessToken } = (await login.json()) as { accessToken: string };
+
+  const hoy = new Date();
+  const ayer = new Date(hoy.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const vence = new Date(hoy.getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
+
+  const respuesta = await request.post(`${API}/admin/notes`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    data: {
+      debtor: {
+        fullName: `Liquidación ${Date.now()}`,
+        address: 'Calle de prueba 1',
+        phone: `+52443${String(Date.now()).slice(-7)}`,
+      },
+      issuePlace: 'Morelia, Michoacán',
+      issueDate: ayer,
+      paymentPlace: 'Morelia, Michoacán',
+      dueDate: vence,
+      creditorName: 'Créditos Morelia S.A. de C.V.',
+      amountCents: '6000000',
+      interestRate: { value: 3, period: 'MONTHLY' },
+      installments: 12,
+      plan: { model, rate: { value: 3, period: 'MONTHLY' } },
+    },
+  });
+
+  const { id } = (await respuesta.json()) as { id: string };
+  return id;
+}
+
+test('sobre saldos insolutos, liquidar antes enseña lo que se ahorra', async ({ page, request }) => {
+  const noteId = await emitirSerie(request, 'INSOLUTOS');
+  await abrirEmision(page); // deja la sesión abierta en el navegador
+  await page.goto(`/pagares/${noteId}`);
+  await page.waitForLoadState('networkidle');
+
+  const panel = page.getByRole('region', { name: 'Liquidación anticipada' });
+  await panel.getByRole('button', { name: 'Calcular' }).click();
+
+  // Nadie ha abonado ni ha vencido nada: liquidar hoy es devolver lo prestado.
+  await expect(panel).toContainText('$60,000.00');
+  await expect(panel).toContainText('$12,332.69');
+  await expect(panel).toContainText('saldos insolutos');
+});
+
+test('sobre saldo global, la pantalla dice que adelantar no ahorra', async ({ page, request }) => {
+  // Lo contrario de un descuento silencioso: se pactó así y se dice.
+  const noteId = await emitirSerie(request, 'GLOBAL');
+  await abrirEmision(page);
+  await page.goto(`/pagares/${noteId}`);
+  await page.waitForLoadState('networkidle');
+
+  const panel = page.getByRole('region', { name: 'Liquidación anticipada' });
+  await panel.getByRole('button', { name: 'Calcular' }).click();
+
+  await expect(panel).toContainText('$81,600.00');
+  await expect(panel).toContainText('no lo reduce');
+  await expect(panel).not.toContainText('Interés que se ahorra');
+});

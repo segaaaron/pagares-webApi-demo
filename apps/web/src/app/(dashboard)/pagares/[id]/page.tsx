@@ -10,6 +10,7 @@ import { getCustodyLog } from '@/features/notes/custody-queries';
 import { ForgiveRemainder } from '@/features/notes/forgive-remainder';
 import { getSettlementToleranceCents } from '@/features/settings/queries';
 import { Simulator } from '@/features/notes/simulator';
+import { EarlyPayoff } from '@/features/notes/early-payoff';
 import { SendDocument } from '@/features/notes/send-document';
 import { STATUS_PRESENTATION } from '@/entities/note/status';
 import { StatusChip } from '@/shared/ui/status-chip';
@@ -431,6 +432,11 @@ export default async function NoteDetailPage({
           {/* El simulador va junto a los abonos: la pregunta "cuánto debe si
               paga el viernes" se hace justo antes de registrar el pago (§24.5). */}
           <Simulator noteId={note.id} today={today} />
+
+          {/* Liquidar la serie de una vez es otra pregunta que la del abono del
+              viernes, y con otra respuesta: aquí puede haber interés que no se
+              causa (§12). Sólo aparece cuando hay más de un pagaré que saldar. */}
+          {note.series ? <EarlyPayoff noteId={note.id} today={today} /> : null}
 
           {/* Todo lo descargable en un sitio (§17.1). Lo que aún no existe se
               deshabilita con el motivo, no se esconde: así se sabe que existe

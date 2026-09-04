@@ -20,6 +20,7 @@ import { RegisterPaymentUseCase } from '../payments/application/register-payment
 import { ListNotesUseCase } from './application/list-notes.use-case.js';
 import { GetNoteDetailUseCase } from './application/get-note-detail.use-case.js';
 import { SimulateSettlementUseCase } from './application/simulate-settlement.use-case.js';
+import { SimulateEarlyPayoffUseCase } from './application/simulate-early-payoff.use-case.js';
 import { ChangeNoteStatusUseCase } from './application/change-note-status.use-case.js';
 import { ExtendNoteUseCase } from './application/extend-note.use-case.js';
 import { RenewNoteUseCase } from './application/renew-note.use-case.js';
@@ -67,6 +68,7 @@ export class NotesController {
     private readonly listNotes: ListNotesUseCase,
     private readonly getDetail: GetNoteDetailUseCase,
     private readonly simulate: SimulateSettlementUseCase,
+    private readonly earlyPayoff: SimulateEarlyPayoffUseCase,
     private readonly changeStatus: ChangeNoteStatusUseCase,
     private readonly extendNote: ExtendNoteUseCase,
     private readonly renewNote: RenewNoteUseCase,
@@ -118,6 +120,26 @@ export class NotesController {
     @Req() request: Request & { traceId?: string },
   ) {
     return this.simulate.execute(
+      { noteId: id, ...(date !== undefined ? { onDate: date } : {}) },
+      this.contextOf(actor, request),
+    );
+  }
+
+  /**
+   * Liquidación anticipada (§12): cuánto es saldar hoy todo lo que queda.
+   *
+   * `GET` por lo mismo que el simulador: no cambia nada y otro día da otra
+   * cifra. Lo que se ahorre depende de cómo se pactó el interés, y la respuesta
+   * lo dice.
+   */
+  @Get(':id/early-payoff')
+  async simulateEarlyPayoff(
+    @Param('id') id: string,
+    @Query('date') date: string | undefined,
+    @CurrentActor() actor: Actor,
+    @Req() request: Request & { traceId?: string },
+  ) {
+    return this.earlyPayoff.execute(
       { noteId: id, ...(date !== undefined ? { onDate: date } : {}) },
       this.contextOf(actor, request),
     );

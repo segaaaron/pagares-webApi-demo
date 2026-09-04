@@ -281,3 +281,78 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
   });
 });
 
+
+describe('§12 · liquidación anticipada', () => {
+  it('sobre saldos insolutos, liquidar hoy es devolver el capital', async () => {
+    /*
+     * El interés ordinario es el precio del tiempo: si el dinero vuelve antes,
+     * ese tiempo no transcurre. Nadie ha abonado ni ha vencido nada, así que lo
+     * que se debe hoy es exactamente lo prestado.
+     */
+    const emision = await emitir(12, '6000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`, { token: adminToken });
+
+    expect(resultado.status).toBe(200);
+    expect(resultado.body['planModel']).toBe('INSOLUTOS');
+    expect(resultado.body['pendingCount']).toBe(12);
+    expect((resultado.body['principal'] as Record<string, string>)['cents']).toBe('6000000');
+    expect((resultado.body['total'] as Record<string, string>)['cents']).toBe('6000000');
+    expect(BigInt((resultado.body['saved'] as Record<string, string>)['cents'] ?? '0')).toBeGreaterThan(0n);
+  });
+
+  it('sobre saldo global, adelantar no ahorra un peso', async () => {
+    // Se pactó sobre el importe original, y eso es lo que se firmó: la pantalla
+    // lo dice en vez de insinuar un descuento que no existe.
+    const emision = await emitir(12, '6000000', futureDate(30), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`, { token: adminToken });
+
+    expect((resultado.body['saved'] as Record<string, string>)['cents']).toBe('0');
+    // 60,000 de capital más 21,600 de interés pactado.
+    expect((resultado.body['total'] as Record<string, string>)['cents']).toBe('8160000');
+  });
+
+  it('la cifra es la de la serie entera, no la del pagaré abierto', async () => {
+    // Liquidar es saldar la deuda; preguntarlo desde la quinta cuota no puede
+    // contestar sólo por la quinta.
+    const emision = await emitir(6, '6000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
+    const quinta = notas[4] as SerieNota;
+
+    const resultado = await call(`/admin/notes/${quinta.id}/early-payoff`, { token: adminToken });
+
+    expect(resultado.body['pendingCount']).toBe(6);
+    expect((resultado.body['principal'] as Record<string, string>)['cents']).toBe('6000000');
+  });
+
+  it('liquidar en el pasado es 422', async () => {
+    const emision = await emitir(3, '900000');
+    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    const resultado = await call(
+      `/admin/notes/${primera.id}/early-payoff?date=${futureDate(-5)}`,
+      { token: adminToken },
+    );
+    expect(resultado.status).toBe(422);
+  });
+
+  it('sin sesión no se contesta', async () => {
+    const emision = await emitir(3, '900000');
+    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`);
+    expect(resultado.status).toBe(401);
+  });
+});

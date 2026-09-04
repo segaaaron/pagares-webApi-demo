@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPaymentPlan, PLAN_MODELS } from './payment-plan.js';
+import { buildPaymentPlan, PLAN_MODELS, settleEarly } from './payment-plan.js';
 
 /**
  * Plan de pagos pactado (§12).
@@ -150,5 +150,111 @@ describe('casos que rompen la aritmética', () => {
     expect(() => buildPaymentPlan({ ...base, installments: 0, model: 'NONE' })).toThrow(
       'installments_out_of_range',
     );
+  });
+});
+
+describe('liquidación anticipada', () => {
+  /** Convierte un plan en cuotas pendientes, como si nadie hubiera abonado. */
+  const pendientes = (model: 'INSOLUTOS' | 'GLOBAL' | 'NONE', desde: number) =>
+    buildPaymentPlan({ ...base, model })
+      .rows.slice(desde)
+      .map((fila, i) => ({
+        index: desde + i + 1,
+        // Vencen mes a mes desde marzo; la simulación se hace en febrero.
+        dueDate: `2026-${String(3 + desde + i).padStart(2, '0')}-15`,
+        amountCents: fila.paymentCents,
+        paidCents: 0n,
+        interestCents: fila.interestCents,
+      }));
+
+  it('sobre saldos insolutos, el interés futuro no se cobra', () => {
+    // El interés es el precio del tiempo: si el dinero vuelve antes, ese tiempo
+    // no transcurre y el interés no se causa.
+    const liquidacion = settleEarly({
+      model: 'INSOLUTOS',
+      onDate: '2026-02-01',
+      pending: pendientes('INSOLUTOS', 0),
+    });
+
+    expect(liquidacion.interestDueCents).toBe(0n);
+    expect(liquidacion.savedCents).toBeGreaterThan(0n);
+    expect(liquidacion.payoffCents).toBe(base.principalCents);
+  });
+
+  it('sobre saldo global, adelantar no ahorra nada', () => {
+    /*
+     * No es un descuido: el interés se pactó de una vez sobre el importe
+     * original. La pantalla lo dice con todas sus letras, que es justo la
+     * diferencia que hay que enseñar antes de firmar.
+     */
+    const liquidacion = settleEarly({
+      model: 'GLOBAL',
+      onDate: '2026-02-01',
+      pending: pendientes('GLOBAL', 0),
+    });
+
+    expect(liquidacion.savedCents).toBe(0n);
+    expect(liquidacion.interestDueCents).toBe(2_160_000n);
+    expect(liquidacion.payoffCents).toBe(base.principalCents + 2_160_000n);
+  });
+
+  it('la cuota que ya venció se debe entera, interés incluido', () => {
+    // Su interés ya se causó: perdonarlo sería regalar tiempo transcurrido.
+    const cuotas = pendientes('INSOLUTOS', 0);
+    const liquidacion = settleEarly({ model: 'INSOLUTOS', onDate: '2026-04-20', pending: cuotas });
+
+    // Vencieron la de marzo y la de abril; las diez restantes, no.
+    expect(liquidacion.dueCount).toBe(2);
+    expect(liquidacion.interestDueCents).toBe(
+      (cuotas[0]?.interestCents ?? 0n) + (cuotas[1]?.interestCents ?? 0n),
+    );
+    expect(liquidacion.payoffCents).toBe(base.principalCents + liquidacion.interestDueCents);
+  });
+
+  it('lo abonado se imputa primero al interés y luego al capital', () => {
+    // Art. 2094 CCF. Con otra imputación, el capital bajaría más rápido de lo
+    // que corresponde y la cuenta no cuadraría con la de un juez.
+    const liquidacion = settleEarly({
+      model: 'INSOLUTOS',
+      onDate: '2026-02-01',
+      pending: [
+        {
+          index: 1,
+          dueDate: '2026-01-15',
+          amountCents: 10_000n,
+          paidCents: 1_000n,
+          interestCents: 3_000n,
+        },
+      ],
+    });
+
+    expect(liquidacion.interestDueCents).toBe(2_000n); // 3,000 menos los 1,000 abonados
+    expect(liquidacion.principalCents).toBe(7_000n);
+    expect(liquidacion.payoffCents).toBe(9_000n);
+  });
+
+  it('las cuotas ya saldadas no suman nada', () => {
+    const liquidacion = settleEarly({
+      model: 'INSOLUTOS',
+      onDate: '2026-02-01',
+      pending: [
+        { index: 1, dueDate: '2026-01-15', amountCents: 10_000n, paidCents: 10_000n, interestCents: 3_000n },
+      ],
+    });
+
+    expect(liquidacion.pendingCount).toBe(0);
+    expect(liquidacion.payoffCents).toBe(0n);
+  });
+
+  it('sin interés pactado, liquidar es entregar el capital que queda', () => {
+    const liquidacion = settleEarly({
+      model: 'NONE',
+      onDate: '2026-02-01',
+      pending: pendientes('NONE', 6),
+    });
+
+    expect(liquidacion.interestDueCents).toBe(0n);
+    expect(liquidacion.savedCents).toBe(0n);
+    expect(liquidacion.principalCents).toBe(liquidacion.payoffCents);
   });
 });

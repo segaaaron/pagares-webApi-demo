@@ -57,3 +57,40 @@ export class InvalidStatusTransitionError extends BaseDomainError {
     super(`No se permite pasar de ${from} a ${to}`);
   }
 }
+
+export class NoteNotFoundError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.NOT_FOUND;
+  readonly httpStatus = 404;
+  constructor() {
+    super('El pagaré no existe');
+  }
+}
+
+/**
+ * No hay cifra que dar: un anulado no se debe y un renovado se debe en el
+ * documento nuevo. Contestar con un número aquí sería invitar a cobrar lo que
+ * no toca (§13.7).
+ */
+export class NoteNotSettleableError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.NOTE_NOT_PAYABLE;
+  readonly httpStatus = 409;
+  constructor(status: string) {
+    super(
+      status === 'VOID'
+        ? 'El pagaré está anulado: no hay nada que liquidar'
+        : 'El pagaré fue renovado: la liquidación se calcula sobre el documento nuevo',
+    );
+  }
+}
+
+/**
+ * Simular hacia atrás daría una cifra que ya no se puede cobrar: el interés de
+ * los días transcurridos no se devuelve.
+ */
+export class SimulationDateInPastError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.PAYMENT_DATE_INVALID;
+  readonly httpStatus = 422;
+  constructor() {
+    super('La fecha de la simulación no puede ser anterior a hoy', 'date');
+  }
+}

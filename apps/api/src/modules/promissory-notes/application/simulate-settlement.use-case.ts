@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import {
   accrueInterest,
@@ -9,6 +9,11 @@ import {
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
+import {
+  NoteNotFoundError,
+  NoteNotSettleableError,
+  SimulationDateInPastError,
+} from '../domain/note.errors.js';
 
 export interface SimulateSettlementInput {
   noteId: string;
@@ -70,24 +75,12 @@ export class SimulateSettlementUseCase extends BaseUseCase<
         settlements: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
-    if (!note) throw new NotFoundException('El pagaré no existe');
-    if (note.status === 'VOID' || note.status === 'RENEWED') {
-      // Un anulado no se debe y un renovado se debe en el documento nuevo:
-      // dar una cifra aquí sería invitar a cobrar lo que no toca (§13.7).
-      throw new BadRequestException(
-        note.status === 'VOID'
-          ? 'El pagaré está anulado: no hay nada que liquidar'
-          : 'El pagaré fue renovado: la liquidación se calcula sobre el documento nuevo',
-      );
-    }
+    if (!note) throw new NoteNotFoundError();
+    if (note.status === 'VOID' || note.status === 'RENEWED') throw new NoteNotSettleableError(note.status);
 
     const today = businessToday(this.clock.now());
     const onDate = input.onDate ?? today;
-    if (daysBetween(today, onDate) < 0) {
-      // Simular hacia atrás daría una cifra que ya no se puede cobrar: el
-      // interés de los días transcurridos no se devuelve.
-      throw new BadRequestException('La fecha de la simulación no puede ser anterior a hoy');
-    }
+    if (daysBetween(today, onDate) < 0) throw new SimulationDateInPastError();
 
     const settings = await this.prisma.organizationSettings.findUnique({
       where: { id: 'singleton' },

@@ -553,6 +553,8 @@ Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pag
 
 **El interés del plan es el ordinario**, el precio del préstamo, y no el moratorio de §12.3. Se pacta al emitir y se reparte dentro de las cuotas, de dos formas (ADR 0016): sobre **saldos insolutos** —cada mes sobre lo que queda, sistema francés de cuota fija— o sobre **saldo global** —siempre sobre el importe original—. Con la misma tasa, Banxico documenta que el global casi duplica el costo, así que la pantalla lo avisa antes de emitir. El desglose de cada cuota se guarda con el pagaré: es lo pactado, no algo que se recalcule después.
 
+**Liquidar antes de tiempo** (ADR 0017) se consulta con `GET /admin/notes/:id/early-payoff`, y contesta por la serie entera aunque se pregunte desde una cuota. Sobre saldos insolutos el interés de las cuotas futuras no se cobra —el tiempo que no transcurre no se causa—; sobre saldo global sí, porque se pactó de una vez sobre el importe original. La cuota ya vencida se debe entera, lo abonado se imputa primero a intereses (art. 2094 CCF) y el moratorio se suma aparte y no se perdona. Es una consulta: no cobra, no cambia estados y otro día da otro número.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**

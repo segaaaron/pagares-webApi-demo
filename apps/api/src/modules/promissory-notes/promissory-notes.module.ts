@@ -6,6 +6,7 @@ import { IssueNoteUseCase } from './application/issue-note.use-case.js';
 import { ListNotesUseCase } from './application/list-notes.use-case.js';
 import { GetNoteDetailUseCase } from './application/get-note-detail.use-case.js';
 import { SimulateSettlementUseCase } from './application/simulate-settlement.use-case.js';
+import { SimulateEarlyPayoffUseCase } from './application/simulate-early-payoff.use-case.js';
 import { ChangeNoteStatusUseCase } from './application/change-note-status.use-case.js';
 import { ExtendNoteUseCase } from './application/extend-note.use-case.js';
 import { RenewNoteUseCase } from './application/renew-note.use-case.js';
@@ -29,6 +30,7 @@ import { UsersModule } from '../users/users.module.js';
     ListNotesUseCase,
     GetNoteDetailUseCase,
     SimulateSettlementUseCase,
+    SimulateEarlyPayoffUseCase,
     ImportNotesUseCase,
     ChangeNoteStatusUseCase,
     ExtendNoteUseCase,
