@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
-import { registerActivityAction, type ActionState } from '@/features/notes/lifecycle-actions';
+import {
+  changeCollectionStageAction,
+  registerActivityAction,
+  type ActionState,
+} from '@/features/notes/lifecycle-actions';
 import { DateField } from '@/shared/ui/date-field';
 
 /**
@@ -24,7 +28,7 @@ export interface FilaCobranza {
 }
 
 export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState<'gestion' | 'etapa' | null>(null);
   const telefono = fila.debtorPhone?.replace(/[^\d+]/g, '') ?? '';
 
   return (
@@ -67,15 +71,26 @@ export function CollectionRow({ fila, hoy }: { fila: FilaCobranza; hoy: string }
 
         <button
           type="button"
-          onClick={() => setAbierto((v) => !v)}
-          aria-expanded={abierto}
+          onClick={() => setAbierto((v) => (v === 'gestion' ? null : 'gestion'))}
+          aria-expanded={abierto === 'gestion'}
           className="btn btn-secondary btn-sm"
         >
-          {abierto ? 'Cerrar' : 'Registrar gestión'}
+          {abierto === 'gestion' ? 'Cerrar' : 'Registrar gestión'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => (v === 'etapa' ? null : 'etapa'))}
+          aria-expanded={abierto === 'etapa'}
+          className="btn btn-ghost btn-sm"
+          title="Adelantar la etapa o congelarla para que no escale sola"
+        >
+          Etapa
         </button>
       </div>
 
-      {abierto ? <FormularioGestion noteId={fila.noteId} hoy={hoy} /> : null}
+      {abierto === 'gestion' ? <FormularioGestion noteId={fila.noteId} hoy={hoy} /> : null}
+      {abierto === 'etapa' ? <FormularioEtapa noteId={fila.noteId} /> : null}
     </li>
   );
 }
@@ -152,6 +167,67 @@ function FormularioGestion({ noteId, hoy }: { noteId: string; hoy: string }) {
 
       <button type="submit" disabled={pending} className="btn btn-primary btn-sm">
         {pending ? 'Guardando…' : 'Guardar gestión'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * Adelantar la etapa o congelarla (§13.2).
+ *
+ * Congelar es lo que separa la gestión del calendario: el deudor que contesta y
+ * negocia no debería llegar a judicial sólo porque pasan los días.
+ */
+function FormularioEtapa({ noteId }: { noteId: string }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(
+    changeCollectionStageAction.bind(null, noteId),
+    {},
+  );
+
+  return (
+    <form action={action} className="space-y-3 bg-surface-2 px-4 py-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={`etapa-${noteId}`} className={ETIQUETA}>
+            Mover a
+          </label>
+          <select id={`etapa-${noteId}`} name="stage" className={CAMPO} defaultValue="">
+            <option value="">Dejarla como está</option>
+            <option value="PREVENTIVA">Preventiva</option>
+            <option value="ADMINISTRATIVA">Administrativa</option>
+            <option value="EXTRAJUDICIAL">Extrajudicial</option>
+            <option value="JUDICIAL">Judicial</option>
+          </select>
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" name="frozen" className="h-4 w-4 accent-[var(--color-accent)]" />
+            Congelar: que no escale sola
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor={`motivo-${noteId}`} className={ETIQUETA}>
+          Motivo
+        </label>
+        <input
+          id={`motivo-${noteId}`}
+          name="reason"
+          required
+          minLength={3}
+          placeholder="Por qué se mueve o se congela"
+          className={CAMPO}
+        />
+      </div>
+
+      <div aria-live="polite" className="text-xs">
+        {state.error ? <p className="text-crit">{state.error}</p> : null}
+        {state.ok ? <p className="text-ok">{state.ok}</p> : null}
+      </div>
+
+      <button type="submit" disabled={pending} className="btn btn-primary btn-sm">
+        {pending ? 'Guardando…' : 'Guardar etapa'}
       </button>
     </form>
   );

@@ -7,6 +7,8 @@ export interface NoteListRow {
   status: NoteStatus;
   collectionStage: CollectionStage;
   debtorName: string;
+  /** Nulo si el deudor se dio de alta sin teléfono. */
+  debtorPhone: string | null;
   amountCents: bigint;
   paidCents: bigint;
   dueDate: string;

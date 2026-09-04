@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CollectionsController } from './collections.controller.js';
+import { CollectionStageController } from './collection-stage.controller.js';
 import { ReminderRulesController } from './reminder-rules.controller.js';
 import { NoteRemindersController } from './note-reminders.controller.js';
 import { RegisterActivityUseCase } from './application/register-activity.use-case.js';
+import { ChangeCollectionStageUseCase } from './application/change-collection-stage.use-case.js';
 import {
   ListReminderRulesUseCase,
   ReplaceReminderRulesUseCase,
@@ -18,9 +20,15 @@ import { PrismaReminderRuleRepository } from './infrastructure/prisma-reminder-r
  * `notifications`, que escucha el evento.
  */
 @Module({
-  controllers: [CollectionsController, ReminderRulesController, NoteRemindersController],
+  controllers: [
+    CollectionsController,
+    CollectionStageController,
+    ReminderRulesController,
+    NoteRemindersController,
+  ],
   providers: [
     RegisterActivityUseCase,
+    ChangeCollectionStageUseCase,
     ListReminderRulesUseCase,
     ReplaceReminderRulesUseCase,
     PreviewReminderUseCase,

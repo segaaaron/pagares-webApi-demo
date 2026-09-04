@@ -50,7 +50,7 @@ export class PrismaNoteRepository implements NoteRepository {
         paidCents: true,
         dueDate: true,
         signatureMode: true,
-        debtor: { select: { fullName: true } },
+        debtor: { select: { fullName: true, phone: true } },
         signature: { select: { thumbAssetId: true } },
       },
     });
@@ -61,6 +61,7 @@ export class PrismaNoteRepository implements NoteRepository {
       status: row.status,
       collectionStage: row.collectionStage,
       debtorName: row.debtor.fullName,
+      debtorPhone: row.debtor.phone,
       amountCents: row.amountCents,
       paidCents: row.paidCents,
       dueDate: row.dueDate.toISOString().slice(0, 10),

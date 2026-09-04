@@ -52,7 +52,7 @@ export async function StageList({ stageId }: { stageId: string }) {
       noteId: nota.id,
       folio: nota.folio,
       debtorName: nota.debtorName,
-      debtorPhone: null,
+      debtorPhone: nota.debtorPhone,
       balance: nota.balance.formatted,
       dueDate: nota.dueDate,
       daysOverdue: nota.daysOverdue,

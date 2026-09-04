@@ -303,3 +303,38 @@ export async function setCustodyAction(
     'Ubicación del documento registrada.',
   );
 }
+
+/**
+ * Adelantar o congelar la etapa de gestión (§13.2).
+ *
+ * Congelar existe porque el calendario no sabe que el deudor contestó ayer: sin
+ * esto, quien responde y negocia acaba escalado a judicial por acumulación de
+ * días. Exige motivo, como toda decisión de criterio.
+ */
+export async function changeCollectionStageAction(
+  noteId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const reason = String(formData.get('reason') ?? '').trim();
+  if (reason.length < 3) return { error: 'Escribe el motivo del cambio.' };
+
+  const stage = String(formData.get('stage') ?? '').trim();
+  const frozen = formData.get('frozen');
+
+  const result = await run(
+    noteId,
+    () =>
+      api(`/admin/notes/${noteId}/collection-stage`, {
+        method: 'PATCH',
+        body: {
+          ...(stage ? { stage } : {}),
+          ...(frozen === null ? {} : { frozen: frozen === 'on' }),
+          reason,
+        },
+      }),
+    'Etapa actualizada.',
+  );
+  revalidatePath('/cobranza');
+  return result;
+}

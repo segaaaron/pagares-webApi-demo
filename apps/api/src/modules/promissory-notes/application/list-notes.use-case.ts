@@ -71,6 +71,7 @@ export class ListNotesUseCase extends BaseUseCase<ListNotesQuery, NotesPage> {
           agingBucket: classifyAging(overdue),
           collectionStage: row.collectionStage,
           debtorName: row.debtorName,
+          debtorPhone: row.debtorPhone,
           amount: { cents: row.amountCents.toString(), currency: 'MXN', formatted: formatMxn(row.amountCents) },
           paid: { cents: row.paidCents.toString(), currency: 'MXN', formatted: formatMxn(row.paidCents) },
           balance: { cents: balance.toString(), currency: 'MXN', formatted: formatMxn(balance) },

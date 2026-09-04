@@ -96,6 +96,11 @@ export const noteSummarySchema = z
     agingBucket: agingBucketSchema,
     collectionStage: collectionStageSchema,
     debtorName: z.string(),
+    /**
+     * Para marcar desde la lista de cobranza sin abrir el pagaré (§24.2). Es
+     * nulo cuando el deudor se dio de alta sin teléfono.
+     */
+    debtorPhone: z.string().nullable(),
     amount: moneySchema,
     paid: moneySchema,
     balance: moneySchema,
