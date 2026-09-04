@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getWorkQueues } from '@/features/queues/queries';
 import { getNotifications } from '@/features/notifications/queries';
+import { getTodaysReminders, tramoLabel } from '@/features/reminders/queries';
+import { SendTodaysReminders } from '@/features/reminders/send-today';
 import { QueueBoard } from '@/features/queues/queue-board';
 import { getPortfolio } from '@/features/reports/queries';
 import { getSettings } from '@/features/settings/queries';
@@ -19,11 +21,12 @@ export const metadata = { title: 'Panel' };
  * sistema es "qué hago ahora", y cada cola trae ya el botón para hacerlo.
  */
 export default async function TodayPage() {
-  const [queues, portfolio, settings, avisos] = await Promise.all([
+  const [queues, portfolio, settings, avisos, recordatorios] = await Promise.all([
     getWorkQueues(),
     getPortfolio(),
     getSettings(),
     getNotifications(),
+    getTodaysReminders(),
   ]);
 
   // Serie de cobranza para la silueta y la variación: doce meses en pesos.
@@ -115,6 +118,50 @@ export default async function TodayPage() {
           <Link href="/avisos" className="btn btn-secondary btn-sm">
             Ver y reenviar
           </Link>
+        </section>
+      ) : null}
+
+      {/*
+        * Los recordatorios del día, en un solo envío.
+        *
+        * Antes había que entrar en cada pagaré: con treinta vencimientos, treinta
+        * viajes. Se enseña a quién le va a llegar **antes** de mandar nada, y
+        * pulsarlo dos veces el mismo día no duplica ningún correo (§13.1).
+        */}
+      {recordatorios.pending.length > 0 ? (
+        <section aria-labelledby="recordatorios-title" className="card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="recordatorios-title" className="text-base font-semibold text-ink">
+                Recordatorios de hoy
+              </h2>
+              <p className="text-sm text-muted">
+                {recordatorios.pending.length === 1
+                  ? 'Un deudor debe recibir aviso hoy.'
+                  : `${recordatorios.pending.length} deudores deben recibir aviso hoy.`}
+                {recordatorios.alreadySent.length > 0
+                  ? ` Otros ${recordatorios.alreadySent.length} ya lo recibieron.`
+                  : ''}
+              </p>
+            </div>
+            <SendTodaysReminders count={recordatorios.pending.length} />
+          </div>
+
+          <ul className="mt-3 divide-y divide-line border-t border-line">
+            {recordatorios.pending.slice(0, 6).map((aviso) => (
+              <li key={aviso.noteId} className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm">
+                <span className="tnum font-mono text-xs text-muted">{aviso.folio}</span>
+                <span className="font-medium text-ink">{aviso.debtorName}</span>
+                <span className="text-xs text-muted">{aviso.to}</span>
+                <span className="ml-auto text-xs text-ink-2">{tramoLabel(aviso.offsetDays)}</span>
+              </li>
+            ))}
+          </ul>
+          {recordatorios.pending.length > 6 ? (
+            <p className="mt-2 text-xs text-muted">
+              y {recordatorios.pending.length - 6} más.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
