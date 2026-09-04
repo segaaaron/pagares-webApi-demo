@@ -158,7 +158,12 @@ export default async function NoteDetailPage({
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+      {/*
+        * `items-start`: sin él las dos columnas crecen hasta la altura de la
+        * más alta, y el documento se estiraba con un palmo de trama en blanco
+        * debajo de la firma sólo porque la operación tenía más tarjetas.
+        */}
+      <div className="grid items-start gap-5 lg:grid-cols-[1.4fr_1fr]">
         {/* El documento: se lee como un pagaré, no como un formulario. */}
         {/*
           * El documento se lee como un pagaré, no como una ficha: la trama
@@ -277,8 +282,13 @@ export default async function NoteDetailPage({
           </div>
         </section>
 
-        {/* La operación */}
-        <div className="space-y-4">
+        {/*
+          * La operación se queda a la vista mientras se lee el documento: es
+          * desde donde se registra el abono, y bajarla a buscarla cada vez es
+          * el viaje que hace el administrador cuarenta veces al día. Con su
+          * propio scroll cuando no cabe, para no arrastrar la página entera.
+          */}
+        <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <section className="card p-4" aria-label="Resumen">
             <h2 className="mb-3 text-sm font-semibold">Resumen</h2>
 
