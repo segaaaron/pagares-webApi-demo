@@ -77,6 +77,16 @@ export default async function NotesPage({ searchParams }: PageProps) {
   sonda.set('limit', '1');
   const hayPagares = (await listNotes(sonda)).data.length > 0;
 
+  /**
+   * Cartera recién estrenada: no hay nada que filtrar.
+   *
+   * Con la base vacía, ofrecer diez estados, dos fechas, una búsqueda y una
+   * paginación de «0 de 0» es dar herramientas para buscar en un cajón vacío.
+   * Lo único que cabe hacer aquí es emitir el primero.
+   */
+  const sinFiltros = [...params.keys()].every((k) => k === 'orden' || k === 'limit');
+  const carteraVacia = !hayPagares && sinFiltros;
+
   return (
     <div className="space-y-5">
       {aviso ? <RouteNotice tone={aviso.tone} message={aviso.message} /> : null}
@@ -110,11 +120,24 @@ export default async function NotesPage({ searchParams }: PageProps) {
         }
       />
 
-      {/* La tabla y sus filtros llegan juntos: la línea de conteo depende del
-          resultado, así que mostrar los filtros antes daría un número falso. */}
-      <Suspense key={params.toString()} fallback={<TableSkeleton />}>
-        <NotesList params={params} />
-      </Suspense>
+      {carteraVacia ? (
+        <section className="card px-6 py-16 text-center">
+          <p className="text-base font-semibold text-ink">Todavía no hay pagarés</p>
+          <p className="mx-auto mt-1.5 max-w-prose text-sm text-muted">
+            Cuando emitas el primero aparecerá aquí, con su folio y su estado. El sistema genera el
+            folio, el importe en letra y el enlace de consulta.
+          </p>
+          <Link href="/pagares/nuevo" className="btn btn-primary mt-5">
+            Emitir el primero
+          </Link>
+        </section>
+      ) : (
+        /* La tabla y sus filtros llegan juntos: la línea de conteo depende del
+           resultado, así que mostrar los filtros antes daría un número falso. */
+        <Suspense key={params.toString()} fallback={<TableSkeleton />}>
+          <NotesList params={params} />
+        </Suspense>
+      )}
     </div>
   );
 }
