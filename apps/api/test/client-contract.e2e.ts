@@ -543,3 +543,105 @@ describe('§12 · el plan sólo con el folio firmado', () => {
     expect(respuesta.status).toBe(404);
   });
 });
+
+/**
+ * La relación entre las dos cifras que el deudor ve a la vez (§12).
+ *
+ * Arriba, lo que le queda del plan; abajo, lo que pagaría liquidando hoy. No son
+ * la misma cuenta —una lleva moratorio y la otra perdona interés futuro— y si no
+ * cuadraran por una regla escrita, la pantalla parecería rota.
+ *
+ * La identidad es exacta:
+ *
+ *     plan.pending = early-payoff.total − lateInterest + saved
+ *
+ * Es decir: al saldo del plan se le quita el interés que no llegará a correr y
+ * se le suma la sanción de los días que ya corrieron.
+ */
+describe('§12 · el plan y la liquidación no se contradicen', () => {
+  let firmadas: string[] = [];
+
+  beforeAll(async () => {
+    const perfil = await call('/me/profile', { token: clienteToken });
+    const phone = String((perfil.body as Record<string, unknown>)['phone']);
+    const email = String((perfil.body as Record<string, unknown>)['email']);
+
+    // Una serie con la primera cuota ya vencida y las siguientes por vencer:
+    // el caso mezclado, que es donde las dos cifras se separan.
+    const emitido = await call('/admin/notes', {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: {
+        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-60),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(-10),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '6000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+        installments: 3,
+        plan: { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
+      },
+    });
+    expect(emitido.status).toBe(201);
+    const notas = (emitido.body['series'] as { notes: Record<string, unknown>[] }).notes;
+
+    const sharp = (await import('sharp')).default;
+    const trazo = await sharp({
+      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+    })
+      .png()
+      .toBuffer();
+
+    // Firma la vencida y la siguiente: con las dos, la identidad usa sus dos
+    // términos —el moratorio de una y el interés perdonado de la otra—.
+    for (const nota of notas.slice(0, 2)) {
+      const form = new FormData();
+      form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+      form.append(
+        'payload',
+        JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'REMOTE' }),
+      );
+      const firmado = await fetch(`${API}/notes/${String(nota['id'])}/signature`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${clienteToken}` },
+        body: form,
+      });
+      expect(firmado.status).toBe(201);
+      firmadas.push(String(nota['id']));
+    }
+  });
+
+  it('con una cuota vencida, las dos cifras cuadran por la regla', async () => {
+    const detalle = await call(`/me/notes/${firmadas[0]}`, { token: clienteToken });
+    const plan = detalle.body['plan'] as Record<string, Record<string, string>>;
+    const pending = BigInt(plan['pending']?.['cents'] ?? '0');
+
+    const liquidar = await call(`/me/notes/${firmadas[0]}/early-payoff`, { token: clienteToken });
+    const total = BigInt((liquidar.body['total'] as Record<string, string>)['cents'] ?? '0');
+    const mora = BigInt((liquidar.body['lateInterest'] as Record<string, string>)['cents'] ?? '0');
+    const ahorro = BigInt((liquidar.body['saved'] as Record<string, string>)['cents'] ?? '0');
+
+    // Hay de las dos: una cuota vencida que devenga mora y una futura cuyo
+    // interés no llegará a correr.
+    expect(liquidar.body['dueCount']).toBe(1);
+    expect(liquidar.body['pendingCount']).toBe(2);
+    expect(mora).toBeGreaterThan(0n);
+    expect(ahorro).toBeGreaterThan(0n);
+
+    expect(total - mora + ahorro).toBe(pending);
+  });
+
+  it('la mora de la cuota vencida entra en el total y no se descuenta', async () => {
+    // Es sanción por días ya corridos: pagar hoy no los devuelve (§12.3).
+    const liquidar = await call(`/me/notes/${firmadas[0]}/early-payoff`, { token: clienteToken });
+    const principal = BigInt((liquidar.body['principal'] as Record<string, string>)['cents'] ?? '0');
+    const interes = BigInt((liquidar.body['interestDue'] as Record<string, string>)['cents'] ?? '0');
+    const mora = BigInt((liquidar.body['lateInterest'] as Record<string, string>)['cents'] ?? '0');
+    const total = BigInt((liquidar.body['total'] as Record<string, string>)['cents'] ?? '0');
+
+    expect(principal + interes + mora).toBe(total);
+  });
+});

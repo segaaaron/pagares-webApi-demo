@@ -48,6 +48,19 @@ con todas sus letras, en vez de insinuar un descuento que no existe.
   criterio de «la cuota vencida se debe entera» en dos, y el error a favor del deudor es de
   centavos frente al ruido que añade explicarlo.
 
+## Cómo se relaciona con el saldo del plan
+
+Las dos cifras se enseñan juntas en la aplicación del deudor y **no son la misma cuenta**:
+el saldo del plan es lo que queda de las cuotas firmadas, y la liquidación quita el interés
+que no llegará a correr y suma la sanción de los días que ya corrieron. La relación es
+exacta, y hay una prueba de contrato que no la deja moverse:
+
+    plan.pending = total − lateInterest + saved
+
+Sin `saved` (saldo global) y sin mora, las dos coinciden. Que cuadren por una regla escrita
+es lo que evita que la pantalla parezca rota cuando enseña $66,304.96 arriba y otra cifra
+abajo.
+
 ## Consecuencias
 
 Liquidar sigue siendo registrar abonos contra los pagarés que toquen: esto **no** cobra ni
