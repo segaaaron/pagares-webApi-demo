@@ -72,7 +72,7 @@ export function NotesFilters({ params }: { params: URLSearchParams }) {
     <div className="space-y-3">
       <div className="card space-y-3 px-4 py-3.5">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
-        <StateFilter params={params} />
+        <StateFilter query={params.toString()} />
 
         <span className="mb-1 hidden h-9 w-px bg-line lg:block" aria-hidden />
 

@@ -10,9 +10,14 @@ import { TABS } from './tab-list';
  * la aplicación. Es una elección entre valores excluyentes —lo que hace un
  * desplegable— y así queda al lado de la búsqueda y las fechas, que es donde el
  * administrador busca los filtros.
+ *
+ * La consulta llega como cadena, no como `URLSearchParams`: lo que cruza del
+ * servidor al cliente tiene que poder serializarse, y ese objeto no puede.
+ * Pasarlo tal cual rompía la pantalla entera con una excepción en el navegador.
  */
-export function StateFilter({ params }: { params: URLSearchParams }) {
+export function StateFilter({ query }: { query: string }) {
   const router = useRouter();
+  const params = new URLSearchParams(query);
   const actual = params.get('tab') ?? 'todos';
 
   return (
