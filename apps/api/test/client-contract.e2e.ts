@@ -317,15 +317,20 @@ describe('§13 · la bitácora trae el importe como dato, no dentro de la frase'
   });
 });
 
-describe('§25.15 · el aval que firmó con él', () => {
-  it('el detalle lo lista con su nombre y si ya firmó', async () => {
+describe('§25.15 · quién más quedó obligado', () => {
+  it('el detalle lista al aval por su nombre', async () => {
     // Firmar sin ver quién más queda obligado es firmar a medias.
     const detalle = await call(`/me/notes/${noteId}`, { token: clienteToken });
     expect(Array.isArray(detalle.body['guarantors'])).toBe(true);
 
     for (const aval of detalle.body['guarantors'] as Record<string, unknown>[]) {
       expect(aval['fullName']).toBeTypeOf('string');
-      expect(Object.keys(aval)).toContain('signedAt');
+      /*
+       * Sin estado de firma, a propósito: el sistema no puede capturar la del
+       * aval, y un «pendiente de firma» que nunca cambia prometía un paso que
+       * no existe.
+       */
+      expect(Object.keys(aval)).not.toContain('signedAt');
       // Del tercero, lo justo: su domicilio y su teléfono están en el papel y
       // no hacen falta aquí (§9.1).
       expect(Object.keys(aval)).not.toContain('phone');

@@ -173,88 +173,114 @@ export default async function NoteDetailPage({
           * el PDF, así que reconocer una es reconocer la otra.
           */}
         <section className="card relative overflow-hidden p-0" aria-label="Documento">
+          {/*
+            * Papel de seguridad: dos tramas finas cruzadas, como el guilloché
+            * del talonario impreso. Es lo primero que hace reconocible el
+            * documento antes de leer una sola palabra.
+            */}
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.05]"
+            className="pointer-events-none absolute inset-0 opacity-[0.07]"
             style={{
               backgroundImage:
-                'repeating-linear-gradient(115deg, var(--color-accent) 0 1px, transparent 1px 14px)',
+                'repeating-linear-gradient(115deg, var(--color-accent) 0 1px, transparent 1px 7px), repeating-linear-gradient(65deg, var(--color-accent) 0 1px, transparent 1px 9px)',
             }}
             aria-hidden
           />
 
-          <header className="relative flex items-center justify-between bg-accent px-6 py-3 text-white">
-            <p className="font-serif text-sm font-semibold tracking-[0.28em]">PAGARÉ</p>
-            {/* Blanco entero, no al 80 %: sobre el verde daba 4.01:1 y el folio
-                es texto de 11 px, que exige 4.5. La jerarquía la marcan ya el
-                tamaño y el espaciado. */}
-            <p className="font-mono text-[11px] tracking-[0.14em] text-white">{note.folio}</p>
-          </header>
-
           <div className="relative px-6 py-6">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Importe</p>
-            <p className="tnum mt-1 font-serif text-4xl font-semibold leading-none">
-              {note.amount.formatted}
-            </p>
-            <p className="mt-2 font-serif text-sm italic text-ink-2">{note.amountInWords}</p>
+            {/* Cabecera del talonario: el título encajonado y, a su derecha,
+                dónde y cuándo se expidió. */}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="border-2 border-ink px-4 py-2">
+                <p className="font-serif text-xl font-semibold leading-none text-ink">Pagaré</p>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap items-end justify-end gap-x-6 gap-y-3">
+                <Campo etiqueta="Lugar y fecha de expedición" ancho="min-w-[16rem]">
+                  {note.issuePlace} · {shortDate(note.issueDate)}
+                </Campo>
+                <Campo etiqueta="Folio" ancho="min-w-[9rem]">
+                  <span className="tnum font-mono text-sm">{note.folio}</span>
+                </Campo>
+              </div>
+            </div>
 
-            <p className="mt-5 border-t border-line pt-4 font-serif text-sm text-ink-2">
-              Debo(emos) y pagaré(mos) incondicionalmente a la orden de{' '}
-              <span className="font-semibold text-ink">{note.creditorName}</span> la cantidad
-              anotada, en el lugar y fecha de pago señalados.
-            </p>
+            {/* El cuerpo, con la redacción del formulario impreso y los datos
+                sobre la línea donde irían escritos a mano. */}
+            <div className="mt-7 space-y-4 font-serif text-[15px] leading-relaxed text-ink-2">
+              <p className="flex flex-wrap items-end gap-x-2 gap-y-3">
+                <span>Debo y pagaré incondicionalmente por este pagaré a la orden de</span>
+                <Campo etiqueta="Nombre de la persona a quien ha de pagarse" ancho="min-w-[18rem]">
+                  {note.creditorName}
+                </Campo>
+              </p>
 
-            <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-              {[
-                ['Suscriptor', note.debtor.fullName],
-                ['Domicilio del deudor', note.debtor.address],
-                ['Expedido en', `${note.issuePlace} · ${shortDate(note.issueDate)}`],
-                ['Lugar y fecha de pago', `${note.paymentPlace} · ${shortDate(note.dueDate)}`],
-                ['Interés moratorio', note.interestRateLabel],
-                ['Prescribe', note.prescribesOn ? shortDate(note.prescribesOn) : '—'],
-                // Cómo circula el título: quien lo tenga puede endosarlo, o no.
-                // No es un detalle: decide quién puede acabar cobrándolo.
-                [
-                  'Forma del título',
-                  note.negotiable ? 'A la orden (endosable)' : 'No a la orden (no negociable)',
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-                    {label}
-                  </dt>
-                  <dd className="mt-0.5 text-ink">{value}</dd>
-                </div>
-              ))}
-            </dl>
+              <p className="flex flex-wrap items-end gap-x-2 gap-y-3">
+                <span>en</span>
+                <Campo etiqueta="Lugar de pago" ancho="min-w-[12rem]">
+                  {note.paymentPlace}
+                </Campo>
+                <span>el día</span>
+                <Campo etiqueta="Fecha de pago" ancho="min-w-[10rem]">
+                  {shortDate(note.dueDate)}
+                </Campo>
+              </p>
 
-            {/* Avales: cada uno con su línea, porque cada uno firma por su
-                cuenta y responde igual que el suscriptor. */}
-            {note.guarantors.length > 0 ? (
-              <div className="mt-8 border-t border-line pt-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-                  Por aval
+              <p className="flex flex-wrap items-end gap-x-2 gap-y-3">
+                <span>la cantidad de</span>
+                <Campo etiqueta="Importe con letra" ancho="min-w-[22rem]">
+                  <span className="italic">{note.amountInWords}</span>
+                </Campo>
+              </p>
+            </div>
+
+            {/* El importe en cifra, encajonado como en el talonario: es lo que
+                se compara de un vistazo contra el efectivo. */}
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y-2 border-ink py-3">
+              <p className="tnum font-serif text-3xl font-semibold leading-none text-ink">
+                {note.amount.formatted}
+              </p>
+              <p className="max-w-md text-xs text-ink-2">
+                Desde la fecha de vencimiento y hasta su liquidación, este pagaré causará un interés
+                moratorio de <span className="font-semibold">{note.interestRateLabel}</span>.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-6 sm:grid-cols-[1.2fr_1fr]">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                  Datos del suscriptor
                 </p>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  {note.guarantors.map((guarantor) => (
-                    <div key={guarantor.position}>
-                      <p className="text-sm font-medium text-ink">{guarantor.fullName}</p>
-                      <p className="text-xs text-muted">
-                        {guarantor.address} · {guarantor.phone}
-                      </p>
-                      <p className={`mt-1 text-xs ${guarantor.signedAt ? 'text-ok' : 'text-warn'}`}>
-                        {guarantor.signedAt
-                          ? `Firmó el ${dateTime(guarantor.signedAt)}`
-                          : 'Pendiente de firma'}
-                      </p>
+                <div className="mt-3 space-y-3">
+                  <Campo etiqueta="Nombre" ancho="w-full">
+                    {note.debtor.fullName}
+                  </Campo>
+                  <Campo etiqueta="Dirección" ancho="w-full">
+                    {note.debtor.address}
+                  </Campo>
+                </div>
+
+                <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  {[
+                    ['Prescribe', note.prescribesOn ? shortDate(note.prescribesOn) : '—'],
+                    // Cómo circula el título: quien lo tenga puede endosarlo, o
+                    // no. Decide quién puede acabar cobrándolo.
+                    [
+                      'Forma del título',
+                      note.negotiable ? 'A la orden (endosable)' : 'No a la orden',
+                    ],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                        {label}
+                      </dt>
+                      <dd className="mt-0.5 text-ink">{value}</dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </div>
-            ) : null}
 
-            {/* La firma va sobre su línea, como en el papel. */}
-            <div className="mt-10 flex justify-end">
-              <div className="w-72 text-center">
+              {/* La firma, encajonada como en el papel y sobre su línea. */}
+              <div className="border border-line-strong p-3 text-center">
                 {note.signature ? (
                   <img
                     src={note.signature.url}
@@ -262,7 +288,7 @@ export default async function NoteDetailPage({
                     className="mx-auto -mb-2 h-20 w-auto"
                   />
                 ) : (
-                  <p className="-mb-1 pb-3 text-xs italic text-muted">Pendiente de firma</p>
+                  <p className="-mb-1 pb-3 pt-6 text-xs italic text-muted">Pendiente de firma</p>
                 )}
                 <div className="border-t border-ink-2" />
                 <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
@@ -279,6 +305,35 @@ export default async function NoteDetailPage({
                 ) : null}
               </div>
             </div>
+
+            {/*
+              * Los avales, encajonados al pie como en el talonario, pero **sin
+              * espacio de firma**: el sistema no tiene forma de capturarla, y
+              * una línea vacía prometía un paso que nunca llega. Sus datos sí
+              * van, que es lo que hace identificable a quien se obliga.
+              */}
+            {note.guarantors.length > 0 ? (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {note.guarantors.map((guarantor) => (
+                  <div key={guarantor.position} className="border border-line-strong p-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                      Aval
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      <Campo etiqueta="Nombre" ancho="w-full">
+                        {guarantor.fullName}
+                      </Campo>
+                      <Campo etiqueta="Dirección" ancho="w-full">
+                        {guarantor.address}
+                      </Campo>
+                      <Campo etiqueta="Teléfono" ancho="w-full">
+                        {guarantor.phone}
+                      </Campo>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -551,5 +606,33 @@ function DocumentRow({
         </span>
       )}
     </li>
+  );
+}
+
+/**
+ * Un dato sobre su línea, con la etiqueta debajo en letra pequeña.
+ *
+ * Es la forma del talonario impreso: la raya donde se escribe a mano y, bajo
+ * ella, qué va ahí. Puesto así, quien tiene el papel delante encuentra cada
+ * dato en el mismo sitio que en la pantalla.
+ */
+function Campo({
+  etiqueta,
+  children,
+  ancho = '',
+}: {
+  etiqueta: string;
+  children: React.ReactNode;
+  ancho?: string;
+}) {
+  return (
+    <span className={`flex min-w-0 flex-col ${ancho}`}>
+      <span className="border-b border-ink-2 px-1 pb-0.5 font-sans text-sm text-ink">
+        {children}
+      </span>
+      <span className="mt-1 px-1 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+        {etiqueta}
+      </span>
+    </span>
   );
 }

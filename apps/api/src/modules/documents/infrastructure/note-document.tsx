@@ -111,23 +111,22 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           )}
         </View>
 
+        {/*
+          * El aval se declara con sus datos, **sin espacio de firma**.
+          *
+          * El sistema no tiene forma de capturar su firma —no existe el flujo—,
+          * así que dibujar una línea vacía y un «pendiente de firma» prometía un
+          * paso que nunca llega y ensuciaba el documento con una carencia. Sus
+          * datos sí van: son parte del título.
+          */}
         {model.guarantors.length > 0 ? (
           <View>
             <Text style={s.eyebrow}>Por aval</Text>
             {model.guarantors.map((guarantor) => (
-              <View key={guarantor.position} style={s.signatureBox}>
-                {guarantor.signaturePngBase64 ? (
-                  <Image style={s.signatureImage} src={guarantor.signaturePngBase64} />
-                ) : null}
-                <View style={s.signatureLine} />
+              <View key={guarantor.position}>
                 <Text style={s.signatureName}>{guarantor.fullName}</Text>
                 <Text style={s.evidence}>
                   {guarantor.address} · {guarantor.phone}
-                </Text>
-                <Text style={s.evidence}>
-                  {guarantor.signedAtFormatted
-                    ? `Firmado el ${guarantor.signedAtFormatted}`
-                    : 'Pendiente de firma'}
                 </Text>
               </View>
             ))}

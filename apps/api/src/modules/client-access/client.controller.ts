@@ -348,7 +348,7 @@ export class ClientController {
         payments: { orderBy: { paidOn: 'desc' } },
         // Quién más quedó obligado. Va en el documento que el deudor firma, así
         // que ocultárselo era pedirle que firmara sin verlo entero (§25.15).
-        guarantors: { include: { signature: true }, orderBy: { position: 'asc' } },
+        guarantors: { orderBy: { position: 'asc' } },
       },
     });
     if (!note) throw new NotFoundException();
@@ -380,14 +380,14 @@ export class ClientController {
       daysOverdue: overdue,
       paymentPlace: note.paymentPlace,
       /*
-       * Del aval sólo el nombre y si ya firmó. El domicilio y el teléfono están
-       * en el papel, pero son datos de un tercero: enseñarlos en la aplicación
-       * del deudor no le añade nada y multiplica dónde viven (§9.1).
+       * Del aval, sólo quién es. No se manda estado de firma porque el sistema
+       * no puede capturarla: prometerla en la aplicación era enseñar un paso
+       * que nunca llega. El domicilio y el teléfono están en el papel, pero son
+       * datos de un tercero y aquí no añaden nada (§9.1).
        */
       guarantors: note.guarantors.map((guarantor) => ({
         position: guarantor.position,
         fullName: guarantor.fullName,
-        signedAt: guarantor.signature?.capturedAt.toISOString() ?? null,
       })),
       signatureUrl: note.signature ? await this.storage.signedUrl(note.signature.assetId) : null,
       payments: note.payments.map((p) => ({

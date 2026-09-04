@@ -44,13 +44,17 @@ export interface NoteDetail {
   observations: string | null;
 
   debtor: { id: string; fullName: string; address: string; phone: string; email: string | null };
-  /** Avales del pagaré, con su firma cuando ya la dieron (§25.15). */
+  /**
+   * El aval, como dato del título.
+   *
+   * Sin estado de firma: el sistema no tiene forma de capturarla, y un
+   * «pendiente de firma» que nunca cambia promete un paso que no existe.
+   */
   guarantors: {
     position: number;
     fullName: string;
     address: string;
     phone: string;
-    signedAt: string | null;
   }[];
 
   signature: {
@@ -126,7 +130,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         settlements: { where: { status: 'ACTIVE' }, take: 1 },
         legalCase: true,
         activities: { orderBy: { createdAt: 'desc' }, take: 20 },
-        guarantors: { include: { signature: true }, orderBy: { position: 'asc' } },
+        guarantors: { orderBy: { position: 'asc' } },
       },
     });
     if (!note) throw new NotFoundException('El pagaré no existe');
@@ -179,7 +183,6 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         fullName: guarantor.fullName,
         address: guarantor.address,
         phone: guarantor.phone,
-        signedAt: guarantor.signature?.capturedAt.toISOString() ?? null,
       })),
 
       debtor: {

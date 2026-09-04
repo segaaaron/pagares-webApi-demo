@@ -69,20 +69,12 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
         address: note.debtor.address,
         phone: note.debtor.phone,
       },
-      guarantors: await Promise.all(
-        note.guarantors.map(async (guarantor) => ({
-          position: guarantor.position,
-          fullName: guarantor.fullName,
-          address: guarantor.address,
-          phone: guarantor.phone,
-          signaturePngBase64: guarantor.signature
-            ? await this.signatureAsPng(guarantor.signature.assetId)
-            : null,
-          signedAtFormatted: guarantor.signature
-            ? DATE_TIME.format(guarantor.signature.capturedAt)
-            : null,
-        })),
-      ),
+      guarantors: note.guarantors.map((guarantor) => ({
+        position: guarantor.position,
+        fullName: guarantor.fullName,
+        address: guarantor.address,
+        phone: guarantor.phone,
+      })),
       signaturePngBase64: note.signature ? await this.signatureAsPng(note.signature.assetId) : null,
       signatureCapturedAt: note.signature ? DATE_TIME.format(note.signature.capturedAt) : null,
       signatureSha256: note.signature?.sha256 ?? null,

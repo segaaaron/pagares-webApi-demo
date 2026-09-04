@@ -35,8 +35,6 @@ export interface NoteDocumentModel {
     fullName: string;
     address: string;
     phone: string;
-    signaturePngBase64: string | null;
-    signedAtFormatted: string | null;
   }[];
   /** PNG en base64: @react-pdf no admite WebP, así que se convierte antes. */
   signaturePngBase64: string | null;
