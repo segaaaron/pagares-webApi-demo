@@ -80,6 +80,18 @@ model RefreshToken {
   userId       String
   familyId     String // rotación con detección de reutilización (§10.4)
   deviceId     String?
+  /*
+   * Desde dónde se abrió la sesión.
+   *
+   * Vive aquí y no en `DeviceToken` porque aquélla es el registro de tokens de
+   * push: sólo existe si hay APNs configurado, y mientras no lo haya el panel
+   * decía «sin estrenar» de un deudor que entra todos los días. Una sesión, en
+   * cambio, existe siempre que alguien entra.
+   */
+  platform     String?
+  deviceModel  String?
+  osVersion    String?
+  appVersion   String?
   tokenHash    String    @unique
   expiresAt    DateTime
   revokedAt    DateTime?

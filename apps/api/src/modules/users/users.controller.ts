@@ -65,6 +65,25 @@ export class UsersController {
           orderBy: { lastSeenAt: 'desc' },
           take: 5,
         },
+        /*
+         * La última sesión abierta: de ahí sale desde dónde entra.
+         *
+         * El registro de tokens de push sólo tiene filas si hay APNs
+         * configurado, así que mientras no lo hubo el panel decía «sin
+         * estrenar» de un deudor que entraba todos los días. La sesión, en
+         * cambio, existe siempre que alguien entra.
+         */
+        refreshTokens: {
+          select: {
+            platform: true,
+            deviceModel: true,
+            osVersion: true,
+            appVersion: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
@@ -83,6 +102,16 @@ export class UsersController {
         platform: d.platform,
         lastSeenAt: d.lastSeenAt.toISOString(),
       })),
+      /** Desde dónde entró la última vez. Nulo si nunca ha entrado. */
+      lastDevice: u.refreshTokens[0]
+        ? {
+            platform: u.refreshTokens[0].platform,
+            model: u.refreshTokens[0].deviceModel,
+            osVersion: u.refreshTokens[0].osVersion,
+            appVersion: u.refreshTokens[0].appVersion,
+            at: u.refreshTokens[0].createdAt.toISOString(),
+          }
+        : null,
       createdAt: u.createdAt.toISOString(),
     }));
   }

@@ -348,3 +348,67 @@ describe('§24.1 · la cadena de la bitácora aguanta la concurrencia', () => {
   });
 });
 
+describe('§24.3 · el panel sabe desde dónde entra cada quien', () => {
+  it('el acceso admite los datos del aparato y los guarda en la sesión', async () => {
+    /*
+     * Regresión doble.
+     *
+     * La primera: el bloque `device` es `.strict()`, así que un campo de más
+     * —los que la app empezó a mandar— tumbaba el login entero con 422. No se
+     * ignoraban: no se entraba.
+     *
+     * La segunda: el panel leía el aparato del registro de tokens de push, que
+     * sólo tiene filas si hay APNs configurado. Sin él, la columna decía «sin
+     * estrenar» de un deudor que entraba todos los días.
+     */
+    const sufijo = unique();
+    const email = `aparato-${sufijo}@ejemplo.mx`;
+
+    const creado = await call('/admin/users', {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: { email, fullName: 'Cliente con teléfono', role: 'CLIENT' },
+    });
+    expect(creado.status).toBe(201);
+
+    const reto = await call('/auth/login', {
+      method: 'POST',
+      body: { email, password: String(creado.body['temporaryPassword']) },
+    });
+    const sesion = await call('/auth/password/change-initial', {
+      method: 'POST',
+      body: {
+        changeToken: String(reto.body['changeToken']),
+        newPassword: `Aparato-${sufijo}-2026!`,
+        device: {
+          deviceId: `dispositivo-${sufijo}`,
+          platform: 'ios',
+          model: 'iPhone17,1',
+          osVersion: 'iOS 26.5',
+          appVersion: '1.0 (1)',
+        },
+      },
+    });
+    // Con los tres campos nuevos se entra: antes esto era 422.
+    expect(sesion.status).toBe(200);
+
+    const usuarios = await call('/admin/users', { token: adminToken });
+    const fila = (usuarios.body as unknown as Record<string, unknown>[]).find(
+      (usuario) => usuario['email'] === email,
+    );
+    const aparato = fila?.['lastDevice'] as Record<string, unknown> | null;
+
+    expect(aparato, 'la última sesión dice desde dónde entró').toBeTruthy();
+    expect(aparato?.['model']).toBe('iPhone17,1');
+    expect(aparato?.['osVersion']).toBe('iOS 26.5');
+    expect(aparato?.['appVersion']).toBe('1.0 (1)');
+    expect(aparato?.['platform']).toBe('ios');
+  });
+
+  it('sin datos del aparato se entra igual: el navegador no los manda', async () => {
+    const login = await call('/auth/login', { method: 'POST', body: ADMIN });
+    expect(login.status).toBe(200);
+  });
+});
+

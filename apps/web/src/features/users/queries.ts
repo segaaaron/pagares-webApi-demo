@@ -13,6 +13,14 @@ export interface UserRow {
   notesCount: number;
   /** Dispositivos desde los que ha entrado, del más reciente al más antiguo. */
   devices: { platform: string; lastSeenAt: string }[];
+  /** Desde dónde entró la última vez, sacado de su última sesión. */
+  lastDevice: {
+    platform: string | null;
+    model: string | null;
+    osVersion: string | null;
+    appVersion: string | null;
+    at: string;
+  } | null;
   createdAt: string;
 }
 

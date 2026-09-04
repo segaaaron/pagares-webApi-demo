@@ -157,6 +157,30 @@ function Origen({ user }: { user: UserRow }) {
     return <span className="chip bg-surface-2 text-muted">Panel</span>;
   }
 
+  /*
+   * De la última sesión, no del registro de tokens de push.
+   *
+   * Ese registro sólo tiene filas cuando hay APNs configurado, así que la
+   * columna decía «sin estrenar» de deudores que entraban todos los días. Y
+   * cuando la app manda el modelo, se enseña el aparato en vez de la
+   * plataforma: para soporte, «iPhone17,1 · iOS 26.5» ahorra media conversación
+   * y «ios» no dice nada.
+   */
+  const ultimo = user.lastDevice;
+  if (ultimo) {
+    const aparato = [ultimo.model, ultimo.osVersion].filter(Boolean).join(' · ');
+    return (
+      <span
+        className="chip bg-accent-soft text-accent-ink"
+        title={`Última entrada: ${dateTime(ultimo.at)}${
+          ultimo.appVersion ? ` · app ${ultimo.appVersion}` : ''
+        }`}
+      >
+        {aparato || (ultimo.platform === 'ios' ? 'iOS' : 'Navegador')}
+      </span>
+    );
+  }
+
   const plataformas = [...new Set(user.devices.map((d) => d.platform))];
   if (plataformas.length === 0) {
     return (

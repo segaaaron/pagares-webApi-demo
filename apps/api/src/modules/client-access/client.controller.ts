@@ -315,6 +315,11 @@ export class ClientController {
         paidCents: true,
         dueDate: true,
         creditorName: true,
+        // Sin esto, doce pagarés de un mismo plan se ven como doce deudas
+        // distintas y el deudor cree que debe doce veces (§12).
+        seriesId: true,
+        seriesIndex: true,
+        seriesSize: true,
       },
     });
 
@@ -332,6 +337,11 @@ export class ClientController {
         balance: money(balance),
         dueDate,
         daysOverdue: overdue,
+        /** «Pago 3 de 12», o nulo cuando el pagaré va suelto. */
+        installment:
+          r.seriesId && r.seriesIndex && r.seriesSize
+            ? { seriesId: r.seriesId, index: r.seriesIndex, size: r.seriesSize }
+            : null,
       };
     });
   }
@@ -379,6 +389,17 @@ export class ClientController {
       dueDate,
       daysOverdue: overdue,
       paymentPlace: note.paymentPlace,
+      /**
+       * El plan al que pertenece este pagaré (§12).
+       *
+       * Una deuda a plazos son varios pagarés firmados el mismo día. Sin decirlo,
+       * la aplicación enseña doce documentos sueltos y el deudor entiende que
+       * debe doce veces lo que debe una.
+       */
+      installment:
+        note.seriesId && note.seriesIndex && note.seriesSize
+          ? { seriesId: note.seriesId, index: note.seriesIndex, size: note.seriesSize }
+          : null,
       /*
        * Del aval, sólo quién es. No se manda estado de firma porque el sistema
        * no puede capturarla: prometerla en la aplicación era enseñar un paso

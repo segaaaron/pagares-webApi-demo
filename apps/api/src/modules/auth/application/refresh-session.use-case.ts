@@ -92,6 +92,13 @@ export class RefreshSessionUseCase extends BaseUseCase<RefreshInput, RefreshOutp
         userId: stored.userId,
         familyId: stored.familyId, // misma familia: así se detecta la reutilización
         deviceId: stored.deviceId,
+        // El dispositivo viaja con la sesión: sin arrastrarlo, la primera
+        // rotación —cada quince minutos— lo perdería y el panel volvería a no
+        // saber desde dónde entra nadie.
+        platform: stored.platform,
+        deviceModel: stored.deviceModel,
+        osVersion: stored.osVersion,
+        appVersion: stored.appVersion,
         tokenHash: next.hash,
         expiresAt: this.tokens.refreshExpiry(now),
       },

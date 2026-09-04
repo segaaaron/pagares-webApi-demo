@@ -16,6 +16,16 @@ const deviceSchema = z
     deviceId: z.string().min(8).max(128),
     pushToken: z.string().min(8).max(256).optional(),
     platform: z.enum(['ios', 'web']).default('web'),
+    /*
+     * Desde dónde entra, para el panel y para soporte. Van opcionales porque el
+     * navegador no los manda, y el bloque es `.strict()`: cualquier campo no
+     * declarado tumba el login entero con 422, así que añadir uno del lado del
+     * cliente sin declararlo aquí deja a esa versión de la app sin poder entrar.
+     */
+    /** Identificador de hardware —«iPhone17,1»—, no la familia comercial. */
+    model: z.string().trim().max(80).optional(),
+    osVersion: z.string().trim().max(40).optional(),
+    appVersion: z.string().trim().max(40).optional(),
   })
   .strict()
   .optional();

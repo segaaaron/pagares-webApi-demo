@@ -8,6 +8,10 @@ export interface DeviceInfo {
   deviceId: string;
   pushToken?: string | undefined;
   platform?: 'ios' | 'web' | undefined;
+  /** Identificador de hardware —«iPhone17,1»—, no la familia comercial. */
+  model?: string | undefined;
+  osVersion?: string | undefined;
+  appVersion?: string | undefined;
 }
 
 export interface IssuedSession {
@@ -53,12 +57,21 @@ export class SessionIssuer {
     const familyId = randomUUID();
     const { token, hash } = this.tokens.generateRefreshToken();
 
+    /*
+     * Desde dónde se entra se guarda en la sesión y no en el registro de tokens
+     * de push: aquél sólo tiene filas si hay APNs configurado, y mientras no lo
+     * hubo el panel decía «sin estrenar» de un deudor que entraba todos los días.
+     */
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
         familyId,
         tokenHash: hash,
         deviceId: device?.deviceId ?? null,
+        platform: device?.platform ?? null,
+        deviceModel: device?.model ?? null,
+        osVersion: device?.osVersion ?? null,
+        appVersion: device?.appVersion ?? null,
         expiresAt: this.tokens.refreshExpiry(now),
       },
     });
