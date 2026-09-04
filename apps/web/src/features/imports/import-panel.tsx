@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState, useRef, useState } from 'react';
+import {useRef, useState} from 'react';
 import { importCsvAction, type ImportState } from './actions';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Las columnas, una a una y con su ejemplo.
@@ -64,7 +65,7 @@ const plural = (count: number, one: string, many: string): string =>
  * con lo que traiga un Excel sería perder datos sin rastro.
  */
 export function ImportPanel({ kind }: { kind: 'debtors' | 'notes' }) {
-  const [current, action, pending] = useActionState<ImportState, FormData>(
+  const [current, action, pending] = useBlockingActionState<ImportState, FormData>(
     importCsvAction.bind(null, kind),
     {},
   );

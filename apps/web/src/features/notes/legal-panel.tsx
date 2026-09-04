@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import { openLegalCaseAction, setCustodyAction, type ActionState } from './lifecycle-actions';
 import type { CustodyKind, CustodyLog } from './custody-queries';
 import { shortDate } from '@/shared/lib/format';
 import { DateField } from '@/shared/ui/date-field';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const INPUT = 'w-full input';
 
@@ -34,11 +35,11 @@ export function LegalPanel({
   custody: CustodyLog;
   today: string;
 }) {
-  const [caseState, caseAction, casePending] = useActionState<ActionState, FormData>(
+  const [caseState, caseAction, casePending] = useBlockingActionState<ActionState, FormData>(
     openLegalCaseAction.bind(null, noteId),
     {},
   );
-  const [custodyState, custodyAction, custodyPending] = useActionState<ActionState, FormData>(
+  const [custodyState, custodyAction, custodyPending] = useBlockingActionState<ActionState, FormData>(
     setCustodyAction.bind(null, noteId),
     {},
   );

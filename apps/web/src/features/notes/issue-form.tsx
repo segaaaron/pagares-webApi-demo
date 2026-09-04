@@ -1,11 +1,12 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import { issueNoteAction, type IssueState } from './issue-actions';
 import { DateField } from '@/shared/ui/date-field';
 import { DebtorPicker, type DebtorHit } from './debtor-picker';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { toAnnualRatePct } from '@pagares/domain-rules';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Datos con los que llega el formulario cuando se duplica un pagaré (§19.6).
@@ -105,7 +106,7 @@ export function IssueForm({
   defaults: Defaults;
   plantilla?: Plantilla | undefined;
 }) {
-  const [state, action, pending] = useActionState<IssueState, FormData>(issueNoteAction, {});
+  const [state, action, pending] = useBlockingActionState<IssueState, FormData>(issueNoteAction, {});
 
   // Aviso de tasa (§25.14): avisa, no impide. La decisión es del administrador,
   // pero un 10% mensual son 120% anual y conviene verlo antes de firmar.

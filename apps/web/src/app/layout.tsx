@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { BlockingProvider } from '@/shared/ui/blocking';
 import { IBM_Plex_Mono, IBM_Plex_Sans, Spectral } from 'next/font/google';
 import './globals.css';
 
@@ -39,7 +40,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-MX" className={`${plexSans.variable} ${spectral.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <BlockingProvider>{children}</BlockingProvider>
+      </body>
     </html>
   );
 }

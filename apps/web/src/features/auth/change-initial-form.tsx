@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import { PasswordField } from '../../shared/ui/password-field';
 import { changeInitialAction, type ChangeInitialState } from './actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Contraseña nueva en el primer acceso. Dos campos y la política a la vista:
  * enseñar la regla antes del error ahorra el intento fallido.
  */
 export function ChangeInitialForm() {
-  const [state, action, pending] = useActionState<ChangeInitialState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ChangeInitialState, FormData>(
     changeInitialAction,
     {},
   );

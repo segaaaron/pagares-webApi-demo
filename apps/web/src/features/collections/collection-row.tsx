@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import {
   changeCollectionStageAction,
   createSettlementAction,
@@ -9,6 +9,7 @@ import {
   type ActionState,
 } from '@/features/notes/lifecycle-actions';
 import { DateField } from '@/shared/ui/date-field';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Una fila de la etapa, con la gestión al alcance.
@@ -124,7 +125,7 @@ const ETIQUETA = 'mb-1 block text-xs font-medium text-ink';
 const CAMPO = 'input w-full text-sm';
 
 function FormularioGestion({ noteId, hoy }: { noteId: string; hoy: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     registerActivityAction.bind(null, noteId),
     {},
   );
@@ -204,7 +205,7 @@ function FormularioGestion({ noteId, hoy }: { noteId: string; hoy: string }) {
  * negocia no debería llegar a judicial sólo porque pasan los días.
  */
 function FormularioEtapa({ noteId }: { noteId: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     changeCollectionStageAction.bind(null, noteId),
     {},
   );
@@ -276,7 +277,7 @@ function FormularioConvenio({
   hoy: string;
   saldo: string;
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     createSettlementAction.bind(null, noteId, folio),
     {},
   );

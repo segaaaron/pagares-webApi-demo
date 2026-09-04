@@ -1,12 +1,12 @@
 'use client';
 
-import { useActionState } from 'react';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import {
   confirmPasswordChangeAction,
   requestPasswordCodeAction,
   type PasswordState,
 } from './password-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Cambio de la propia contraseña, en dos pasos con código al correo (§10.3).
@@ -16,7 +16,7 @@ import {
  * el que hasta ahora la única forma de cambiarla era pedirle a otro un reset.
  */
 export function PasswordForm() {
-  const [state, action, pending] = useActionState<PasswordState, FormData>(
+  const [state, action, pending] = useBlockingActionState<PasswordState, FormData>(
     async (prev, formData) =>
       prev.step === 'idle'
         ? requestPasswordCodeAction(prev, formData)

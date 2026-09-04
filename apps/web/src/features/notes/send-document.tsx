@@ -1,7 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
 import { sendNoteDocumentAction, type SendDocumentState } from './send-document-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const OPTIONS = [
   { value: 'note', label: 'Pagaré firmado' },
@@ -17,7 +17,7 @@ const OPTIONS = [
  * dirección.
  */
 export function SendDocument({ noteId, settled }: { noteId: string; settled: boolean }) {
-  const [state, action, pending] = useActionState<SendDocumentState, FormData>(
+  const [state, action, pending] = useBlockingActionState<SendDocumentState, FormData>(
     sendNoteDocumentAction.bind(null, noteId),
     {},
   );

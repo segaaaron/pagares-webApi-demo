@@ -1,11 +1,12 @@
 'use client';
 
 import { PasswordField } from '../../shared/ui/password-field';
-import { useActionState } from 'react';
+
 import { loginAction, type LoginState } from './actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 export function LoginForm() {
-  const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, {});
+  const [state, action, pending] = useBlockingActionState<LoginState, FormData>(loginAction, {});
 
   return (
     <form action={action} className="card space-y-4 p-6 shadow-[var(--shadow-card-hover)]">

@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
 import { DateField } from '@/shared/ui/date-field';
 import { simulateSettlementAction, type SimulationState } from './simulator-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Simulador de liquidación (§24.5): "si paga el 15 de octubre, debe $X".
@@ -12,7 +12,7 @@ import { simulateSettlementAction, type SimulationState } from './simulator-acti
  * la regla 3 del repositorio.
  */
 export function Simulator({ noteId, today }: { noteId: string; today: string }) {
-  const [state, action, pending] = useActionState<SimulationState, FormData>(
+  const [state, action, pending] = useBlockingActionState<SimulationState, FormData>(
     simulateSettlementAction.bind(null, noteId),
     {},
   );

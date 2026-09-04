@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
 import { retryAllAction, retryOneAction, type RetryState } from './actions';
 import { useActionToast } from '@/shared/ui/use-action-toast';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Reintento de todos los avisos atascados.
@@ -15,7 +15,7 @@ import { useActionToast } from '@/shared/ui/use-action-toast';
  * al vaciarse la lista, se llevaría consigo el mensaje de qué pasó.
  */
 export function RetryAllButton({ count }: { count: number }) {
-  const [state, action, pending] = useActionState<RetryState, FormData>(retryAllAction, {});
+  const [state, action, pending] = useBlockingActionState<RetryState, FormData>(retryAllAction, {});
   useActionToast(state, state.ok ?? 'Avisos reenviados.');
 
   const etiqueta = (): string => {
@@ -39,7 +39,7 @@ export function RetryAllButton({ count }: { count: number }) {
 
 export function RetryOneButton({ id }: { id: string }) {
   const retry = retryOneAction.bind(null, id);
-  const [state, action, pending] = useActionState<RetryState, FormData>(retry, {});
+  const [state, action, pending] = useBlockingActionState<RetryState, FormData>(retry, {});
   useActionToast(state, state.ok ?? 'Aviso reenviado.');
 
   return (

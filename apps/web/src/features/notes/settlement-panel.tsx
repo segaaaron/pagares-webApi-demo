@@ -1,9 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
 import { closeSettlementAction, reinstateNoteAction, type ActionState } from './lifecycle-actions';
 import { shortDate } from '@/shared/lib/format';
 import { useActionToast } from '@/shared/ui/use-action-toast';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Convenio vigente (§13.4). Se cierra desde aquí: cumplido liquida el pagaré y
@@ -16,7 +16,7 @@ export function SettlementPanel({
   noteId: string;
   settlement: { id: string; agreed: string; forgiven: string; dueOn: string; status: string };
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     async (prev, formData) =>
       closeSettlementAction(
         noteId,
@@ -72,7 +72,7 @@ export function SettlementPanel({
 
 /** Reversión del castigo: la única salida de `WRITTEN_OFF` (§11.3). */
 export function ReinstatePanel({ noteId }: { noteId: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     reinstateNoteAction.bind(null, noteId),
     {},
   );

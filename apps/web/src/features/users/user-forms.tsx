@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import {
   createUserAction,
   deleteUserAccessAction,
@@ -12,6 +12,7 @@ import { dateTime } from '@/shared/lib/format';
 import { useActionToast } from '@/shared/ui/use-action-toast';
 import { Modal, useModal } from '@/shared/ui/modal';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * La contraseña temporal se muestra **una sola vez** (§8.3). Se dice
@@ -43,7 +44,7 @@ export function CreateUserForm({
   debtor?: { id: string; fullName: string; phone: string; email: string | null } | undefined;
   label?: string | undefined;
 } = {}) {
-  const [state, action, pending] = useActionState<UserActionState, FormData>(createUserAction, {});
+  const [state, action, pending] = useBlockingActionState<UserActionState, FormData>(createUserAction, {});
   const modal = useModal();
 
   useActionToast(state, 'Cuenta creada. La contraseña temporal está en pantalla.');
@@ -173,7 +174,7 @@ export function UserActions({
   fullName: string;
   notesCount: number;
 }) {
-  const [state, action, pending] = useActionState<UserActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<UserActionState, FormData>(
     async (prev, formData) => {
       const orden = String(formData.get('action'));
       if (orden === 'delete') return deleteUserAccessAction(userId, prev);

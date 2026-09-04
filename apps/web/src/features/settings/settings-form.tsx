@@ -1,9 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
 import { saveSettingsAction, type SettingsState } from './actions';
 import { useActionToast } from '@/shared/ui/use-action-toast';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const INPUT = 'w-full input';
 
@@ -97,7 +97,7 @@ function Field({
 }
 
 export function SettingsForm({ values }: { values: SettingsValues }) {
-  const [state, action, pending] = useActionState<SettingsState, FormData>(saveSettingsAction, {});
+  const [state, action, pending] = useBlockingActionState<SettingsState, FormData>(saveSettingsAction, {});
 
   useActionToast(state, 'Ajustes guardados.');
 

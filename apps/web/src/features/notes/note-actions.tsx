@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import {
   createSettlementAction,
   extendNoteAction,
@@ -13,6 +13,7 @@ import {
 } from './lifecycle-actions';
 import { VOID_REASONS, WRITE_OFF_REASONS } from './reason-catalogs';
 import { DateField } from '@/shared/ui/date-field';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const INPUT = 'w-full input';
 const LABEL = 'mb-1 block text-xs text-muted';
@@ -123,7 +124,7 @@ export function NoteActions({
 
 /** Confirma antes de enviar: un correo no se puede "des-enviar". */
 function ReminderPanel({ noteId }: { noteId: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     sendReminderAction.bind(null, noteId),
     {},
   );
@@ -146,7 +147,7 @@ function ReminderPanel({ noteId }: { noteId: string }) {
 }
 
 function ActivityForm({ noteId, today }: { noteId: string; today: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     registerActivityAction.bind(null, noteId),
     {},
   );
@@ -204,7 +205,7 @@ function ActivityForm({ noteId, today }: { noteId: string; today: string }) {
 }
 
 function ExtendForm({ noteId, today }: { noteId: string; today: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     extendNoteAction.bind(null, noteId),
     {},
   );
@@ -231,7 +232,7 @@ function ExtendForm({ noteId, today }: { noteId: string; today: string }) {
 }
 
 function RenewForm({ noteId, today }: { noteId: string; today: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     renewNoteAction.bind(null, noteId),
     {},
   );
@@ -269,7 +270,7 @@ function SettlementForm({
   today: string;
   balanceLabel: string;
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     createSettlementAction.bind(null, noteId, folio),
     {},
   );
@@ -321,7 +322,7 @@ function SettlementForm({
  */
 function ReasonForm({ noteId, folio, kind }: { noteId: string; folio: string; kind: 'void' | 'write-off' }) {
   const bound = kind === 'void' ? voidNoteAction : writeOffNoteAction;
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     bound.bind(null, noteId, folio),
     {},
   );

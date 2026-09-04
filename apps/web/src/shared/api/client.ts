@@ -26,7 +26,19 @@ interface RequestOptions {
   idempotencyKey?: string;
   /** El listado se revalida al registrar un abono; el detalle no se cachea. */
   tags?: string[];
+  /** Para lo que legítimamente tarda: un PDF grande, un reporte, un zip. */
+  timeoutMs?: number;
 }
+
+/**
+ * Cuánto se espera antes de darlo por perdido.
+ *
+ * Sin tope, una petición que nunca contesta —la API reiniciándose en mitad de un
+ * despliegue, la red cortada— deja el botón en «Registrando…» para siempre, y
+ * quien lo pulsó no sabe si su abono entró o no. Veinte segundos es de sobra
+ * para todo lo que hace esta aplicación y bastante poco para no desesperar.
+ */
+const TIMEOUT_MS = 20_000;
 
 /**
  * Cliente de la API. Corre **siempre en el servidor**: el token va en la
@@ -51,14 +63,26 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       headers,
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
       cache: 'no-store',
+      signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
       ...(options.tags ? { next: { tags: options.tags } } : {}),
     });
-  } catch {
-    throw new ApiError(503, {
-      type: 'https://api.pagares.mx/errors/api_unreachable',
-      title: 'El servicio no responde en este momento',
-      status: 503,
-      detail: `No se pudo contactar con la API al pedir ${path}.`,
+  } catch (error) {
+    /*
+     * Se agotó la espera. Es distinto de «no contesta»: la petición pudo llegar
+     * y estarse ejecutando, así que el mensaje no puede afirmar que no se hizo
+     * nada. Las operaciones que escriben llevan clave de idempotencia (§12.4),
+     * de modo que reintentarlas es seguro.
+     */
+    const agotado = error instanceof DOMException && error.name === 'TimeoutError';
+    throw new ApiError(agotado ? 504 : 503, {
+      type: `https://api.pagares.mx/errors/${agotado ? 'api_timeout' : 'api_unreachable'}`,
+      title: agotado
+        ? 'El servicio tardó demasiado en responder'
+        : 'El servicio no responde en este momento',
+      status: agotado ? 504 : 503,
+      detail: agotado
+        ? `La petición a ${path} superó los ${(options.timeoutMs ?? TIMEOUT_MS) / 1000} segundos. Puede que sí se haya hecho: recarga antes de repetirla.`
+        : `No se pudo contactar con la API al pedir ${path}.`,
       traceId: 'local',
     });
   }

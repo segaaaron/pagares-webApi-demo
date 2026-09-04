@@ -2,8 +2,9 @@
 
 import { PasswordField } from '../../shared/ui/password-field';
 import Link from 'next/link';
-import { useActionState } from 'react';
+
 import { forgotPasswordAction, resetPasswordAction, type RecoverState } from './actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Recuperación en dos pasos: pedir el código y usarlo (§10.3, flujo 4).
@@ -12,7 +13,7 @@ import { forgotPasswordAction, resetPasswordAction, type RecoverState } from './
  * está redactado para ser cierto en los dos casos: "si esa cuenta existe".
  */
 export function RecoverForm() {
-  const [state, action, pending] = useActionState<RecoverState, FormData>(
+  const [state, action, pending] = useBlockingActionState<RecoverState, FormData>(
     async (prev, formData) =>
       prev.step === 'request'
         ? forgotPasswordAction(prev, formData)

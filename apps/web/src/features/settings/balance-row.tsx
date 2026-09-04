@@ -1,7 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
 import { recalculateBalanceAction, type RecalculateState } from './balance-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 export interface Mismatch {
   id: string;
@@ -20,7 +20,7 @@ export interface Mismatch {
  * sólo la copia que guarda el pagaré.
  */
 export function BalanceRow({ row }: { row: Mismatch }) {
-  const [state, action, pending] = useActionState<RecalculateState, FormData>(
+  const [state, action, pending] = useBlockingActionState<RecalculateState, FormData>(
     recalculateBalanceAction.bind(null, row.id),
     {},
   );

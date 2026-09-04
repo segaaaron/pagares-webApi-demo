@@ -1,9 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
 import { registerPaymentAction, type PaymentState } from './payment-actions';
 import { DateField } from '@/shared/ui/date-field';
 import { useActionToast } from '@/shared/ui/use-action-toast';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const METHODS = [
   { value: 'CASH', label: 'Efectivo' },
@@ -21,7 +21,7 @@ export function PaymentForm({
   today: string;
   disabledReason?: string;
 }) {
-  const [state, action, pending] = useActionState<PaymentState, FormData>(
+  const [state, action, pending] = useBlockingActionState<PaymentState, FormData>(
     registerPaymentAction.bind(null, noteId),
     {},
   );

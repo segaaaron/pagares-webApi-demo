@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import {useEffect, useState} from 'react';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import {
   previewReminderAction,
@@ -9,6 +9,7 @@ import {
   type ReminderRulesData,
   type RulesState,
 } from './reminder-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const TEMPLATE_LABEL: Record<string, string> = {
   'due-reminder': 'Recordatorio de vencimiento',
@@ -36,7 +37,7 @@ function offsetLabel(days: number): string {
  */
 export function ReminderRulesForm({ data }: { data: ReminderRulesData }) {
   const [rows, setRows] = useState<ReminderRule[]>(data.rules);
-  const [state, action, pending] = useActionState<RulesState, FormData>(
+  const [state, action, pending] = useBlockingActionState<RulesState, FormData>(
     saveReminderRulesAction,
     {},
   );
@@ -213,7 +214,7 @@ function RuleActive({ defaultChecked, index }: { defaultChecked: boolean; index:
 
 function RulePreview({ rule }: { rule: ReminderRule }) {
   const [open, setOpen] = useState(false);
-  const [state, action, pending] = useActionState<RulesState, FormData>(
+  const [state, action, pending] = useBlockingActionState<RulesState, FormData>(
     previewReminderAction.bind(null, rule.id),
     {},
   );

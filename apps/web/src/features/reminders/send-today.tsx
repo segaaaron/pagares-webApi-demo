@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
 import { sendTodaysRemindersAction, type RemindersState } from './actions';
 import { useActionToast } from '@/shared/ui/use-action-toast';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * El botón que manda los avisos del día.
@@ -16,7 +16,7 @@ import { useActionToast } from '@/shared/ui/use-action-toast';
  * antes de que a nadie le diera tiempo a leerlo.
  */
 export function SendTodaysReminders({ count }: { count: number }) {
-  const [state, action, pending] = useActionState<RemindersState, FormData>(
+  const [state, action, pending] = useBlockingActionState<RemindersState, FormData>(
     sendTodaysRemindersAction,
     {},
   );

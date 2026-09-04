@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import {useState} from 'react';
 import { forgiveRemainderAction, type ActionState } from './lifecycle-actions';
+import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
  * Cerrar un pagaré por unos pesos de diferencia (§25.16).
@@ -18,7 +19,7 @@ export function ForgiveRemainder({
   noteId: string;
   balanceLabel: string;
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(
+  const [state, action, pending] = useBlockingActionState<ActionState, FormData>(
     forgiveRemainderAction.bind(null, noteId),
     {},
   );
