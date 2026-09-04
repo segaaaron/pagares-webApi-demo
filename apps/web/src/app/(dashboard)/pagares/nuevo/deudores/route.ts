@@ -30,6 +30,13 @@ export async function GET(request: Request): Promise<NextResponse> {
   // Menos de dos letras devolvería medio directorio y ninguna respuesta útil.
   if (q.length < 2) return NextResponse.json({ results: [] });
 
-  const rows = await api<DebtorRow[]>(`/admin/debtors?q=${encodeURIComponent(q)}`);
-  return NextResponse.json({ results: rows.slice(0, 8) });
+  try {
+    const rows = await api<DebtorRow[]>(`/admin/debtors?q=${encodeURIComponent(q)}`);
+    return NextResponse.json({ results: rows.slice(0, 8) });
+  } catch {
+    // El buscador vive dentro del formulario de emisión: que no encuentre a
+    // nadie es molesto, pero tumbar la pantalla a medio capturar un pagaré es
+    // perder el trabajo de quien lo estaba escribiendo.
+    return NextResponse.json({ results: [], unavailable: true });
+  }
 }

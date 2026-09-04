@@ -38,13 +38,30 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (session) headers.Authorization = `Bearer ${session.accessToken}`;
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
-  const response = await fetch(`${API_URL}/api/v1${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-    cache: 'no-store',
-    ...(options.tags ? { next: { tags: options.tags } } : {}),
-  });
+  /**
+   * Si la API no responde, el fallo llega como un `TypeError: fetch failed`
+   * sin nada dentro: ni ruta, ni motivo, ni algo que enseñar a quien está
+   * delante. Se traduce a un error del sistema, con el mismo formato que el
+   * resto, para que la pantalla pueda decir algo cierto.
+   */
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/api/v1${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+      cache: 'no-store',
+      ...(options.tags ? { next: { tags: options.tags } } : {}),
+    });
+  } catch {
+    throw new ApiError(503, {
+      type: 'https://api.pagares.mx/errors/api_unreachable',
+      title: 'El servicio no responde en este momento',
+      status: 503,
+      detail: `No se pudo contactar con la API al pedir ${path}.`,
+      traceId: 'local',
+    });
+  }
 
   if (!response.ok) {
     const problem = await response.json().catch(() => null);

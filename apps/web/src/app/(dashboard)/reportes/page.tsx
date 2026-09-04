@@ -1,3 +1,4 @@
+import { RouteNotice } from '@/shared/ui/route-notice';
 import Link from 'next/link';
 import { getPortfolio } from '@/features/reports/queries';
 import { shortDate } from '@/shared/lib/format';
@@ -103,7 +104,21 @@ const REPORTS: ReportRow[] = [
   },
 ];
 
-export default async function ReportsPage() {
+/** Motivos con los que una descarga devuelve al administrador aquí. */
+const AVISOS: Record<string, { tone: 'warning' | 'error'; message: string }> = {
+  'descarga-fallida': {
+    tone: 'error',
+    message: 'No se pudo generar la exportación. Inténtalo de nuevo en un momento.',
+  },
+};
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const consulta = await searchParams;
+  const aviso = typeof consulta['aviso'] === 'string' ? AVISOS[consulta['aviso']] : undefined;
   const portfolio = await getPortfolio();
 
   const columns: Column<ReportRow>[] = [
@@ -172,6 +187,7 @@ export default async function ReportsPage() {
 
   return (
     <div className="space-y-5">
+      {aviso ? <RouteNotice tone={aviso.tone} message={aviso.message} /> : null}
       <PageHeader
         crumbs={[{ label: 'Reportes' }]}
         title="Reportes"

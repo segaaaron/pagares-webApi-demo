@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import { api } from '@/shared/api/client';
 import { csvResponse, toCsv } from '@/shared/lib/csv';
 import { readSession } from '@/shared/auth/session';
@@ -34,7 +35,14 @@ export async function GET(
     if (value) query.set(key, value);
   }
 
-  const data = await api<AccountingExport>(`/admin/reports/accounting?${query.toString()}`);
+  let data: AccountingExport;
+  try {
+    data = await api<AccountingExport>(`/admin/reports/accounting?${query.toString()}`);
+  } catch {
+    const destino = new URL('/reportes', request.url);
+    destino.searchParams.set('aviso', 'descarga-fallida');
+    return NextResponse.redirect(destino);
+  }
   const csv = toCsv(
     data.columns.map((column) => column.label),
     data.rows.map((row) => data.columns.map((column) => row[column.key] ?? '')),
