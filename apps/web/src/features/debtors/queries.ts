@@ -8,6 +8,8 @@ export interface DebtorSummary {
   phone: string;
   email: string | null;
   hasAccount: boolean;
+  /** Avales del último pagaré: sugerencia para el siguiente (§19.6). */
+  lastGuarantors?: { position: number; fullName: string; address: string; phone: string }[];
 }
 
 /**

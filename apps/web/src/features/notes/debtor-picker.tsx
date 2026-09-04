@@ -28,11 +28,14 @@ export function DebtorPicker({
   inputClassName,
   errors,
   preselected,
+  onChoose,
 }: {
   inputClassName: string;
   errors: Record<string, string>;
   /** Al duplicar un pagaré el deudor ya se sabe: se muestra elegido de entrada. */
   preselected?: DebtorHit | undefined;
+  /** Para que el formulario traiga los avales de su pagaré anterior (§19.6). */
+  onChoose?: ((hit: DebtorHit | null) => void) | undefined;
 }) {
   const id = useId();
   const [term, setTerm] = useState('');
@@ -123,6 +126,7 @@ export function DebtorPicker({
                   onClick={() => {
                     setChosen(hit);
                     setHits([]);
+                    onChoose?.(hit);
                   }}
                   className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent-soft/60"
                 >
@@ -178,6 +182,7 @@ export function DebtorPicker({
             type="button"
             onClick={() => {
               setChosen(null);
+              onChoose?.(null);
               setTerm('');
             }}
             className="btn btn-secondary btn-sm"

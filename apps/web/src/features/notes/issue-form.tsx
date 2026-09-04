@@ -17,6 +17,14 @@ export interface Plantilla {
   debtor?: DebtorHit | undefined;
   amount?: string | undefined;
   observations?: string | undefined;
+  /**
+   * Los avales del pagaré anterior de esa persona.
+   *
+   * Quien avala suele volver a avalar —es el padre, el socio, la esposa—, así
+   * que vienen escritos y se cambian si el aval es otro. Teclearlos de nuevo en
+   * cada emisión es trabajo que el sistema ya tenía hecho.
+   */
+  guarantors?: { position: number; fullName: string; address: string; phone: string }[] | undefined;
 }
 
 interface Defaults {
@@ -101,6 +109,13 @@ export function IssueForm({
 
   // Aviso de tasa (§25.14): avisa, no impide. La decisión es del administrador,
   // pero un 10% mensual son 120% anual y conviene verlo antes de firmar.
+  /**
+   * Avales sugeridos: los del pagaré anterior de quien se acaba de elegir.
+   *
+   * Se piden al elegir, no antes: el buscador devuelve lo justo para reconocer
+   * a la persona, y esto sólo importa cuando ya se decidió quién firma.
+   */
+  const [avales, setAvales] = useState(plantilla?.guarantors ?? []);
   const [rate, setRate] = useState(defaults.interestRate);
   const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>(defaults.interestPeriod);
   const annual = rate === '' ? null : toAnnualRatePct(Number(rate), period);
@@ -202,6 +217,17 @@ export function IssueForm({
           inputClassName={INPUT}
           errors={state.fieldErrors ?? {}}
           preselected={plantilla?.debtor}
+          onChoose={(hit) => {
+            if (!hit) {
+              setAvales([]);
+              return;
+            }
+            fetch(`/pagares/nuevo/deudores/${hit.id}`)
+              .then((r) => r.json())
+              .then((d: { guarantors?: typeof avales }) => setAvales(d.guarantors ?? []))
+              // Sin avales previos se emite igual: el formulario no depende de esto.
+              .catch(() => setAvales([]));
+          }}
         />
       </Section>
 
@@ -212,25 +238,45 @@ export function IssueForm({
         title="Avales"
         hint="Opcionales, hasta dos. El aval responde igual que el suscriptor y firma su propio bloque: el pagaré no queda emitido hasta que firman todos."
       >
+        {avales.length ? (
+          <p className="mb-4 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+            Vienen del pagaré anterior de esta persona. Cámbialos si el aval es otro, o bórralos si
+            este pagaré va sin aval.
+          </p>
+        ) : null}
         <div className="space-y-5">
-          {[1, 2].map((position) => (
-            <div key={position} className="grid gap-4 sm:grid-cols-3">
-              <Field id={`guarantor${position}Name`} label={`Aval ${position} · nombre completo`}>
-                <input id={`guarantor${position}Name`} name={`guarantor${position}Name`} className={INPUT} />
-              </Field>
-              <Field id={`guarantor${position}Address`} label="Domicilio">
-                <input id={`guarantor${position}Address`} name={`guarantor${position}Address`} className={INPUT} />
-              </Field>
-              <Field id={`guarantor${position}Phone`} label="Teléfono">
-                <input
-                  id={`guarantor${position}Phone`}
-                  name={`guarantor${position}Phone`}
-                  placeholder="+524431234567"
-                  className={INPUT}
-                />
-              </Field>
-            </div>
-          ))}
+          {[1, 2].map((position) => {
+            const previo = avales.find((g) => g.position === position);
+            return (
+              <div key={`${position}-${previo?.fullName ?? ''}`} className="grid gap-4 sm:grid-cols-3">
+                <Field id={`guarantor${position}Name`} label={`Aval ${position} · nombre completo`}>
+                  <input
+                    id={`guarantor${position}Name`}
+                    name={`guarantor${position}Name`}
+                    defaultValue={previo?.fullName ?? ''}
+                    className={INPUT}
+                  />
+                </Field>
+                <Field id={`guarantor${position}Address`} label="Domicilio">
+                  <input
+                    id={`guarantor${position}Address`}
+                    name={`guarantor${position}Address`}
+                    defaultValue={previo?.address ?? ''}
+                    className={INPUT}
+                  />
+                </Field>
+                <Field id={`guarantor${position}Phone`} label="Teléfono">
+                  <input
+                    id={`guarantor${position}Phone`}
+                    name={`guarantor${position}Phone`}
+                    placeholder="+524431234567"
+                    defaultValue={previo?.phone ?? ''}
+                    className={INPUT}
+                  />
+                </Field>
+              </div>
+            );
+          })}
         </div>
       </Section>
 

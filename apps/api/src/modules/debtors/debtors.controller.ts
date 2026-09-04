@@ -88,7 +88,12 @@ export class DebtorsController {
     const now = this.clock.now();
     const debtor = await this.prisma.debtor.findUnique({
       where: { id },
-      include: { promissoryNotes: { orderBy: { dueDate: 'asc' } } },
+      include: {
+        promissoryNotes: {
+          orderBy: { dueDate: 'asc' },
+          include: { guarantors: { orderBy: { position: 'asc' } } },
+        },
+      },
     });
     if (!debtor) throw new NotFoundException();
 
@@ -99,6 +104,20 @@ export class DebtorsController {
       phone: debtor.phone,
       email: debtor.email,
       hasAccount: debtor.userId !== null,
+      /**
+       * Los avales del pagaré más reciente (§19.6).
+       *
+       * Quien avala a alguien suele avalarlo otra vez: son el padre, el socio o
+       * la esposa, y volver a teclear sus tres campos en cada emisión es
+       * trabajo que el sistema ya tiene hecho. Llegan como sugerencia editable,
+       * no como obligación: el aval del pagaré nuevo puede ser otro.
+       */
+      lastGuarantors: (debtor.promissoryNotes.at(-1)?.guarantors ?? []).map((g) => ({
+        position: g.position,
+        fullName: g.fullName,
+        address: g.address,
+        phone: g.phone,
+      })),
       notes: debtor.promissoryNotes.map((n) => ({
         id: n.id,
         folio: n.folio,

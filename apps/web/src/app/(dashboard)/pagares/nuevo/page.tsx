@@ -76,6 +76,9 @@ export default async function NewNotePage({
                   overdueCount: 0,
                   behavior: '',
                 },
+                ...(deudor.lastGuarantors?.length
+                  ? { guarantors: deudor.lastGuarantors }
+                  : {}),
               }
             : origen
             ? {
