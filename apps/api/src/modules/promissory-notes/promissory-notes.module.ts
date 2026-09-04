@@ -14,6 +14,7 @@ import { CloseSettlementUseCase } from '../settlements/application/close-settlem
 import { VoidPaymentUseCase } from '../payments/application/void-payment.use-case.js';
 import { SignNoteUseCase } from '../signatures/application/sign-note.use-case.js';
 import { RegisterPaymentUseCase } from '../payments/application/register-payment.use-case.js';
+import { ForgiveRemainderUseCase } from '../payments/application/forgive-remainder.use-case.js';
 import { NumberingService } from '../numbering/numbering.service.js';
 import { NOTE_REPOSITORY } from './domain/ports/note.repository.js';
 import { PrismaNoteRepository } from './infrastructure/prisma-note.repository.js';
@@ -36,6 +37,9 @@ import { UsersModule } from '../users/users.module.js';
     CloseSettlementUseCase,
     VoidPaymentUseCase,
     RegisterPaymentUseCase,
+    // Lo usa NotesController, así que vive aquí como sus dos hermanos: este
+    // módulo no importa PaymentsModule, provee las tres piezas por su cuenta.
+    ForgiveRemainderUseCase,
     SignNoteUseCase,
     NumberingService,
     { provide: NOTE_REPOSITORY, useClass: PrismaNoteRepository },
