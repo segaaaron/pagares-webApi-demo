@@ -71,8 +71,14 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="card overflow-hidden">
-      <header className="flex items-center gap-3 border-b border-line px-5 py-3.5">
+    {/*
+      * Sin `overflow-hidden`: recortaba el calendario de las fechas contra el
+      * borde de la tarjeta, y con él la mitad de los días del mes. La cabecera
+      * redondea sus propias esquinas, que era lo único que aquel recorte
+      * resolvía.
+      */}
+    <section className="card">
+      <header className="flex items-center gap-3 rounded-t-xl border-b border-line px-5 py-3.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden>
           {icon}
         </span>
