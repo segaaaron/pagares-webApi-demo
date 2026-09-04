@@ -63,6 +63,12 @@ export async function issueNoteAction(_prev: IssueState, formData: FormData): Pr
         // que pactarlos en cero (§12.3). La periodicidad viaja con el número:
         // "3% mensual" y "3% anual" son deudas muy distintas.
         interestRate: rate === '' ? null : { value: Number(rate), period },
+        /*
+         * En cuántos pagos se documenta. Un pagaré es de pago único, así que
+         * doce mensualidades son doce pagarés: el servidor los emite y reparte
+         * el importe, porque mandar las cuotas desde aquí invita a que no sumen.
+         */
+        installments: Math.max(1, Number(formData.get('installments') ?? 1) || 1),
         requiresGuarantors: guarantors.length,
         guarantors,
         ...(String(formData.get('observations') ?? '').trim()

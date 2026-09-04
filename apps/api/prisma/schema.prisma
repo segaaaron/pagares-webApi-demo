@@ -291,6 +291,18 @@ model PromissoryNote {
   renewedFromId String?          @unique
   renewedBy     PromissoryNote?  @relation("Renewal")
 
+  /*
+   * Serie de pagarés: una mensualidad, un pagaré (§12).
+   *
+   * Un pagaré es de pago único, así que doce mensualidades son doce títulos
+   * firmados el mismo día, numerados «3 de 12». No hay tabla aparte porque la
+   * serie no tiene datos propios: el total y el plazo se leen sumando sus
+   * pagarés, y una tabla con esas cifras sería una segunda verdad.
+   */
+  seriesId    String? @db.Uuid
+  seriesIndex Int? // 1..seriesSize
+  seriesSize  Int?
+
   voidedAt     DateTime?
   voidReason   String?
   voidedBy     String?
@@ -316,6 +328,9 @@ model PromissoryNote {
   @@index([ownerId, createdAt])
   @@index([debtorId, status])
   @@index([prescribesOn])
+  // Abrir un pagaré de una serie enseña a sus hermanos: se piden por serie y en
+  // orden, así que el índice los sirve ya ordenados.
+  @@index([seriesId, seriesIndex])
 }
 
 model NoteExtension {

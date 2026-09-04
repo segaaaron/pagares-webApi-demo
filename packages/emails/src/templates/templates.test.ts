@@ -155,3 +155,48 @@ describe('plantillas del ciclo de vida', () => {
     expect(mail.text).toContain('Error de captura');
   });
 });
+
+describe('un aviso para toda la serie (§12)', () => {
+  const noteToSignAsync = async () => (await import('./note-lifecycle.js')).noteToSign;
+  const base = {
+    organizationName: 'Créditos Morelia S.A. de C.V.',
+    fullName: 'Juana Ramírez',
+    appUrl: 'https://pagares.ejemplo.mx',
+    hasAccount: true,
+    document: {
+      folio: 'PAG-2026-000001',
+      amountFormatted: '$5,000.00 MXN',
+      amountInWords: 'CINCO MIL PESOS 00/100 M.N.',
+      dueDateFormatted: '15 de octubre de 2026',
+      creditorName: 'Créditos Morelia S.A. de C.V.',
+      statusLabel: 'Por firmar',
+      statusTone: 'neutral' as const,
+    },
+  };
+
+  it('un solo pagaré habla en singular y lleva el folio en el asunto', async () => {
+    const noteToSign = await noteToSignAsync();
+    const mail = noteToSign(base);
+    expect(mail.subject).toBe('Tienes un pagaré por firmar · PAG-2026-000001');
+    expect(mail.text).toContain('emitió un pagaré');
+  });
+
+  it('una serie dice cuántos son, y no manda un correo por cada uno', async () => {
+    // Doce avisos por una misma operación son doce oportunidades de que el
+    // deudor deje de leerlos.
+    const noteToSign = await noteToSignAsync();
+    const mail = noteToSign({ ...base, installments: 12 });
+    expect(mail.subject).toBe('Tienes 12 pagarés por firmar');
+    expect(mail.text).toContain('12 pagarés');
+    expect(mail.html).toContain('12 pagarés');
+  });
+
+  it('explica que el de la tarjeta es el primero y dónde están los demás', async () => {
+    // Sin esto, el deudor ve un pagaré de $5,000 cuando su deuda es de $60,000
+    // y concluye lo que no es.
+    const noteToSign = await noteToSignAsync();
+    const mail = noteToSign({ ...base, installments: 12 });
+    expect(mail.html).toContain('los otros 11');
+  });
+});
+

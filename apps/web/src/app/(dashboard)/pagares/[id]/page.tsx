@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { RouteNotice } from '@/shared/ui/route-notice';
 import { notFound } from 'next/navigation';
-import { getNote } from '@/features/notes/detail-queries';
+import { getNote, type NoteDetail } from '@/features/notes/detail-queries';
 import { PaymentForm } from '@/features/notes/payment-form';
 import { NoteActions } from '@/features/notes/note-actions';
 import { SettlementPanel, ReinstatePanel } from '@/features/notes/settlement-panel';
@@ -12,7 +12,8 @@ import { getSettlementToleranceCents } from '@/features/settings/queries';
 import { Simulator } from '@/features/notes/simulator';
 import { SendDocument } from '@/features/notes/send-document';
 import { STATUS_PRESENTATION } from '@/entities/note/status';
-import { dateTime, shortDate } from '@/shared/lib/format';
+import { StatusChip } from '@/shared/ui/status-chip';
+import { dateTime, money, shortDate } from '@/shared/lib/format';
 import { todayInBusinessZone } from '@/shared/lib/today';
 import { ApiError } from '@/shared/api/client';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
@@ -344,6 +345,13 @@ export default async function NoteDetailPage({
           * propio scroll cuando no cabe, para no arrastrar la página entera.
           */}
         <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
+          {/*
+            * La serie, cuando la deuda se firmó en varios pagarés. Va lo primero
+            * porque cambia cómo se lee todo lo de abajo: este saldo es el de una
+            * cuota, no el de la deuda entera.
+            */}
+          {note.series ? <SeriePagares serie={note.series} actual={note.id} /> : null}
+
           <section className="card p-4" aria-label="Resumen">
             <h2 className="mb-3 text-sm font-semibold">Resumen</h2>
 
@@ -634,5 +642,80 @@ function Campo({
         {etiqueta}
       </span>
     </span>
+  );
+}
+
+/**
+ * Los pagarés hermanos de una serie (§12).
+ *
+ * Un pagaré es de pago único, así que un plan de doce mensualidades son doce
+ * títulos. Al abrir uno, la pregunta es cómo va el resto: cuáles se pagaron,
+ * cuál vence ahora y cuánto queda del plan.
+ */
+function SeriePagares({
+  serie,
+  actual,
+}: {
+  serie: NonNullable<NoteDetail['series']>;
+  actual: string;
+}) {
+  const pagados = serie.notes.filter((nota) => nota.status === 'PAID').length;
+  const total = serie.notes.reduce((suma, nota) => suma + BigInt(nota.amount.cents), 0n);
+  const pendiente = serie.notes.reduce((suma, nota) => suma + BigInt(nota.balance.cents), 0n);
+
+  return (
+    <section className="card p-4" aria-label="Serie de pagarés">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink">
+          Pago {serie.index} de {serie.size}
+        </h2>
+        <p className="tnum text-xs text-muted">
+          {pagados} de {serie.size} pagados
+        </p>
+      </div>
+      <p className="mt-0.5 text-xs text-muted">
+        Deuda de {money(total.toString())}, documentada en {serie.size} pagarés. Queda{' '}
+        {money(pendiente.toString())}.
+      </p>
+
+      <ol className="mt-3 divide-y divide-line border-t border-line">
+        {serie.notes.map((nota) => {
+          const esActual = nota.id === actual;
+          const fila = (
+            <>
+              <span className="tnum w-8 shrink-0 font-mono text-xs text-muted">{nota.index}</span>
+              <span className="tnum w-24 shrink-0 text-xs text-ink-2">{shortDate(nota.dueDate)}</span>
+              <span className="tnum flex-1 text-right text-sm text-ink">
+                {nota.amount.formatted}
+              </span>
+              <span className="w-24 shrink-0 text-right">
+                <StatusChip status={nota.status} />
+              </span>
+            </>
+          );
+
+          return (
+            <li key={nota.id}>
+              {esActual ? (
+                // El que se está viendo no es un enlace a sí mismo: se marca.
+                <div
+                  aria-current="page"
+                  className="flex items-center gap-2 rounded bg-accent-soft/60 px-1 py-2"
+                >
+                  {fila}
+                </div>
+              ) : (
+                <Link
+                  href={`/pagares/${nota.id}`}
+                  className="flex items-center gap-2 rounded px-1 py-2 hover:bg-surface-2"
+                >
+                  {fila}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

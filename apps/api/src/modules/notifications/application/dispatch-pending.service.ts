@@ -247,7 +247,12 @@ export class DispatchPendingService {
             ...(paymentInstructions !== undefined ? { paymentInstructions } : {}),
           })
         : kind === 'issued'
-        ? noteToSign({ ...common, hasAccount: note.ownerId !== null })
+        ? noteToSign({
+            ...common,
+            hasAccount: note.ownerId !== null,
+            // Una deuda a plazos manda un solo aviso por toda la serie (§12).
+            ...(payload['installments'] ? { installments: Number(payload['installments']) } : {}),
+          })
         : kind === 'signed'
           ? noteSigned({ ...common, signedAtFormatted: this.formatDate(note.acceptedAt ?? this.clock.now()) })
           : kind === 'settled'

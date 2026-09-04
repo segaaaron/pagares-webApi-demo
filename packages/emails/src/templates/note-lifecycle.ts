@@ -11,18 +11,40 @@ interface Base {
 
 export interface NoteToSignData extends Base {
   hasAccount: boolean;
+  /** Cuántos pagarés se firmaron a la vez: uno, o los de una serie (§12). */
+  installments?: number;
 }
 
 /** Plantilla 2 (§16): tienes un pagaré por firmar. */
 export function noteToSign(data: NoteToSignData): { subject: string; html: string; text: string } {
-  const subject = `Tienes un pagaré por firmar · ${data.document.folio}`;
+  /*
+   * Una deuda a plazos son varios pagarés firmados el mismo día (§12), y el
+   * correo es **uno solo**: doce avisos por una misma operación son doce
+   * oportunidades de que el deudor deje de leerlos. Lo que cambia es el texto,
+   * que tiene que decir cuántos documentos va a encontrar.
+   */
+  const enSerie = (data.installments ?? 1) > 1;
+  const subject = enSerie
+    ? `Tienes ${data.installments} pagarés por firmar`
+    : `Tienes un pagaré por firmar · ${data.document.folio}`;
   const body = `
     <p style="margin:0 0 14px;">Hola ${escapeHtml(data.fullName)}:</p>
     <p style="margin:0 0 14px;">
-      ${escapeHtml(data.organizationName)} emitió un pagaré a tu nombre. Revísalo con calma y,
-      si estás de acuerdo, fírmalo desde la aplicación.
+      ${escapeHtml(data.organizationName)} emitió ${
+        enSerie
+          ? `<strong>${data.installments} pagarés</strong> a tu nombre, uno por cada pago mensual`
+          : 'un pagaré a tu nombre'
+      }. Revísalo${enSerie ? 's' : ''} con calma y,
+      si estás de acuerdo, fírmalo${enSerie ? 's' : ''} desde la aplicación.
     </p>
     ${documentCard(data.document)}
+    ${
+      enSerie
+        ? `<p style="margin:0 0 14px;">Arriba va el primero, que vence antes; los otros ${
+            (data.installments ?? 1) - 1
+          } están en la aplicación con sus propias fechas.</p>`
+        : ''
+    }
     ${
       data.hasAccount
         ? ''
@@ -31,7 +53,9 @@ export function noteToSign(data: NoteToSignData): { subject: string; html: strin
 
   return {
     subject,
-    text: `Hola ${data.fullName}:\n\n${data.organizationName} emitió un pagaré a tu nombre por ${data.document.amountFormatted}, con vencimiento el ${data.document.dueDateFormatted}.\nFolio: ${data.document.folio}\n\nRevísalo y fírmalo en la aplicación: ${data.appUrl}`,
+    text: enSerie
+      ? `Hola ${data.fullName}:\n\n${data.organizationName} emitió ${data.installments} pagarés a tu nombre, uno por cada pago mensual.\nEl primero es de ${data.document.amountFormatted} y vence el ${data.document.dueDateFormatted} (folio ${data.document.folio}).\n\nRevísalos y fírmalos en la aplicación: ${data.appUrl}`
+      : `Hola ${data.fullName}:\n\n${data.organizationName} emitió un pagaré a tu nombre por ${data.document.amountFormatted}, con vencimiento el ${data.document.dueDateFormatted}.\nFolio: ${data.document.folio}\n\nRevísalo y fírmalo en la aplicación: ${data.appUrl}`,
     html: baseLayout({
       title: subject,
       preheader: `${data.document.amountFormatted} · vence ${data.document.dueDateFormatted}`,

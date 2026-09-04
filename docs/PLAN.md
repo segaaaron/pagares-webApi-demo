@@ -545,6 +545,12 @@ Reglas que la tabla no muestra:
 
 ## 12. Dinero, abonos e interés
 
+### 12.0 Una mensualidad, un pagaré
+
+Un pagaré es un título de **pago único**: la ley no admite un calendario dentro. Documentar doce mensualidades es emitir **doce pagarés** firmados el mismo día, numerados «3 de 12» y con vencimientos mes a mes (ADR 0015). Se pide con `installments` al emitir; el servidor reparte el importe —el sobrante va en la primera cuota— y manda **un solo aviso** por toda la serie.
+
+Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pagos parciales.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**

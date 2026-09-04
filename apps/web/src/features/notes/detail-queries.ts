@@ -27,8 +27,22 @@ export interface NoteDetail {
     fullName: string;
     address: string;
     phone: string;
-    signedAt: string | null;
   }[];
+  /** La serie, cuando la deuda se documentó en varios pagos (§12). */
+  series: {
+    id: string;
+    index: number;
+    size: number;
+    notes: {
+      id: string;
+      folio: string;
+      index: number;
+      status: NoteStatus;
+      dueDate: string;
+      amount: { cents: string; formatted: string };
+      balance: { cents: string; formatted: string };
+    }[];
+  } | null;
   interestPeriod: 'MONTHLY' | 'ANNUAL';
   amountInWords: string;
   observations: string | null;

@@ -95,3 +95,35 @@ describe('emisión de pagaré', () => {
     expect(r.debtor.email).toBe('juan.perez@ejemplo.mx');
   });
 });
+
+describe('serie de pagarés', () => {
+  it('sin decir nada, es un solo pagaré', () => {
+    // El caso normal no cambia: quien no pide plazos emite uno y ya.
+    const parsed = createNoteRequestSchema.parse(valid);
+    expect(parsed.installments).toBe(1);
+  });
+
+  it('acepta hasta veinticuatro pagos', () => {
+    expect(createNoteRequestSchema.safeParse({ ...valid, installments: 12 }).success).toBe(true);
+    expect(createNoteRequestSchema.safeParse({ ...valid, installments: 24 }).success).toBe(true);
+    expect(createNoteRequestSchema.safeParse({ ...valid, installments: 25 }).success).toBe(false);
+  });
+
+  it('rechaza cero pagos y las fracciones', () => {
+    expect(createNoteRequestSchema.safeParse({ ...valid, installments: 0 }).success).toBe(false);
+    expect(createNoteRequestSchema.safeParse({ ...valid, installments: 2.5 }).success).toBe(false);
+  });
+
+  it('rechaza repartir un importe que no da ni un centavo por cuota', () => {
+    // Diez pesos en veinticuatro pagos no son veinticuatro pagarés: son
+    // veinticuatro documentos por menos de un centavo.
+    const r = createNoteRequestSchema.safeParse({
+      ...valid,
+      amountCents: '10',
+      installments: 24,
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(['installments']);
+  });
+});
+

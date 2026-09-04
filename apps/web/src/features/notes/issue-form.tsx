@@ -6,6 +6,7 @@ import { DateField } from '@/shared/ui/date-field';
 import { DebtorPicker, type DebtorHit } from './debtor-picker';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { toAnnualRatePct } from '@pagares/domain-rules';
+import { money } from '@/shared/lib/format';
 import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
@@ -119,6 +120,23 @@ export function IssueForm({
   const [avales, setAvales] = useState(plantilla?.guarantors ?? []);
   const [rate, setRate] = useState(defaults.interestRate);
   const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>(defaults.interestPeriod);
+  const [pagos, setPagos] = useState(1);
+  const [importe, setImporte] = useState(plantilla?.amount ?? '');
+  /**
+   * Cuánto sale cada pagaré, para enseñarlo antes de emitir.
+   *
+   * El reparto de verdad lo hace el servidor —es dinero y su regla vive en
+   * `domain-rules`—; esto es sólo la vista previa, y por eso redondea hacia
+   * abajo y no promete el centavo suelto, que va en el primero.
+   */
+  const cuota = (() => {
+    const centavos = Math.round(Number(importe.replace(/[^\d.]/g, '')) * 100);
+    if (!Number.isFinite(centavos) || centavos <= 0 || pagos < 2) return null;
+    const base = Math.floor(centavos / pagos);
+    if (base <= 0) return null;
+    return money(String(base));
+  })();
+
   const annual = rate === '' ? null : toAnnualRatePct(Number(rate), period);
   const aboveThreshold = annual !== null && annual > defaults.interestWarningThresholdPct;
 
@@ -132,7 +150,8 @@ export function IssueForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field id="amount" label="Importe (pesos)" error={state.fieldErrors?.amountCents ?? state.fieldErrors?.amount}>
             <input id="amount" name="amount" inputMode="decimal" required placeholder="0.00"
-                   defaultValue={plantilla?.amount ?? ''}
+                   value={importe}
+                   onChange={(event) => setImporte(event.target.value)}
                    className={`${INPUT} tnum text-right`} />
           </Field>
           <div>
@@ -194,6 +213,45 @@ export function IssueForm({
             <DateField id="dueDate" name="dueDate" required
                        defaultValue={defaults.defaultDueDate} min={defaults.today} />
           </Field>
+          {/*
+            * Pagos: un pagaré es de pago único, así que doce mensualidades son
+            * doce pagarés firmados hoy con vencimientos mes a mes. Se dice en
+            * la ayuda porque quien lo elige tiene que saber qué va a firmar.
+            */}
+          <Field id="installments" label="Número de pagos" error={state.fieldErrors?.installments}>
+            <select
+              id="installments"
+              name="installments"
+              className={INPUT}
+              value={pagos}
+              onChange={(event) => setPagos(Number(event.target.value))}
+            >
+              <option value={1}>Un solo pago</option>
+              {[2, 3, 4, 6, 9, 12, 18, 24].map((n) => (
+                <option key={n} value={n}>
+                  {n} pagos mensuales
+                </option>
+              ))}
+            </select>
+          </Field>
+          {/*
+            * Lo que se va a firmar, dicho antes de firmarlo: cuántos documentos
+            * son y de cuánto sale cada uno. Elegir «12 pagos» sin ver que eso
+            * son doce pagarés de $5,000 es el malentendido caro de esta
+            * pantalla.
+            */}
+          {pagos > 1 ? (
+            <p className="sm:col-span-2 rounded-lg border border-accent bg-accent-soft px-3 py-2 text-xs text-accent-ink">
+              Se emitirán <strong>{pagos} pagarés</strong> firmados hoy, con vencimientos mes a mes
+              desde la fecha de arriba
+              {cuota ? (
+                <>
+                  , de <strong>{cuota}</strong> cada uno
+                </>
+              ) : null}
+              . Cada uno se cobra y se reclama por separado.
+            </p>
+          ) : null}
           <Field id="issuePlace" label="Lugar de expedición" error={state.fieldErrors?.issuePlace}>
             <input id="issuePlace" name="issuePlace" required defaultValue={defaults.issuePlace} className={INPUT} />
           </Field>

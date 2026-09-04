@@ -56,6 +56,26 @@ export interface NoteDetail {
     address: string;
     phone: string;
   }[];
+  /**
+   * La serie a la que pertenece, cuando la deuda se documentó en varios pagos.
+   *
+   * Van los hermanos con su estado y su saldo porque la pregunta al abrir uno
+   * es siempre la misma: cómo va el resto del plan (§12).
+   */
+  series: {
+    id: string;
+    index: number;
+    size: number;
+    notes: {
+      id: string;
+      folio: string;
+      index: number;
+      status: string;
+      dueDate: string;
+      amount: { cents: string; formatted: string };
+      balance: { cents: string; formatted: string };
+    }[];
+  } | null;
 
   signature: {
     url: string;
@@ -137,6 +157,54 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
 
     const settings = await this.prisma.organizationSettings.findUnique({ where: { id: 'singleton' } });
     const dueDate = note.dueDate.toISOString().slice(0, 10);
+
+    /*
+     * Los hermanos de la serie. La pregunta al abrir uno de doce es siempre
+     * cómo va el resto del plan, y sin esto había que volver a la cartera y
+     * buscarlos por el nombre del deudor.
+     */
+    const hermanos = note.seriesId
+      ? await (async () => {
+          const filas = await this.prisma.promissoryNote.findMany({
+            where: { seriesId: note.seriesId },
+            orderBy: { seriesIndex: 'asc' },
+            select: {
+              id: true,
+              folio: true,
+              seriesIndex: true,
+              status: true,
+              dueDate: true,
+              amountCents: true,
+              paidCents: true,
+            },
+          });
+
+          return {
+            // Dentro de la rama, `seriesId` ya no puede ser nulo.
+            id: note.seriesId as string,
+            index: note.seriesIndex ?? 1,
+            size: note.seriesSize ?? filas.length,
+            notes: filas.map((fila) => {
+              const saldo = fila.amountCents - fila.paidCents;
+              const atraso = daysOverdue(fila.dueDate.toISOString().slice(0, 10), now);
+              return {
+                id: fila.id,
+                folio: fila.folio,
+                index: fila.seriesIndex ?? 0,
+                // Con reloj, como en el listado: un pagaré vencido no espera a
+                // que alguien le cambie el estado a mano (§11.2).
+                status: withClock(fila.status as NoteStatus, atraso),
+                dueDate: fila.dueDate.toISOString().slice(0, 10),
+                amount: {
+                  cents: fila.amountCents.toString(),
+                  formatted: formatMxn(fila.amountCents),
+                },
+                balance: { cents: saldo.toString(), formatted: formatMxn(saldo) },
+              };
+            }),
+          };
+        })()
+      : null;
     const overdue = daysOverdue(dueDate, now);
     const balance = note.amountCents - note.paidCents;
 
@@ -184,6 +252,8 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         address: guarantor.address,
         phone: guarantor.phone,
       })),
+
+      series: hermanos,
 
       debtor: {
         id: note.debtor.id,

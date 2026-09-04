@@ -50,6 +50,17 @@ export const createNoteRequestSchema = z
       .nullable()
       .default(null),
     observations: z.string().trim().max(1000).optional(),
+    /**
+     * En cuántos pagos se documenta la deuda (§12).
+     *
+     * Un pagaré es de pago único, así que doce mensualidades son **doce
+     * pagarés** firmados el mismo día, numerados «3 de 12» y con vencimientos
+     * mes a mes desde `dueDate`. Uno es el caso normal y no crea serie.
+     *
+     * `amountCents` sigue siendo el total de la deuda: el servidor lo reparte,
+     * porque dejar que el cliente mande las cuotas invita a que no sumen.
+     */
+    installments: z.number().int().min(1).max(24).default(1),
     requiresGuarantors: z.number().int().min(0).max(2).default(0),
     guarantors: z
       .array(
@@ -74,7 +85,26 @@ export const createNoteRequestSchema = z
   .refine((v) => v.guarantors.length === v.requiresGuarantors, {
     path: ['guarantors'],
     message: 'El número de avales debe coincidir con los declarados',
-  });
+  })
+  .refine(
+    (v) => {
+      /*
+       * Defensivo a propósito: esta comprobación corre aunque `amountCents` o
+       * `installments` ya hayan fallado su propia validación, y entonces
+       * convertirlos reventaría con un error que no dice nada. Si alguno no es
+       * utilizable, se deja pasar y habla el error de ese campo.
+       */
+      if (!/^\d+$/.test(v.amountCents) || !Number.isInteger(v.installments)) return true;
+      if (v.installments < 1) return true;
+      // Repartir mil pesos en veinticuatro pagos deja cuotas de céntimos; en
+      // cuanto alguna no llega a un centavo, el reparto no existe.
+      return BigInt(v.amountCents) / BigInt(v.installments) > 0n;
+    },
+    {
+      path: ['installments'],
+      message: 'El importe no alcanza para repartirse en tantos pagos',
+    },
+  );
 
 export type CreateNoteRequest = z.infer<typeof createNoteRequestSchema>;
 
