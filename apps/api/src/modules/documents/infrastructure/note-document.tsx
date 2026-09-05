@@ -2,147 +2,380 @@ import { Document, Page, StyleSheet, Text, View, Image } from '@react-pdf/render
 import type { NoteDocumentModel } from '../domain/ports/pdf-renderer.js';
 
 /**
- * Plantilla del pagaré. Se construye con flexbox: añadir un bloque —el aval, por
- * ejemplo— recoloca lo demás solo. Con posicionamiento por coordenadas habría que
- * recalcular a mano todo lo que va debajo (§17.1).
+ * El pagaré impreso (§17.1).
+ *
+ * Es el documento que se lleva a un juzgado y el que el deudor guarda en un
+ * cajón durante tres años, así que se compone como un título y no como un
+ * volcado de campos: marco doble, cifra en su caja como en un cheque, el texto
+ * de la promesa en romana y los datos en una retícula con sus reglas.
+ *
+ * Lo que va dentro no es decoración. El art. 170 de la LGTOC pide la mención de
+ * ser pagaré, la promesa incondicional, el beneficiario, la época y el lugar de
+ * pago, la fecha y el lugar de suscripción y la firma. Y las **tasas pactadas**
+ * —la ordinaria y la moratoria— tienen que constar en el título para poder
+ * exigirse: sin ellas el juez no las concede aunque se hayan acordado.
+ *
+ * Se construye con flexbox: añadir un bloque recoloca lo demás solo. Con
+ * coordenadas habría que recalcular a mano todo lo que va debajo.
  */
+const TINTA = '#101A16';
+const VERDE = '#0B5340';
+const GRIS = '#6A7A71';
+const REGLA = '#C9D3CC';
+
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 48, paddingVertical: 44, fontSize: 10, color: '#121B17' },
-  eyebrow: { fontSize: 8, letterSpacing: 2, color: '#0B5340', textTransform: 'uppercase' },
-  folio: { fontSize: 11, color: '#0B5340', marginTop: 2 },
-  title: { fontSize: 22, marginTop: 18, marginBottom: 2 },
-  words: { fontSize: 9, color: '#6A7A71', marginBottom: 18 },
-  promise: { fontSize: 11, lineHeight: 1.6, marginBottom: 18 },
-  row: { flexDirection: 'row', gap: 24, marginBottom: 10 },
-  col: { flex: 1 },
-  label: { fontSize: 7.5, color: '#6A7A71', textTransform: 'uppercase', letterSpacing: 0.6 },
-  value: { fontSize: 10, marginTop: 2 },
-  divider: { borderTopWidth: 0.6, borderTopColor: '#D2DAD4', marginVertical: 16 },
-  signatureBox: { marginTop: 28, alignItems: 'center' },
-  signatureImage: { height: 62, objectFit: 'contain' },
-  signatureLine: { borderTopWidth: 0.8, borderTopColor: '#121B17', width: 240, marginTop: 6 },
-  signatureName: { fontSize: 9, marginTop: 5 },
-  evidence: { fontSize: 7, color: '#6A7A71', marginTop: 3 },
-  footer: { position: 'absolute', bottom: 28, left: 48, right: 48, fontSize: 7, color: '#6A7A71' },
+  page: {
+    paddingHorizontal: 42,
+    paddingTop: 38,
+    // El pie va fijo abajo: sin este hueco, la nota legal se le pega encima.
+    paddingBottom: 76,
+    fontSize: 9.5,
+    fontFamily: 'Helvetica',
+    color: TINTA,
+  },
+
+  // Marco doble: es la convención de los títulos de crédito impresos, y de paso
+  // hace evidente si a una copia le falta un trozo.
+  marcoExterior: {
+    position: 'absolute',
+    top: 22,
+    left: 22,
+    right: 22,
+    bottom: 22,
+    borderWidth: 1.4,
+    borderColor: VERDE,
+  },
+  marcoInterior: {
+    position: 'absolute',
+    top: 27,
+    left: 27,
+    right: 27,
+    bottom: 27,
+    borderWidth: 0.4,
+    borderColor: REGLA,
+  },
+
+  membrete: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  emisor: { flex: 1, paddingRight: 20 },
+  emisorNombre: { fontSize: 11, fontFamily: 'Times-Bold', color: TINTA },
+  emisorDato: { fontSize: 7.5, color: GRIS, marginTop: 1.5 },
+
+  cajaFolio: { borderWidth: 0.8, borderColor: VERDE, paddingHorizontal: 10, paddingVertical: 6 },
+  cajaFolioEtiqueta: { fontSize: 6.5, letterSpacing: 1.4, color: VERDE },
+  cajaFolioValor: { fontSize: 12, fontFamily: 'Courier-Bold', color: TINTA, marginTop: 2 },
+
+  titulo: {
+    fontSize: 20,
+    fontFamily: 'Times-Bold',
+    letterSpacing: 6,
+    textAlign: 'center',
+    marginTop: 22,
+    color: TINTA,
+  },
+  reglaTitulo: { borderTopWidth: 0.8, borderTopColor: VERDE, marginTop: 6, marginBottom: 16 },
+
+  // La cifra va en su caja, como en un cheque: es lo primero que se busca.
+  cajaImporte: {
+    borderWidth: 0.8,
+    borderColor: TINTA,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  importe: { fontSize: 24, fontFamily: 'Times-Bold' },
+  importeLetra: { fontSize: 8.5, color: GRIS, marginTop: 3, maxWidth: 300 },
+  moneda: { fontSize: 8, letterSpacing: 1.2, color: VERDE },
+
+  promesa: { fontSize: 11, fontFamily: 'Times-Roman', lineHeight: 1.65, marginBottom: 14 },
+  clausula: {
+    fontSize: 8.5,
+    fontFamily: 'Times-Roman',
+    lineHeight: 1.5,
+    color: TINTA,
+    borderLeftWidth: 2,
+    borderLeftColor: VERDE,
+    paddingLeft: 8,
+    marginBottom: 14,
+  },
+
+  fila: { flexDirection: 'row', gap: 18 },
+  campo: { flex: 1, borderBottomWidth: 0.4, borderBottomColor: REGLA, paddingBottom: 4, marginBottom: 9 },
+  etiqueta: { fontSize: 6.5, color: GRIS, letterSpacing: 0.8 },
+  valor: { fontSize: 9.5, marginTop: 2.5 },
+
+  seccion: { fontSize: 7, letterSpacing: 1.6, color: VERDE, marginTop: 6, marginBottom: 7 },
+
+  firma: { marginTop: 26, alignItems: 'center' },
+  firmaImagen: { height: 58, objectFit: 'contain' },
+  firmaLinea: { borderTopWidth: 0.8, borderTopColor: TINTA, width: 250, marginTop: 4 },
+  firmaNombre: { fontSize: 9.5, fontFamily: 'Times-Bold', marginTop: 5 },
+  evidencia: { fontSize: 6.5, color: GRIS, marginTop: 3, fontFamily: 'Courier' },
+
+  avalNota: { fontSize: 7, color: GRIS, marginTop: 4, lineHeight: 1.4 },
+
+  abono: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 0.4,
+    borderBottomColor: REGLA,
+    paddingVertical: 3,
+    fontSize: 8.5,
+  },
+  abonoTotal: { borderBottomWidth: 0, marginTop: 2 },
+
+  ejecutivo: { fontSize: 7, color: GRIS, marginTop: 14, fontFamily: 'Times-Roman', lineHeight: 1.4 },
+
+  pie: {
+    position: 'absolute',
+    bottom: 34,
+    left: 42,
+    right: 42,
+    borderTopWidth: 0.4,
+    borderTopColor: REGLA,
+    paddingTop: 5,
+    fontSize: 6.5,
+    color: GRIS,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  // Marca diagonal para lo que todavía no obliga a nadie o ya no vale: una
+  // copia sin firma no debe poder pasar por un título exigible.
+  marca: {
+    position: 'absolute',
+    top: 430,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    // Cabe la frase más larga («PENDIENTE DE FIRMA») sin salirse del papel:
+    // una marca cortada por los bordes parece un fallo de impresión.
+    fontSize: 26,
+    fontFamily: 'Helvetica-Bold',
+    color: '#B3261E',
+    opacity: 0.11,
+    letterSpacing: 4,
+  },
 });
 
-function Field({ label, value }: { label: string; value: string }) {
+function Campo({ label, value }: { label: string; value: string }) {
   return (
-    <View style={s.col}>
-      <Text style={s.label}>{label}</Text>
-      <Text style={s.value}>{value}</Text>
+    <View style={s.campo}>
+      <Text style={s.etiqueta}>{label.toUpperCase()}</Text>
+      <Text style={s.valor}>{value}</Text>
     </View>
   );
 }
 
+/** Lo que dice la marca de agua, o nada cuando el título está vivo y firmado. */
+function marcaDe(status: string): string | null {
+  if (status === 'PENDING_SIGNATURE' || status === 'PROCESSING_SIGNATURE') {
+    return 'PENDIENTE DE FIRMA';
+  }
+  if (status === 'VOID') return 'ANULADO';
+  if (status === 'RENEWED') return 'RENOVADO';
+  if (status === 'PAID') return 'PAGADO';
+  return null;
+}
+
 export function NoteDocument({ model }: { model: NoteDocumentModel }) {
+  const marca = marcaDe(model.status);
+
   return (
     <Document title={`Pagaré ${model.folio}`} author={model.organizationName}>
       <Page size="LETTER" style={s.page}>
-        <Text style={s.eyebrow}>Pagaré</Text>
-        <Text style={s.folio}>{model.folio}</Text>
+        <View style={s.marcoExterior} fixed />
+        <View style={s.marcoInterior} fixed />
 
-        <Text style={s.title}>{model.amountFormatted}</Text>
-        <Text style={s.words}>{model.amountInWords}</Text>
+        {marca ? <Text style={s.marca} fixed>{marca}</Text> : null}
 
-        {/* Requisitos I y II del art. 170: la mención y la promesa incondicional.
-            La forma "a la orden" es la de un título que circula por endoso; con
-            la cláusula "no a la orden" (art. 25) sólo se cede, y el suscriptor
-            conserva frente al cesionario las defensas que tenía. */}
-        <Text style={s.promise}>
+        <View style={s.membrete}>
+          <View style={s.emisor}>
+            <Text style={s.emisorNombre}>{model.organizationName}</Text>
+            {model.organizationAddress ? (
+              <Text style={s.emisorDato}>{model.organizationAddress}</Text>
+            ) : null}
+            <Text style={s.emisorDato}>
+              {[model.organizationPhone, model.organizationEmail].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+          <View style={s.cajaFolio}>
+            <Text style={s.cajaFolioEtiqueta}>FOLIO</Text>
+            <Text style={s.cajaFolioValor}>{model.folio}</Text>
+          </View>
+        </View>
+
+        {/* Requisito I del art. 170: la mención de ser pagaré, en el texto. */}
+        <Text style={s.titulo}>PAGARÉ</Text>
+        <View style={s.reglaTitulo} />
+
+        <View style={s.cajaImporte}>
+          <View>
+            <Text style={s.importe}>{model.amountFormatted}</Text>
+            <Text style={s.importeLetra}>{model.amountInWords}</Text>
+          </View>
+          <Text style={s.moneda}>{model.currency}</Text>
+        </View>
+
+        {/* Requisito II: la promesa incondicional. La forma «a la orden» es la
+            del título que circula por endoso; con la cláusula «no a la orden»
+            (art. 25) sólo se cede, y el suscriptor conserva sus defensas. */}
+        <Text style={s.promesa}>
           Debo(emos) y pagaré(mos) incondicionalmente{' '}
           {model.negotiable ? 'a la orden de' : 'a'}{' '}
-          <Text style={{ fontWeight: 'bold' }}>{model.creditorName}</Text> la cantidad de{' '}
-          {model.amountFormatted} ({model.amountInWords}) en {model.paymentPlace} el día{' '}
-          {model.dueDateFormatted}.
+          <Text style={{ fontFamily: 'Times-Bold' }}>{model.creditorName}</Text> la cantidad de{' '}
+          <Text style={{ fontFamily: 'Times-Bold' }}>{model.amountFormatted}</Text> (
+          {model.amountInWords}) en {model.paymentPlace} el día {model.dueDateFormatted}.
         </Text>
 
         {model.negotiable ? null : (
-          <Text style={s.promise}>
-            <Text style={{ fontWeight: 'bold' }}>NO A LA ORDEN — NO NEGOCIABLE.</Text> Este título
-            no es transmisible por endoso; sólo puede cederse en los términos del artículo 25 de
-            la Ley General de Títulos y Operaciones de Crédito, con los efectos de una cesión
-            ordinaria.
+          <Text style={s.clausula}>
+            <Text style={{ fontFamily: 'Times-Bold' }}>NO A LA ORDEN — NO NEGOCIABLE.</Text> Este
+            título no es transmisible por endoso; sólo puede cederse en los términos del artículo
+            25 de la Ley General de Títulos y Operaciones de Crédito, con los efectos de una
+            cesión ordinaria.
           </Text>
         )}
 
-        <View style={s.row}>
-          <Field label="Lugar de expedición" value={model.issuePlace} />
-          <Field label="Fecha de expedición" value={model.issueDateFormatted} />
+        <View style={s.fila}>
+          <Campo label="Lugar de expedición" value={model.issuePlace} />
+          <Campo label="Fecha de expedición" value={model.issueDateFormatted} />
         </View>
-        <View style={s.row}>
-          <Field label="Lugar de pago" value={model.paymentPlace} />
-          <Field label="Fecha de pago" value={model.dueDateFormatted} />
-        </View>
-        <View style={s.row}>
-          <Field label="Interés moratorio" value={model.interestRateLabel} />
-          <Field label="Moneda" value={model.currency} />
+        <View style={s.fila}>
+          <Campo label="Lugar de pago" value={model.paymentPlace} />
+          <Campo label="Fecha de pago" value={model.dueDateFormatted} />
         </View>
 
-        <View style={s.divider} />
+        {/*
+          * Las tasas pactadas van escritas, las dos y por separado: la ordinaria
+          * es el precio del préstamo y la moratoria la sanción por pagar tarde.
+          * Si no constan en el título, no se pueden exigir.
+          */}
+        {model.plan ? (
+          <>
+            <Text style={s.seccion}>PLAN DE PAGOS PACTADO</Text>
+            <View style={s.fila}>
+              <Campo label="Esta cuota" value={model.plan.positionLabel} />
+              <Campo label="Interés del préstamo" value={model.plan.rateLabel} />
+            </View>
+            <View style={s.fila}>
+              <Campo label="Cálculo del interés" value={model.plan.modelLabel} />
+              <Campo
+                label="De esta cuota"
+                value={`${model.plan.interestFormatted} de interés · ${model.plan.principalFormatted} de capital`}
+              />
+            </View>
+          </>
+        ) : null}
 
-        <View style={s.row}>
-          <Field label="Suscriptor" value={model.debtor.fullName} />
-          <Field label="Teléfono" value={model.debtor.phone} />
+        <View style={s.fila}>
+          <Campo label="Interés moratorio" value={model.interestRateLabel} />
+          <Campo label="Moneda" value={model.currency} />
         </View>
-        <View style={s.row}>
-          <Field label="Domicilio" value={model.debtor.address} />
+
+        <Text style={s.seccion}>DATOS DEL SUSCRIPTOR</Text>
+        <View style={s.fila}>
+          <Campo label="Nombre" value={model.debtor.fullName} />
+          <Campo label="Teléfono" value={model.debtor.phone} />
+        </View>
+        <View style={s.fila}>
+          <Campo label="Domicilio" value={model.debtor.address} />
         </View>
 
         {model.observations ? (
-          <View style={s.row}>
-            <Field label="Observaciones" value={model.observations} />
+          <View style={s.fila}>
+            <Campo label="Observaciones" value={model.observations} />
           </View>
         ) : null}
 
-        {/* Bloque de firma del suscriptor y, debajo, uno por cada aval. */}
-        <View style={s.signatureBox}>
+        {/*
+          * Los abonos, anotados en el propio título (art. 17 LGTOC).
+          *
+          * Es lo que hace el tenedor con un pagaré de papel cuando recibe un
+          * pago parcial, y por una razón práctica: sin la anotación, quien
+          * tenga el documento puede cobrar dos veces lo mismo y el deudor que
+          * ya pagó no tiene con qué defenderse.
+          */}
+        {model.payments.length > 0 ? (
+          <View style={{ marginTop: 14 }}>
+            <Text style={s.seccion}>ABONOS ANOTADOS EN ESTE TÍTULO</Text>
+            {model.payments.map((abono, indice) => (
+              <View key={`${abono.dateFormatted}-${indice}`} style={s.abono}>
+                <Text>{abono.dateFormatted}</Text>
+                <Text style={{ fontFamily: 'Courier' }}>{abono.amountFormatted}</Text>
+              </View>
+            ))}
+            <View style={[s.abono, s.abonoTotal]}>
+              <Text style={{ fontFamily: 'Helvetica-Bold' }}>Saldo pendiente</Text>
+              <Text style={{ fontFamily: 'Courier-Bold' }}>{model.balanceFormatted}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={{ flexGrow: 1 }} />
+
+        {/* Requisito VI: la firma del suscriptor. Debajo, su evidencia: sin el
+            instante y la huella, la imagen es sólo un dibujo. */}
+        <View style={s.firma}>
           {model.signaturePngBase64 ? (
-            <Image style={s.signatureImage} src={model.signaturePngBase64} />
+            <Image style={s.firmaImagen} src={model.signaturePngBase64} />
           ) : null}
-          <View style={s.signatureLine} />
-          <Text style={s.signatureName}>{model.debtor.fullName}</Text>
+          <View style={s.firmaLinea} />
+          <Text style={s.firmaNombre}>{model.debtor.fullName}</Text>
           {model.signatureCapturedAt ? (
-            <Text style={s.evidence}>
-              Firmado el {model.signatureCapturedAt} · SHA-256 {model.signatureSha256?.slice(0, 24)}…
+            <Text style={s.evidencia}>
+              Firmado el {model.signatureCapturedAt} · SHA-256{' '}
+              {model.signatureSha256?.slice(0, 32)}
             </Text>
           ) : (
-            <Text style={s.evidence}>Pendiente de firma</Text>
+            <Text style={s.evidencia}>PENDIENTE DE FIRMA</Text>
           )}
         </View>
 
         {/*
-          * El aval se declara con sus datos, **sin espacio de firma**.
-          *
-          * El sistema no tiene forma de capturar su firma —no existe el flujo—,
-          * así que dibujar una línea vacía y un «pendiente de firma» prometía un
-          * paso que nunca llega y ensuciaba el documento con una carencia. Sus
-          * datos sí van: son parte del título.
+          * El aval va con sus datos y **sin espacio de firma**: el sistema no
+          * captura la del avalista, y dibujar una línea vacía prometería un paso
+          * que no existe. La nota dice qué falta para que el aval obligue, en
+          * vez de dejar creer que ya obliga (arts. 109-116 LGTOC).
           */}
         {model.guarantors.length > 0 ? (
-          <View>
-            <Text style={s.eyebrow}>Por aval</Text>
+          <View style={{ marginTop: 18 }}>
+            <Text style={s.seccion}>AVAL DECLARADO</Text>
             {model.guarantors.map((guarantor) => (
-              <View key={guarantor.position}>
-                <Text style={s.signatureName}>{guarantor.fullName}</Text>
-                <Text style={s.evidence}>
+              <View key={guarantor.position} style={{ marginBottom: 6 }}>
+                <Text style={s.firmaNombre}>{guarantor.fullName}</Text>
+                <Text style={s.evidencia}>
                   {guarantor.address} · {guarantor.phone}
                 </Text>
               </View>
             ))}
+            <Text style={s.avalNota}>
+              Declarado por el suscriptor. Para que el aval obligue, el avalista debe firmar el
+              título con la fórmula «por aval de {model.debtor.fullName}» (arts. 109 a 116 de la
+              Ley General de Títulos y Operaciones de Crédito).
+            </Text>
           </View>
         ) : null}
 
-        <Text style={s.footer} fixed>
-          {[
-            model.organizationName,
-            model.organizationAddress,
-            model.organizationPhone,
-            model.organizationEmail,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
+        {/* Lo que este papel es, dicho una vez y sin adornos: es la diferencia
+            entre reclamar en un juicio ordinario o en uno ejecutivo. */}
+        <Text style={s.ejecutivo}>
+          Este pagaré es título ejecutivo y trae aparejada ejecución (arts. 167 y 174 de la Ley
+          General de Títulos y Operaciones de Crédito). Prescribe a los tres años de su
+          vencimiento (art. 165).
         </Text>
+
+        <View style={s.pie} fixed>
+          <Text>
+            {[model.organizationName, model.organizationAddress].filter(Boolean).join(' · ')}
+          </Text>
+          <Text>
+            {model.verifyUrl ? `Verifica en ${model.verifyUrl} · ` : ''}
+            Emitido el {model.issuedAtFormatted}
+          </Text>
+        </View>
       </Page>
     </Document>
   );

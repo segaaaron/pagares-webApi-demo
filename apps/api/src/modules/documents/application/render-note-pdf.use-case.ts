@@ -1,11 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { BaseUseCase, type ExecutionContext } from '@pagares/api-core';
-import { describeRate, formatMxn } from '@pagares/domain-rules';
+import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
+import { businessToday, describeRate, formatMxn } from '@pagares/domain-rules';
 import sharp from 'sharp';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import { OBJECT_STORAGE, type ObjectStorage } from '../../media/domain/ports/object-storage.js';
 import { PDF_RENDERER, type PdfRenderer } from '../domain/ports/pdf-renderer.js';
+import { ENV } from '../../../config/config.module.js';
+import type { Env } from '../../../config/env.schema.js';
 
 const DATE = new Intl.DateTimeFormat('es-MX', {
   day: '2-digit',
@@ -26,6 +28,8 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
     private readonly prisma: PrismaService,
     @Inject(PDF_RENDERER) private readonly renderer: PdfRenderer,
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+    @Inject(ENV) private readonly env: Env,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {
     super(new NestUseCaseLogger(RenderNotePdfUseCase.name));
   }
@@ -36,6 +40,8 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
       include: {
         debtor: true,
         signature: true,
+        // Los abonos se anotan en el título (art. 17 LGTOC).
+        payments: { orderBy: { paidOn: 'asc' } },
         // El aval va en el documento con su firma: sin ella no queda obligado.
         guarantors: { include: { signature: true }, orderBy: { position: 'asc' } },
       },
@@ -62,6 +68,46 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
         note.interestPeriod,
       ),
+      /*
+       * Las tasas pactadas van en el título, las dos: la ordinaria es el precio
+       * del préstamo y la moratoria la sanción por pagar tarde. Si no constan,
+       * no se pueden exigir aunque se hayan acordado (§12, ADR 0016).
+       */
+      plan:
+        note.planModel && note.planModel !== 'NONE'
+          ? {
+              positionLabel:
+                note.seriesIndex && note.seriesSize
+                  ? `Pago ${note.seriesIndex} de ${note.seriesSize}`
+                  : 'Pago único',
+              rateLabel: describeRate(
+                note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
+                note.interestPeriod,
+              ),
+              modelLabel:
+                note.planModel === 'INSOLUTOS'
+                  ? 'Sobre saldos insolutos'
+                  : 'Sobre el importe original',
+              interestFormatted: formatMxn(note.planInterestCents ?? 0n),
+              principalFormatted: formatMxn(
+                note.planPrincipalCents ?? note.amountCents - (note.planInterestCents ?? 0n),
+              ),
+            }
+          : null,
+      status: note.status,
+      payments: note.payments
+        // La reversa y su abono se anulan entre sí: anotar los dos en el papel
+        // confunde a quien lo lee. Se anota lo que quedó vigente.
+        .filter((payment) => payment.amountCents > 0n && payment.reversalOfId === null)
+        .map((payment) => ({
+          dateFormatted: DATE.format(payment.paidOn),
+          amountFormatted: formatMxn(payment.amountCents),
+        })),
+      paidFormatted: formatMxn(note.paidCents),
+      balanceFormatted: formatMxn(note.amountCents - note.paidCents),
+      // Dónde comprobar que este papel corresponde a un pagaré real (§17.1).
+      verifyUrl: `${this.env.WEB_URL}/p/${note.publicToken}`,
+      issuedAtFormatted: DATE.format(new Date(`${businessToday(this.clock.now())}T12:00:00Z`)),
       negotiable: note.negotiable,
       observations: note.observations,
       debtor: {

@@ -16,7 +16,41 @@ export interface NoteDocumentModel {
   issueDateFormatted: string;
   paymentPlace: string;
   dueDateFormatted: string;
+  /** Moratorio, como se pactó: «3% mensual». */
   interestRateLabel: string;
+  /**
+   * El interés **ordinario** cuando el pagaré es cuota de un plan (§12).
+   *
+   * No es un adorno: las tasas pactadas —ordinaria y moratoria— tienen que
+   * constar en el título para poder exigirse. Sin esto, el documento sólo
+   * hablaba del moratorio y el precio del préstamo viajaba escondido dentro
+   * del importe.
+   */
+  plan: {
+    /** «Pago 3 de 12». */
+    positionLabel: string;
+    rateLabel: string;
+    /** Cómo se calcula el interés: sobre saldos insolutos o sobre el original. */
+    modelLabel: string;
+    interestFormatted: string;
+    principalFormatted: string;
+  } | null;
+  /** Qué es hoy el documento: sirve para marcarlo si aún no obliga a nadie. */
+  status: string;
+  /**
+   * Los abonos anotados en el título (art. 17 LGTOC).
+   *
+   * El tenedor anota en el propio pagaré los pagos parciales que recibe. Sin
+   * esa anotación, quien tenga el papel puede cobrar dos veces lo mismo, y el
+   * deudor que ya pagó no tiene con qué defenderse.
+   */
+  payments: { dateFormatted: string; amountFormatted: string }[];
+  paidFormatted: string;
+  balanceFormatted: string;
+  /** Dónde se comprueba que este papel corresponde a un pagaré real. */
+  verifyUrl: string | null;
+  /** Cuándo se generó esta copia. Un PDF sin fecha no se puede contrastar. */
+  issuedAtFormatted: string;
   /**
    * Si el título circula por endoso (art. 25 LGTOC). Cuando es falso, el
    * documento lleva la cláusula "no a la orden" y deja de transmitirse por

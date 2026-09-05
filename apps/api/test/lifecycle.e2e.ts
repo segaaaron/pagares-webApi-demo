@@ -421,3 +421,64 @@ describe('§12 · la renovación también respeta la firma pendiente', () => {
     expect(String(tercero.body['type'])).toContain('debtor_has_unsigned_note');
   });
 });
+
+/**
+ * El pagaré descargable (§17.1).
+ *
+ * Es el documento que se lleva a un juzgado y el que el deudor guarda tres
+ * años. Estas pruebas no miran cómo se ve —eso se mira con los ojos— sino que
+ * llegue entero: las tasas pactadas tienen que constar en el título para poder
+ * exigirse, y una copia sin firma no puede pasar por un título exigible.
+ */
+describe('§17.1 · el pagaré en PDF', () => {
+  async function pdf(
+    noteId: string,
+  ): Promise<{ status: number; tipo: string | null; bytes: number; texto: string }> {
+    const respuesta = await fetch(`${API}/admin/notes/${noteId}/documents/note`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const buffer = Buffer.from(await respuesta.arrayBuffer());
+    /*
+     * El cuerpo del PDF va comprimido, así que el texto de la página no se lee
+     * así. Los metadatos sí: el título va en el diccionario Info y en UTF-16,
+     * de ahí que se quiten los bytes nulos antes de buscar.
+     */
+    return {
+      status: respuesta.status,
+      tipo: respuesta.headers.get('content-type'),
+      bytes: buffer.length,
+      texto: buffer.toString('latin1').replace(/\u0000/g, ''),
+    };
+  }
+
+  it('se genera y se llama por su folio', async () => {
+    const emitido = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: {
+          fullName: 'Deudor del PDF',
+          address: 'Calle de prueba 20',
+          phone: `+52443${String(Date.now()).slice(-7)}`,
+        },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+      },
+    });
+    expect(emitido.status).toBe(201);
+
+    const documento = await pdf(String(emitido.body['id']));
+    expect(documento.status).toBe(200);
+    expect(documento.tipo).toBe('application/pdf');
+    // Un PDF de dos kilobytes es una hoja en blanco con membrete.
+    expect(documento.bytes).toBeGreaterThan(4000);
+    // El título del documento lleva el folio: es como se distingue en una
+    // carpeta con veinte descargas.
+    expect(documento.texto).toContain(String(emitido.body['folio']));
+  });
+});
