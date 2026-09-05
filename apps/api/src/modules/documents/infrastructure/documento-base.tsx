@@ -109,9 +109,17 @@ export const base = StyleSheet.create({
 
   nota: { fontSize: 7, color: GRIS, marginTop: 14, fontFamily: 'Times-Roman', lineHeight: 1.4 },
 
+  /*
+   * El pie va en dos renglones centrados y no en dos columnas.
+   *
+   * En columnas, el nombre del emisor y el enlace de verificación competían por
+   * la misma línea: con un domicilio largo y un dominio real se solapaban y la
+   * numeración de hoja se salía del papel. Apilados no hay nada que se pise, y
+   * el enlace se lee entero, que es para lo que está.
+   */
   pie: {
     position: 'absolute',
-    bottom: 34,
+    bottom: 30,
     left: 42,
     right: 42,
     borderTopWidth: 0.4,
@@ -119,9 +127,9 @@ export const base = StyleSheet.create({
     paddingTop: 5,
     fontSize: 6.5,
     color: GRIS,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    textAlign: 'center',
   },
+  pieRenglon: { textAlign: 'center', marginTop: 1.5 },
 
   marca: {
     position: 'absolute',
@@ -242,15 +250,18 @@ export function Pie({
 }) {
   return (
     <View style={base.pie} fixed>
-      {/* Sólo el nombre: con el domicilio, el texto de la izquierda invadía el
-          enlace de verificación y los dos se leían encimados. */}
-      <Text style={{ maxWidth: '32%' }}>{emisor.organizationName}</Text>
+      {verifyUrl ? (
+        <Text style={base.pieRenglon}>Verifica este documento en {verifyUrl}</Text>
+      ) : null}
       <Text
+        style={base.pieRenglon}
         render={({ pageNumber, totalPages }) =>
           // La numeración va siempre, aunque haya una sola hoja: es lo que
           // impide presentar media copia como si fuera el documento entero.
-          `${verifyUrl ? `Verifica en ${verifyUrl} · ` : ''}Emitido el ${issuedAtFormatted}` +
-          ` · Hoja ${pageNumber} de ${totalPages}`
+          [emisor.organizationName, emisor.organizationAddress]
+            .filter(Boolean)
+            .join(' · ') +
+          ` · Emitido el ${issuedAtFormatted} · Hoja ${pageNumber} de ${totalPages}`
         }
       />
     </View>
