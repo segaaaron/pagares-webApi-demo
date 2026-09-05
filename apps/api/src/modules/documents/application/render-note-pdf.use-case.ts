@@ -128,7 +128,6 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
             strokeCount: note.signature.strokeCount,
             durationMs: note.signature.durationMs,
             mode: note.signature.mode,
-            biometricVerified: note.signature.biometricVerified,
           }
         : null,
       issuedAtFormatted: DATE.format(new Date(`${businessToday(this.clock.now())}T12:00:00Z`)),

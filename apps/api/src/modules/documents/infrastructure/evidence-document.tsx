@@ -21,7 +21,6 @@ export interface EvidenceModel {
   inputType: string | null;
   strokeCount: number | null;
   durationMs: number | null;
-  biometricVerified: boolean | null;
   delivery: { sentAtFormatted: string; to: string; statusLabel: string } | null;
   issuedAtFormatted: string;
   organizationPhone?: string | null | undefined;
@@ -117,23 +116,6 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
         <Row label="Dispositivo" value={model.deviceModel ?? 'No registrado'} />
         <Row label="Sistema" value={model.osVersion ?? 'No registrado'} />
         <Row label="Versión de la aplicación" value={model.appVersion ?? 'No registrada'} />
-
-        {/*
-          * Quién firmó, que es la parte floja de una firma electrónica simple:
-          * el trazo prueba que alguien dibujó, la verificación del aparato
-          * convierte «alguien con el teléfono» en «quien lo desbloquea».
-          */}
-        <Seccion>Verificación del firmante</Seccion>
-        <Row
-          label="El aparato verificó al firmante"
-          value={
-            model.biometricVerified === null
-              ? 'No consta: el aparato no informó de una verificación'
-              : model.biometricVerified
-                ? 'Sí, antes de capturar el trazo (biometría o código del aparato)'
-                : 'No'
-          }
-        />
 
         <Seccion>Trazo</Seccion>
         <Row label="Método de entrada" value={model.inputType ?? 'No registrado'} />

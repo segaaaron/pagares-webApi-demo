@@ -419,16 +419,6 @@ model Signature {
   strokeCount Int?
   durationMs  Int?
   inputType   String? // pencil | finger
-  /**
-   * Si el aparato verificó al firmante con biometría o con su código antes de
-   * capturar el trazo (§24.1).
-   *
-   * Nulo cuando el aparato no tiene con qué: no afirmar nada es distinto de
-   * afirmar que falló. Es lo único que ataca la **atribución** desde el
-   * cliente —el trazo prueba que alguien dibujó, no quién—, y por eso se guarda
-   * con la firma y no en un registro aparte.
-   */
-  biometricVerified Boolean?
   deviceModel String?
   osVersion   String?
   appVersion  String?

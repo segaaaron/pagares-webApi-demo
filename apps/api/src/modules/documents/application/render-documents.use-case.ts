@@ -354,7 +354,6 @@ export class RenderEvidenceUseCase extends BaseUseCase<{ noteId: string }, Buffe
       inputType: note.signature.inputType,
       strokeCount: note.signature.strokeCount,
       durationMs: note.signature.durationMs,
-      biometricVerified: note.signature.biometricVerified,
       delivery: entrega
         ? {
             to: entrega.to,

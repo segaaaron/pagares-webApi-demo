@@ -299,21 +299,6 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
             </View>
             <View style={base.fila}>
               <Campo label="Capturada" value={model.signatureCapturedAt ?? 'No registrada'} />
-              {/* Quién firmó, que es la parte floja de una firma simple: el
-                  trazo prueba que alguien dibujó, la verificación del aparato
-                  convierte «alguien con el teléfono» en «quien lo desbloquea». */}
-              <Campo
-                label="Verificación del firmante"
-                value={
-                  model.signatureEvidence?.biometricVerified === true
-                    ? 'El aparato lo verificó antes de firmar'
-                    : model.signatureEvidence?.biometricVerified === false
-                      ? 'El aparato no lo verificó'
-                      : 'No consta'
-                }
-              />
-            </View>
-            <View style={base.fila}>
               <Campo
                 label="Modalidad"
                 value={

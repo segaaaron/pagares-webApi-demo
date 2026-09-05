@@ -24,23 +24,6 @@ const captureSchema = z
     strokeCount: z.coerce.number().int().positive().optional(),
     durationMs: z.coerce.number().int().positive().optional(),
     inputType: z.enum(['pencil', 'finger']).optional(),
-    /*
-     * Si el aparato verificó al firmante antes de capturar el trazo —Face ID,
-     * huella o el código del propio aparato—. Va en el mismo acto de firmar, y
-     * es lo único que ataca la **atribución** desde el cliente: el trazo prueba
-     * que alguien dibujó, no quién.
-     *
-     * Opcional a propósito, y nulo cuando el aparato no tiene biometría: no
-     * afirmar nada es distinto de afirmar que falló.
-     */
-    /*
-     * Booleano de verdad, sin convertir: `z.coerce.boolean()` volvía `true` la
-     * cadena `"false"` —y `"0"`—, así que un cliente que dijera expresamente
-     * que **no** hubo verificación acababa certificando que sí la hubo. En un
-     * papel que va a un juzgado eso no es un fallo de tipos, es una falsedad.
-     * Prefiero un 422 que lo delate.
-     */
-    biometricVerified: z.boolean().optional(),
     deviceModel: z.string().max(80).optional(),
     osVersion: z.string().max(40).optional(),
     appVersion: z.string().max(40).optional(),

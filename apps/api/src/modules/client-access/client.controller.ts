@@ -593,8 +593,6 @@ export class ClientController {
             mode: note.signature.mode,
             strokeCount: note.signature.strokeCount,
             durationMs: note.signature.durationMs,
-            /** Si el aparato verificó al firmante antes del trazo (§24.1). */
-            biometricVerified: note.signature.biometricVerified,
             certified: false,
             /**
              * A dónde se mandó el pagaré firmado y qué pasó con el envío.

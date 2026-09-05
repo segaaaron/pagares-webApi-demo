@@ -484,14 +484,15 @@ describe('§17.1 · el pagaré en PDF', () => {
 });
 
 /**
- * La verificación del firmante (§24.1).
+ * El cuerpo de la firma no admite lo que no se declaró (§24.1, API3).
  *
- * El trazo prueba que **alguien** dibujó; no prueba quién. Que el aparato
- * verifique al firmante —Face ID, huella o su código— antes de capturar el
- * trazo es lo único que ata la firma a una persona desde el cliente, así que el
- * dato viaja con la captura y queda en la evidencia.
+ * Se probó a que el aparato verificara al firmante —Face ID o su código— antes
+ * del trazo, y se descartó: para entrar a la aplicación ya hacen falta
+ * contraseña y, si el usuario la activó, biometría, y quien tiene el sensor
+ * roto se quedaba sin poder firmar su pagaré, que es lo peor que puede pasar en
+ * esa pantalla. El campo que se llegó a aceptar vuelve a rebotar.
  */
-describe('§24.1 · el aparato verifica a quien firma', () => {
+describe('§24.1 · el cuerpo de la firma es estricto', () => {
   async function trazo(): Promise<Buffer> {
     const sharp = (await import('sharp')).default;
     const ancho = 400;
@@ -540,51 +541,23 @@ describe('§24.1 · el aparato verifica a quien firma', () => {
     return respuesta.status;
   }
 
-  it('acepta la firma que dice que el aparato verificó al firmante', async () => {
+  it('firma con lo que sí está en el catálogo', async () => {
+    const estado = await emitirYFirmar({
+      capturedAt: new Date().toISOString(),
+      strokeCount: 3,
+      mode: 'IN_PERSON',
+    });
+    expect(estado).toBe(201);
+  });
+
+  it('cualquier otro campo es 422, incluido el que se retiró', async () => {
+    // Aceptar cualquier cosa es cómo se cuelan campos que nadie declaró, y un
+    // campo retirado que siguiera pasando sería un dato muerto viajando.
     const estado = await emitirYFirmar({
       capturedAt: new Date().toISOString(),
       strokeCount: 3,
       mode: 'IN_PERSON',
       biometricVerified: true,
-    });
-    expect(estado).toBe(201);
-  });
-
-  it('y la que no lo dice: no todos los aparatos tienen biometría', async () => {
-    // Nulo no es falso. Un 422 aquí dejaría a alguien sin poder firmar su
-    // pagaré por no tener huella configurada.
-    const estado = await emitirYFirmar({
-      capturedAt: new Date().toISOString(),
-      strokeCount: 3,
-      mode: 'IN_PERSON',
-    });
-    expect(estado).toBe(201);
-  });
-
-  it('la cadena "false" no se convierte en un sí', async () => {
-    /*
-     * `z.coerce.boolean()` volvía `true` la cadena `"false"`, así que un cliente
-     * que dijera expresamente que **no** hubo verificación acababa certificando
-     * que sí la hubo. En un papel que va a un juzgado eso es una falsedad, no
-     * un fallo de tipos: mejor un 422 que lo delate.
-     */
-    const estado = await emitirYFirmar({
-      capturedAt: new Date().toISOString(),
-      strokeCount: 3,
-      mode: 'IN_PERSON',
-      biometricVerified: 'false',
-    });
-    expect(estado).toBe(422);
-  });
-
-  it('un campo inventado sigue siendo 422', async () => {
-    // El cuerpo es estricto a propósito (API3): aceptar cualquier cosa es cómo
-    // se cuelan campos que nadie declaró.
-    const estado = await emitirYFirmar({
-      capturedAt: new Date().toISOString(),
-      strokeCount: 3,
-      mode: 'IN_PERSON',
-      loQueSea: true,
     });
     expect(estado).toBe(422);
   });

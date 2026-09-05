@@ -61,8 +61,6 @@ export interface NoteDocumentModel {
     strokeCount: number | null;
     durationMs: number | null;
     mode: string;
-    /** Si el aparato verificó al firmante antes del trazo. Nulo: no se sabe. */
-    biometricVerified: boolean | null;
   } | null;
   /** Cuándo se generó esta copia. Un PDF sin fecha no se puede contrastar. */
   issuedAtFormatted: string;
@@ -187,13 +185,6 @@ export interface EvidenceModelPort {
   inputType: string | null;
   strokeCount: number | null;
   durationMs: number | null;
-  /**
-   * Si el aparato verificó al firmante antes del trazo. Nulo: no se sabe.
-   *
-   * Es lo único que ata la firma a **quién**: el trazo prueba que alguien
-   * dibujó. Por eso va en el certificado y no sólo en la base.
-   */
-  biometricVerified: boolean | null;
   /** Acuse: cuándo salió el pagaré firmado al correo del deudor y qué pasó. */
   delivery: { sentAtFormatted: string; to: string; statusLabel: string } | null;
   issuedAtFormatted: string;
