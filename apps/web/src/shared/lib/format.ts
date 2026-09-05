@@ -49,3 +49,42 @@ export function overdueLabel(days: number): string {
   if (days <= 0) return 'Al corriente';
   return days === 1 ? '1 día de atraso' : `${days} días de atraso`;
 }
+
+const HORA = new Intl.DateTimeFormat('es-MX', {
+  timeStyle: 'short',
+  timeZone: 'America/Mexico_City',
+});
+
+const DIA_LARGO = new Intl.DateTimeFormat('es-MX', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'America/Mexico_City',
+});
+
+/** Sólo la hora: el día va en el encabezado del grupo y repetirlo es ruido. */
+export function time(iso: string): string {
+  return HORA.format(new Date(iso));
+}
+
+const DIA_CIVIL = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' });
+
+/**
+ * El día de un instante, para agrupar: «Hoy», «Ayer» o la fecha con su día de
+ * la semana. En la zona de México, que es donde ocurren las cosas (§12.1).
+ *
+ * `hoy` se recibe como fecha civil y no se lee del reloj aquí: el único sitio
+ * del front que mira la hora del sistema es `todayInBusinessZone`.
+ */
+export function dayLabel(iso: string, hoy: string): string {
+  const fecha = new Date(iso);
+  const dia = DIA_CIVIL.format(fecha);
+  if (dia === hoy) return 'Hoy';
+
+  // El día anterior al civil de hoy, sin volver a mirar el reloj.
+  const [a, m, d] = hoy.split('-').map(Number) as [number, number, number];
+  const ayer = new Date(Date.UTC(a, m - 1, d - 1)).toISOString().slice(0, 10);
+  if (dia === ayer) return 'Ayer';
+
+  return DIA_LARGO.format(fecha);
+}

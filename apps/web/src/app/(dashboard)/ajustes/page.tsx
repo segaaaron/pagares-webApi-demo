@@ -5,8 +5,10 @@ import { PasswordForm } from '@/features/settings/password-form';
 import { ReminderRulesForm } from '@/features/settings/reminder-rules-form';
 import { getReminderRules } from '@/features/settings/reminder-actions';
 import { BalanceRow, type Mismatch } from '@/features/settings/balance-row';
-import { auditLabel } from '@/features/settings/audit-labels';
-import { dateTime } from '@/shared/lib/format';
+import Link from 'next/link';
+import { auditLabel, auditSubject } from '@/features/settings/audit-labels';
+import { dateTime, dayLabel, money, time } from '@/shared/lib/format';
+import { todayInBusinessZone } from '@/shared/lib/today';
 import { PageHeader } from '@/shared/ui/page-header';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 
@@ -15,6 +17,7 @@ interface AuditEntry {
   action: string;
   actorRole: string;
   targetType: string;
+  targetId?: string;
   createdAt: string;
   metadata: unknown;
 }
@@ -45,7 +48,15 @@ const ROLES: Record<string, string> = { ADMIN: 'Tú', CLIENT: 'El deudor', SYSTE
  * formularios detrás de eso dejaba «Guardando…» encendido mucho después de que
  * el guardado ya había terminado.
  */
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const consulta = await searchParams;
+  // El filtro viaja en la dirección: se puede enlazar, volver atrás y recargar.
+  const soloAvisos = consulta['bitacora'] === 'avisos';
+
   const [values, rules] = await Promise.all([
     api<SettingsValues>('/admin/settings'),
     // Que no se puedan leer las reglas de aviso no debe impedir configurar la
@@ -94,7 +105,7 @@ export default async function SettingsPage() {
         explicacion="Aquí se responde si los números que cobras son de fiar. Míralo cuando un saldo no cuadre, cuando alguien reclame un abono que no aparece, o antes de cerrar el mes: en verde no hay nada que hacer."
       >
         <Suspense fallback={<ComprobacionesCargando />}>
-          <Comprobaciones />
+          <Comprobaciones soloAvisos={soloAvisos} />
         </Suspense>
       </Bloque>
     </div>
@@ -107,7 +118,7 @@ export default async function SettingsPage() {
  * Son caras —recorren la bitácora entera y suman el libro de abonos de toda la
  * cartera—, así que van juntas y separadas de lo demás.
  */
-async function Comprobaciones() {
+async function Comprobaciones({ soloAvisos }: { soloAvisos: boolean }) {
   let chain: ChainVerification;
   let balances: BalanceCheck;
   let audit: AuditEntry[];
@@ -137,6 +148,9 @@ async function Comprobaciones() {
   }
 
   const avisos = audit.filter((entry) => auditLabel(entry.action).tone === 'atencion').length;
+  const visibles = soloAvisos
+    ? audit.filter((entry) => auditLabel(entry.action).tone === 'atencion')
+    : audit;
   const todoBien = chain.intact && balances.balanced;
 
   return (
@@ -184,63 +198,125 @@ async function Comprobaciones() {
       </section>
 
       <section className="card overflow-hidden" aria-label="Bitácora">
-        <header className="flex items-center gap-3 border-b border-line px-5 py-3.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden>
-            <NavIcon.document />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold">Quién hizo qué</h2>
-            <p className="text-xs text-muted">
-              Toda acción que toca dinero, accesos o el estado de un pagaré se anota aquí sola, y
-              no se puede editar ni borrar. Es lo que contesta «¿quién anuló ese abono?» cuando el
-              deudor reclama.
-            </p>
-          </div>
-          {avisos > 0 ? (
-            <span className="chip shrink-0 bg-warn-soft text-warn">
-              {avisos} para mirar
+        <header className="border-b border-line px-5 py-3.5">
+          <div className="flex items-start gap-3">
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink"
+              aria-hidden
+            >
+              <NavIcon.document />
             </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold">Quién hizo qué</h2>
+              <p className="text-xs text-muted">
+                Toda acción que toca dinero, accesos o el estado de un pagaré se anota aquí sola,
+                y no se puede editar ni borrar. Es lo que contesta «¿quién anuló ese abono?»
+                cuando el deudor reclama.
+              </p>
+            </div>
+          </div>
+
+          {/*
+            * El aviso dejó de ser una etiqueta que sólo cuenta: ahora filtra.
+            * Decirle al administrador que hay ocho cosas que mirar y obligarle
+            * a buscarlas entre veinte era enseñar el problema sin la puerta.
+            */}
+          {audit.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Filtro href="/ajustes" activo={!soloAvisos}>
+                Todo
+              </Filtro>
+              <Filtro href="/ajustes?bitacora=avisos" activo={soloAvisos} aviso={avisos > 0}>
+                {avisos > 0 ? `Para mirar · ${avisos}` : 'Para mirar'}
+              </Filtro>
+            </div>
           ) : null}
         </header>
 
-        {audit.length === 0 ? (
-          <p className="px-5 py-6 text-center text-sm text-muted">Todavía no hay movimientos.</p>
+        {visibles.length === 0 ? (
+          <p className="px-5 py-6 text-center text-sm text-muted">
+            {soloAvisos ? 'Nada que mirar: todo lo anotado es rutina.' : 'Todavía no hay movimientos.'}
+          </p>
         ) : (
-          <ul className="divide-y divide-line">
-            {agruparRepetidos(audit).map((grupo) => {
-              const label = auditLabel(grupo.entry.action);
-              return (
-                <li key={grupo.entry.id} className="px-5 py-3">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        label.tone === 'atencion' ? 'bg-warn' : 'bg-line-strong'
-                      }`}
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1 text-sm text-ink">
-                      {label.text}
-                      {grupo.veces > 1 ? (
-                        // Cuatro avisos iguales seguidos son un hecho, no
-                        // cuatro: repetirlos empuja fuera de pantalla lo demás.
-                        <span className="ml-2 text-xs text-muted">{grupo.veces} veces</span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted">
-                      {ROLES[grupo.entry.actorRole] ?? grupo.entry.actorRole}
-                    </span>
-                    <span className="tnum shrink-0 text-xs text-muted">
-                      {dateTime(grupo.entry.createdAt)}
-                      {grupo.veces > 1 ? ` – ${dateTime(grupo.ultima)}` : ''}
-                    </span>
-                  </div>
-                  {label.hint ? (
-                    <p className="mt-1 pl-[1.125rem] text-xs text-muted">{label.hint}</p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <div>
+            {agruparPorDia(agruparRepetidos(visibles), todayInBusinessZone()).map((dia) => (
+              <div key={dia.dia}>
+                {/* El día va una vez arriba y no repetido en cada renglón: así
+                    la hora de cada cosa se lee de un vistazo. */}
+                <h3 className="border-b border-line bg-surface-2 px-5 py-1.5 text-xs font-medium text-ink-2">
+                  {dia.dia}
+                </h3>
+                <ul className="divide-y divide-line">
+                  {dia.grupos.map((grupo) => {
+                    const label = auditLabel(grupo.entry.action);
+                    const sujeto = auditSubject(grupo.entry);
+                    const atencion = label.tone === 'atencion';
+
+                    return (
+                      <li key={grupo.entry.id} className="flex gap-3 px-5 py-3">
+                        <span className="tnum w-16 shrink-0 pt-0.5 text-xs text-muted">
+                          {time(grupo.entry.createdAt)}
+                        </span>
+
+                        {/* Lo que hay que mirar se marca con icono y palabra, no
+                            con un punto de color: el color solo no lo ve todo
+                            el mundo. */}
+                        <span
+                          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded ${
+                            atencion ? 'bg-warn-soft text-warn' : 'text-muted'
+                          }`}
+                          aria-hidden
+                        >
+                          {atencion ? <NavIcon.alert /> : <span className="text-[10px]">•</span>}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-ink">
+                            {label.text}
+                            {sujeto.amountCents ? (
+                              <span className="tnum font-medium"> de {money(sujeto.amountCents)}</span>
+                            ) : null}
+                            {atencion ? (
+                              <span className="ml-2 align-middle text-[11px] font-medium uppercase tracking-wide text-warn">
+                                para mirar
+                              </span>
+                            ) : null}
+                          </p>
+
+                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                            <span>{ROLES[grupo.entry.actorRole] ?? grupo.entry.actorRole}</span>
+                            {grupo.veces > 1 ? (
+                              // Cuatro avisos iguales seguidos son un hecho, no
+                              // cuatro: repetirlos empuja fuera lo demás.
+                              <span>· {grupo.veces} veces, desde las {time(grupo.ultima)}</span>
+                            ) : null}
+                            {/* Y sobre qué: sin el folio, la bitácora no
+                                contesta la pregunta para la que existe. */}
+                            {sujeto.noteId ? (
+                              <Link
+                                href={`/pagares/${sujeto.noteId}`}
+                                className="font-mono text-[11px] text-accent-ink hover:underline"
+                              >
+                                {sujeto.folio ?? 'ver el pagaré'} →
+                              </Link>
+                            ) : sujeto.folio ? (
+                              <span className="font-mono text-[11px]">{sujeto.folio}</span>
+                            ) : null}
+                          </p>
+
+                          {label.hint ? (
+                            <p className="mt-1.5 rounded bg-surface-2 px-2.5 py-1.5 text-xs text-ink-2">
+                              {label.hint}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -398,4 +474,53 @@ function agruparRepetidos(
   }
 
   return grupos;
+}
+
+/** Un filtro de la bitácora. Es un enlace, así que funciona sin JavaScript. */
+function Filtro({
+  href,
+  activo,
+  aviso = false,
+  children,
+}: {
+  href: string;
+  activo: boolean;
+  aviso?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={activo ? 'true' : undefined}
+      className={`chip ${
+        activo
+          ? 'bg-ink text-surface'
+          : aviso
+            ? 'bg-warn-soft text-warn hover:brightness-95'
+            : 'bg-surface-2 text-ink-2 hover:brightness-95'
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** Los movimientos por día: el encabezado dice el día y los renglones la hora. */
+function agruparPorDia<T extends { entry: { createdAt: string } }>(
+  grupos: T[],
+  hoy: string,
+): { dia: string; grupos: T[] }[] {
+  const dias: { dia: string; grupos: T[] }[] = [];
+
+  for (const grupo of grupos) {
+    const dia = dayLabel(grupo.entry.createdAt, hoy);
+    const ultimo = dias.at(-1);
+    if (ultimo && ultimo.dia === dia) {
+      ultimo.grupos.push(grupo);
+      continue;
+    }
+    dias.push({ dia, grupos: [grupo] });
+  }
+
+  return dias;
 }

@@ -104,6 +104,26 @@ test.describe('accesibilidad de las rutas críticas', () => {
     await auditar(page, '/avisos');
   });
 
+  test('ajustes: la bitácora se lee y se filtra', async ({ page }) => {
+    /*
+     * Es donde se contesta «¿quién anuló ese abono?», así que lo que hay que
+     * mirar no puede distinguirse sólo por el color de un punto: va con icono y
+     * con la palabra. Y el filtro es un enlace, no un botón con JavaScript.
+     */
+    await entrar(page);
+    await page.goto('/ajustes');
+    await page.waitForLoadState('networkidle');
+    await auditar(page, '/ajustes');
+
+    const bitacora = page.getByRole('region', { name: 'Bitácora' });
+    await expect(bitacora.getByRole('link', { name: /Para mirar/ })).toBeVisible();
+
+    await bitacora.getByRole('link', { name: /Para mirar/ }).click();
+    await page.waitForURL('**/ajustes?bitacora=avisos');
+    await page.waitForLoadState('networkidle');
+    await auditar(page, '/ajustes?bitacora=avisos');
+  });
+
   test('reportes', async ({ page }) => {
     await entrar(page);
     await page.goto('/reportes');

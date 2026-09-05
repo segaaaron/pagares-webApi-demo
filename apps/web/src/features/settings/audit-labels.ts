@@ -31,8 +31,16 @@ const LABELS: Record<string, AuditLabel> = {
 
   'note.issue': { text: 'Se emitió un pagaré', tone: 'normal' },
   'note.sign': { text: 'Se firmó un pagaré', tone: 'normal' },
-  'note.void': { text: 'Se anuló un pagaré', tone: 'atencion' },
-  'note.write_off': { text: 'Se dio un pagaré de baja contable', tone: 'atencion' },
+  'note.void': {
+    text: 'Se anuló un pagaré',
+    tone: 'atencion',
+    hint: 'El pagaré no se borra: queda anulado con motivo y actor. Si no lo anulaste tú, ábrelo y mira quién y por qué.',
+  },
+  'note.write_off': {
+    text: 'Se dio un pagaré de baja contable',
+    tone: 'atencion',
+    hint: 'Deja de contar como cartera, pero la deuda sigue viva y se puede recuperar. Es reversible desde el propio pagaré.',
+  },
   'note.renew': { text: 'Se renovó un pagaré', tone: 'normal' },
   'note.extend': { text: 'Se prorrogó el vencimiento', tone: 'normal' },
   'note.reminder': { text: 'Se mandó un recordatorio', tone: 'normal' },
@@ -55,7 +63,11 @@ const LABELS: Record<string, AuditLabel> = {
 
   void: { text: 'Se anuló un pagaré', tone: 'atencion' },
   'write-off': { text: 'Se dio un pagaré de baja contable', tone: 'atencion' },
-  reinstate: { text: 'Se revirtió una baja contable', tone: 'atencion' },
+  reinstate: {
+    text: 'Se revirtió una baja contable',
+    tone: 'atencion',
+    hint: 'El pagaré vuelve a contar como cartera. Debería coincidir con un cobro o un acuerdo.',
+  },
 
   'user.create': { text: 'Se creó un acceso', tone: 'normal' },
   'user.access_deleted': {
@@ -63,15 +75,31 @@ const LABELS: Record<string, AuditLabel> = {
     tone: 'atencion',
     hint: 'El deudor y sus pagarés siguen en el sistema. El acceso se vuelve a dar desde su ficha.',
   },
-  'user.reset_password': { text: 'Se restableció una contraseña', tone: 'atencion' },
-  'user.suspend': { text: 'Se suspendió un acceso', tone: 'atencion' },
+  'user.reset_password': {
+    text: 'Se restableció una contraseña',
+    tone: 'atencion',
+    hint: 'Quien lo hizo pudo entrar a esa cuenta con la contraseña temporal. Si no lo pediste tú, cámbiala otra vez y revisa sus sesiones.',
+  },
+  'user.suspend': {
+    text: 'Se suspendió un acceso',
+    tone: 'atencion',
+    hint: 'El deudor no puede entrar hasta que se reactive desde Accesos. Sus pagarés no cambian.',
+  },
   'user.unsuspend': { text: 'Se reactivó un acceso', tone: 'normal' },
   'user.unlock': { text: 'Se desbloqueó un acceso', tone: 'normal' },
-  'user.reset-password': { text: 'Se restableció una contraseña', tone: 'atencion' },
+  'user.reset-password': {
+    text: 'Se restableció una contraseña',
+    tone: 'atencion',
+    hint: 'Quien lo hizo pudo entrar a esa cuenta con la contraseña temporal. Si no lo pediste tú, cámbiala otra vez y revisa sus sesiones.',
+  },
 
   'password.initial': { text: 'Se estrenó una contraseña', tone: 'normal' },
   'password.change': { text: 'Alguien cambió su contraseña', tone: 'normal' },
-  'password.reset': { text: 'Se recuperó una contraseña con código', tone: 'atencion' },
+  'password.reset': {
+    text: 'Se recuperó una contraseña con código',
+    tone: 'atencion',
+    hint: 'El código llegó a su correo. Si el titular no lo pidió, alguien tiene acceso a ese buzón.',
+  },
 
   'reminder_rules.replace': { text: 'Se cambiaron las reglas de aviso', tone: 'normal' },
   'legal.open_case': { text: 'Se abrió expediente judicial', tone: 'normal' },
@@ -101,4 +129,47 @@ export function auditLabel(action: string): AuditLabel {
   }
 
   return { text: action, tone: 'normal' };
+}
+
+/** Lo que la entrada tocó, sacado de su metadato sin confiar en su forma. */
+export interface AuditSubject {
+  /** Importe en centavos, cuando el movimiento es de dinero. */
+  amountCents?: string;
+  folio?: string;
+  /** El pagaré al que apunta, para poder abrirlo desde aquí. */
+  noteId?: string;
+}
+
+/**
+ * Sobre qué fue la acción.
+ *
+ * Sin esto la bitácora decía «Se registró un abono» y nada más, así que no
+ * podía contestar justo la pregunta para la que existe: *¿quién anuló **ese**
+ * abono?*. El importe y el folio están guardados desde el principio; sólo no se
+ * enseñaban.
+ */
+export function auditSubject(entry: {
+  targetType: string;
+  targetId?: string;
+  metadata: unknown;
+}): AuditSubject {
+  const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+  const texto = (valor: unknown): string | undefined =>
+    typeof valor === 'string' && valor.length > 0 ? valor : undefined;
+
+  const subject: AuditSubject = {};
+  const importe = texto(meta['amountCents']);
+  if (importe !== undefined && /^-?\d+$/.test(importe)) subject.amountCents = importe;
+
+  const folio = texto(meta['folio']) ?? texto(meta['newFolio']);
+  if (folio !== undefined) subject.folio = folio;
+
+  // El identificador del pagaré es el del propio registro cuando la acción va
+  // contra un título: es lo que permite abrirlo desde la bitácora.
+  if (entry.targetType === 'PromissoryNote') {
+    const id = texto(entry.targetId);
+    if (id !== undefined) subject.noteId = id;
+  }
+
+  return subject;
 }

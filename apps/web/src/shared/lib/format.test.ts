@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { money, shortDate, overdueLabel } from './format';
+import { dayLabel, money, overdueLabel, shortDate } from './format';
 
 describe('formato de fechas civiles', () => {
   it('no retrocede un día al formatear', () => {
@@ -32,5 +32,25 @@ describe('etiqueta de atraso', () => {
 
   it('dice al corriente sin atraso', () => {
     expect(overdueLabel(0)).toBe('Al corriente');
+  });
+});
+
+describe('el día de un movimiento', () => {
+  it('dice «Hoy» y «Ayer» en vez de la fecha', () => {
+    // Encabezar cada grupo con «4 sep 2026» obliga a calcular si eso fue hoy.
+    expect(dayLabel('2026-09-04T15:00:00.000Z', '2026-09-04')).toBe('Hoy');
+    expect(dayLabel('2026-09-03T15:00:00.000Z', '2026-09-04')).toBe('Ayer');
+  });
+
+  it('lo anterior lleva su fecha con el día de la semana', () => {
+    expect(dayLabel('2026-09-01T15:00:00.000Z', '2026-09-04')).toContain('septiembre');
+  });
+
+  it('agrupa por el día de México, no por el de UTC', () => {
+    /*
+     * Un abono de las 20:00 de México es del día siguiente en UTC. Si se
+     * agrupara por UTC, aparecería bajo «mañana».
+     */
+    expect(dayLabel('2026-09-05T02:00:00.000Z', '2026-09-04')).toBe('Hoy');
   });
 });
