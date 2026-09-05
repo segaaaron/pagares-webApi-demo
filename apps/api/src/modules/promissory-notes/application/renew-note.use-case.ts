@@ -11,6 +11,7 @@ import {
 import { addYears, amountToWords, businessToday } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
+import { assertNothingUnsigned } from './assert-nothing-unsigned.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { NumberingService } from '../../numbering/numbering.service.js';
@@ -66,6 +67,21 @@ export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; 
     return this.uow.run(async (scope) => {
       const tx = scope.client;
       const actor = ctx.actorId ?? 'system';
+
+      /*
+       * Renovar crea un pagaré nuevo que el deudor tiene que firmar, así que la
+       * regla del ADR 0019 también manda aquí: nada nuevo mientras quede algo
+       * sin firmar.
+       *
+       * El que se renueva **no cuenta contra sí mismo** —pasa a RENEWED y deja
+       * de deberse—, porque renovar no suma un título: lo cambia por otro. Lo
+       * que la regla impide es que el deudor acabe con dos papeles sin firma.
+       */
+      const deudor = await tx.debtor.findUniqueOrThrow({
+        where: { id: previous.debtorId },
+        select: { phone: true },
+      });
+      await assertNothingUnsigned(tx, deudor.phone, previous.id);
 
       const folio = await this.numbering.next(tx, 'NOTE', Number(today.slice(0, 4)), {
         prefix: settings?.noteFolioPrefix ?? 'PAG',

@@ -28,16 +28,8 @@ import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-log
 import { NumberingService } from '../../numbering/numbering.service.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { assertNoteInvariants } from '../domain/note-invariants.js';
-import { DebtorHasUnsignedNoteError } from '../domain/note.errors.js';
+import { assertNothingUnsigned, normalizePhone } from './assert-nothing-unsigned.js';
 
-/**
- * Llave del cerrojo que serializa la emisión por deudor.
- *
- * Sin él, dos altas a la vez para el mismo deudor leen las dos que no hay nada
- * pendiente y las dos emiten: la regla de «nada nuevo sin firmar» sería un
- * adorno. Se toma por teléfono, así que no estorba a nadie más (§12).
- */
-const ISSUE_LOCK = 776_2;
 
 export interface IssueNoteOutput {
   id: string;
@@ -126,7 +118,7 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
      * 0019: es obligatorio, el correo no, y es el mismo criterio con el que la
      * importación reconoce a quién pertenece cada fila (§24.5).
      */
-    const telefonoDelDeudor = input.debtor.phone.replace(/[\s()-]/g, '');
+    const telefonoDelDeudor = normalizePhone(input.debtor.phone);
     const vencimientos = installmentDates(input.dueDate, input.installments);
     const enSerie = input.installments > 1;
     const seriesId = enSerie ? randomUUID() : null;
@@ -134,14 +126,10 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
     return this.uow.run(async (scope) => {
       const tx = scope.client;
       /*
-       * El cerrojo va por **teléfono** y antes de resolver al deudor: si se
-       * tomara sobre su ficha, dos altas simultáneas de alguien que todavía no
-       * existe crearían dos fichas, cada una con su llave, y no se estorbarían.
-       * El teléfono es la identidad desde antes de la primera fila.
+       * Antes de resolver al deudor: el cerrojo va por teléfono, que es la
+       * identidad desde antes de que exista su primera ficha (ADR 0019).
        */
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ISSUE_LOCK}::int, hashtext(${telefonoDelDeudor})::int)`;
-
-      await this.assertNadaPendienteDeFirma(tx, telefonoDelDeudor);
+      await assertNothingUnsigned(tx, telefonoDelDeudor);
 
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
 
@@ -299,38 +287,6 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
           : null,
       };
     });
-  }
-
-  /**
-   * Nada nuevo mientras quede algo sin firmar (ADR 0019).
-   *
-   * Un pagaré sin firma no obliga al deudor: es una petición, no una deuda.
-   * Emitirle otro encima acumula papeles que no valen y deja al administrador
-   * sin saber qué aceptó de verdad. La serie no cuenta contra sí misma —sus
-   * cuotas nacen en el mismo acto— porque la comprobación corre antes de
-   * crearlas.
-   */
-  private async assertNadaPendienteDeFirma(tx: TxClient, phone: string): Promise<void> {
-    /*
-     * Se busca por **teléfono** y no por ficha a propósito.
-     *
-     * Por ficha, volver a teclear al mismo deudor —el correo es opcional— creaba
-     * una ficha nueva sin nada pendiente y la regla se saltaba sola. Y unir las
-     * fichas por teléfono tampoco vale: dos personas que comparten línea
-     * acabarían con el pagaré de una emitido a nombre de la otra, que es un
-     * defecto peor y silencioso. Así la regla no se puede burlar y cada ficha
-     * sigue siendo de quien es.
-     */
-    const pendiente = await tx.promissoryNote.findFirst({
-      where: {
-        debtor: { phone: { in: [phone, `+${phone.replace(/^\+/, '')}`] } },
-        status: { in: ['PENDING_SIGNATURE', 'PROCESSING_SIGNATURE'] },
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { folio: true },
-    });
-
-    if (pendiente) throw new DebtorHasUnsignedNoteError(pendiente.folio);
   }
 
   /**

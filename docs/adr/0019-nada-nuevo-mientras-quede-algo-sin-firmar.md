@@ -19,6 +19,11 @@ deudor tiene algún pagaré en `PENDING_SIGNATURE` o `PROCESSING_SIGNATURE`. El 
 pendiente va en el mensaje: quien emite necesita saber a por qué firma ir, no un «no se
 pudo».
 
+La regla vive en `assertNothingUnsigned` y la aplican **los dos caminos que suman un
+pagaré**: la emisión y la renovación. Son tres los sitios del código que crean títulos —el
+tercero es la importación—, y vigilar sólo uno habría dejado la regla abierta por los
+otros: bastaba renovar para acabar con dos papeles sin firma.
+
 Tres precisiones que la regla necesita para no significar otra cosa:
 
 1. **Una serie completa sí se emite.** Sus cuotas nacen en el mismo acto y se firman en el
@@ -27,7 +32,11 @@ Tres precisiones que la regla necesita para no significar otra cosa:
 2. **Lo anulado y lo renovado no bloquean.** Uno no se debe y el otro se debe en el
    documento nuevo (§13.7).
 3. **La importación no queda sujeta a la regla.** Entra cartera vieja ya firmada en papel
-   (§24.5): no hay firma que esperar.
+   (§24.5): no hay firma que esperar, y no suma ningún título sin firmar.
+4. **El pagaré que se renueva no cuenta contra sí mismo.** Renovar no suma un título: lo
+   cambia por otro, y el anterior pasa a `RENEWED`. Si contara, no se podría renovar nada
+   que no estuviera firmado. Lo que sí impide la regla es renovar teniendo **otro**
+   pendiente.
 
 Dos cosas que la hacen real y no un adorno:
 
@@ -51,6 +60,13 @@ Emitir es ahora una operación que puede fallar por el estado de **otro** docume
 panel lo dice antes de que ocurra donde puede: el botón «Duplicar» de un pagaré sin firma
 se queda a la vista, apagado y con el motivo, en vez de llevar a un formulario que va a
 rebotar.
+
+**El coste de esta regla lo paga entero el deudor**, y conviene que quede escrito para quien
+relea esto dentro de un año: con la firma por pagaré (ADR 0021), quien documenta doce
+mensualidades firma doce veces, y hasta la última no puede recibir nada nuevo. Es el efecto
+buscado —no se le apila deuda que no ha aceptado— pero el trabajo es suyo, no de quien
+presta. De ahí que la aplicación tenga que decirle cuántas firmas faltan y qué desbloquean,
+en el momento en que pide algo y no puede.
 
 Dos deudores que compartan teléfono se bloquean entre sí: si uno tiene un pagaré sin
 firmar, al otro no se le emite. Es el precio de que la regla no se pueda burlar, y se

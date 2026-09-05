@@ -352,3 +352,72 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     expect((await emitirPara(phone)).status).toBe(201);
   });
 });
+
+/**
+ * Renovar también crea un pagaré (§12, ADR 0019).
+ *
+ * Es el tercer camino que emite un título —los otros son la emisión y la
+ * importación—, y por eso la regla de «nada nuevo sin firmar» tiene que estar
+ * aquí: si sólo vigilara la emisión, se saltaría renovando.
+ */
+describe('§12 · la renovación también respeta la firma pendiente', () => {
+  const nuevoTelefono = (): string =>
+    `+52443${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 1000)}`;
+
+  async function emitirPara(phone: string): Promise<{ status: number; body: Record<string, unknown> }> {
+    return call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: { fullName: 'Deudor de renovación', address: 'Calle de prueba 12', phone },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+      },
+    });
+  }
+
+  async function renovar(noteId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+    return call(`/admin/notes/${noteId}/renew`, {
+      method: 'POST',
+      idempotent: true,
+      body: { newDueDate: futureDate(90), reason: 'Acuerdo con el cliente' },
+    });
+  }
+
+  it('el pagaré que se renueva no cuenta contra sí mismo', async () => {
+    // Renovar no suma un título: lo cambia por otro. Si contara, no se podría
+    // renovar nada que no estuviera firmado.
+    const phone = nuevoTelefono();
+    const primero = await emitirPara(phone);
+    expect(primero.status).toBe(201);
+
+    const renovado = await renovar(String(primero.body['id']));
+    expect(renovado.status).toBe(201);
+  });
+
+  it('pero no se renueva teniendo otro pagaré sin firmar', async () => {
+    /*
+     * El deudor acabaría con dos papeles sin firma por la vía de renovar, que
+     * es justo lo que la regla impide por la vía de emitir.
+     */
+    const phone = nuevoTelefono();
+    const primero = await emitirPara(phone);
+    const renovado = await renovar(String(primero.body['id']));
+    expect(renovado.status).toBe(201);
+
+    // Ahora hay uno sin firmar (el renovado) y se intenta renovar... otro.
+    const segundo = await renovar(String(renovado.body['id']));
+    expect(segundo.status).toBe(201);
+
+    // El de arriba pasó porque el pendiente era él mismo. Con un pendiente
+    // ajeno, no pasa: se emite otro para el mismo deudor por otra vía.
+    const tercero = await emitirPara(phone);
+    expect(tercero.status).toBe(409);
+    expect(String(tercero.body['type'])).toContain('debtor_has_unsigned_note');
+  });
+});
