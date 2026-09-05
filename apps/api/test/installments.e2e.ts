@@ -69,6 +69,8 @@ async function emitir(
   amountCents: string,
   dueDate = futureDate(30),
   plan?: { model: 'NONE' | 'INSOLUTOS' | 'GLOBAL'; rate?: { value: number; period: 'MONTHLY' } },
+  /** Para probar cuotas ya vencidas hace falta expedir antes del vencimiento. */
+  issueDate = futureDate(-1),
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return call('/admin/notes', {
     method: 'POST',
@@ -82,7 +84,7 @@ async function emitir(
         phone: `+52443${String(Date.now()).slice(-7)}`,
       },
       issuePlace: 'Morelia, Michoacán',
-      issueDate: futureDate(-1),
+      issueDate,
       paymentPlace: 'Morelia, Michoacán',
       dueDate,
       creditorName: 'Créditos Morelia S.A. de C.V.',
@@ -354,5 +356,160 @@ describe('§12 · liquidación anticipada', () => {
 
     const resultado = await call(`/admin/notes/${primera.id}/early-payoff`);
     expect(resultado.status).toBe(401);
+  });
+});
+
+/**
+ * El interés ordinario dentro del abono (§12.3, ADR 0020).
+ *
+ * La cuota de un plan lleva dentro el precio del préstamo. Hasta que esto
+ * existió, un abono a una cuota al corriente se registraba **entero a capital**:
+ * el recibo le decía al deudor que había pagado capital cuando pagó interés, y
+ * la ganancia de quien presta se contaba como devolución.
+ */
+describe('§12.3 · el abono distingue el precio del préstamo de la sanción', () => {
+  /** Firma un pagaré por la vía del administrador para poder abonarle. */
+  async function abonar(
+    noteId: string,
+    amountCents: string,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    return call(`/admin/notes/${noteId}/payments`, {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: { amountCents, paidOn: futureDate(0), method: 'TRANSFER' },
+    });
+  }
+
+  /** Emite una serie con plan e importa su primera cuota ya firmada. */
+  async function serieFirmada(): Promise<{ id: string; amountCents: string }> {
+    const emision = await emitir(12, '6000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    expect(emision.status).toBe(201);
+    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    // Un pagaré sin firmar no admite abonos (§11.3), así que se firma por la
+    // vía del panel, que es la que existe sin aplicación de por medio.
+    const sharp = (await import('sharp')).default;
+    const trazo = await sharp({
+      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+    })
+      .png()
+      .toBuffer();
+
+    const form = new FormData();
+    form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+    form.append(
+      'payload',
+      JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
+    );
+    const firmado = await fetch(`${API}/notes/${primera.id}/signature`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: form,
+    });
+    expect(firmado.status, 'la primera cuota queda firmada').toBe(201);
+
+    return { id: primera.id, amountCents: primera.amountCents };
+  }
+
+  it('lo primero que cubre un abono es el precio del préstamo', async () => {
+    // $60,000 al 3 % mensual: la primera cuota lleva $1,800 de interés
+    // ordinario, y hasta ahí llega el abono antes de tocar el capital.
+    const cuota = await serieFirmada();
+    const abono = await abonar(cuota.id, '200000');
+
+    expect(abono.status).toBe(201);
+    expect(abono.body['appliedToOrdinaryInterestCents']).toBe('180000');
+    expect(abono.body['appliedToInterestCents']).toBe('0'); // no hay atraso
+    expect(abono.body['appliedToPrincipalCents']).toBe('20000');
+  });
+
+  it('los tres conceptos suman exactamente el abono', async () => {
+    // Si sobrara o faltara un centavo, el saldo dejaría de cuadrar con el libro.
+    const cuota = await serieFirmada();
+    const abono = await abonar(cuota.id, '350000');
+
+    const suma =
+      BigInt(String(abono.body['appliedToOrdinaryInterestCents'])) +
+      BigInt(String(abono.body['appliedToInterestCents'])) +
+      BigInt(String(abono.body['appliedToPrincipalCents']));
+    expect(suma).toBe(350_000n);
+  });
+
+  it('el interés ya cubierto no se vuelve a cobrar', async () => {
+    const cuota = await serieFirmada();
+    await abonar(cuota.id, '200000');
+    const segundo = await abonar(cuota.id, '200000');
+
+    // El precio del préstamo se pagó con el primer abono: el segundo es capital.
+    expect(segundo.body['appliedToOrdinaryInterestCents']).toBe('0');
+    expect(segundo.body['appliedToPrincipalCents']).toBe('200000');
+  });
+
+  it('el detalle enseña de qué está hecha la cuota', async () => {
+    const cuota = await serieFirmada();
+    const detalle = await call(`/admin/notes/${cuota.id}`, { token: adminToken });
+
+    const desglose = detalle.body['breakdown'] as Record<string, Record<string, string>>;
+    expect(desglose['model']).toBe('INSOLUTOS');
+    expect(desglose['interest']?.['cents']).toBe('180000');
+    // Interés más capital es la cuota entera: es lo que el deudor firma.
+    expect(
+      BigInt(desglose['interest']?.['cents'] ?? '0') +
+        BigInt(desglose['principal']?.['cents'] ?? '0'),
+    ).toBe(BigInt(cuota.amountCents));
+  });
+
+  it('un pagaré suelto no tiene desglose que enseñar', async () => {
+    // No lleva interés dentro: su importe es capital y nada más.
+    const suelto = await emitir(1, '1000000');
+    const detalle = await call(`/admin/notes/${String(suelto.body['id'])}`, { token: adminToken });
+
+    expect(detalle.body['breakdown']).toBeNull();
+  });
+});
+
+/**
+ * Sobre qué corre el moratorio (ADR 0020).
+ *
+ * El art. 363 del Código de Comercio dice que los intereses vencidos y no
+ * pagados no devengan intereses salvo pacto de capitalizarlos. La cuota de un
+ * plan lleva su interés ordinario dentro, así que cobrar mora sobre la cuota
+ * entera es justamente eso.
+ */
+describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
+  it('una cuota vencida devenga menos que un pagaré suelto del mismo importe', async () => {
+    /*
+     * Los dos deben lo mismo y llevan la misma tasa; lo único que cambia es que
+     * la cuota lleva el precio del préstamo dentro. Si la mora fuera igual en
+     * los dos, se estaría cobrando interés sobre interés.
+     */
+    const serie = await emitir(
+      12,
+      '6000000',
+      futureDate(-20),
+      { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
+      futureDate(-50),
+    );
+    expect(serie.status).toBe(201);
+    const cuota = (serie.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+
+    const suelto = await emitir(1, cuota.amountCents, futureDate(-20), undefined, futureDate(-50));
+    expect(suelto.status).toBe(201);
+
+    const [conPlan, sinPlan] = await Promise.all([
+      call(`/admin/notes/${cuota.id}`, { token: adminToken }),
+      call(`/admin/notes/${String(suelto.body['id'])}`, { token: adminToken }),
+    ]);
+
+    const mora = (r: typeof conPlan): bigint =>
+      BigInt((r.body['accruedInterest'] as Record<string, string>)['cents'] ?? '0');
+
+    expect(mora(sinPlan)).toBeGreaterThan(0n);
+    expect(mora(conPlan)).toBeGreaterThan(0n);
+    expect(mora(conPlan)).toBeLessThan(mora(sinPlan));
   });
 });

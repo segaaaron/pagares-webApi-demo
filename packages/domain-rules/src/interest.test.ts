@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accrueInterest,
+  lateInterestBase,
   describeRate,
   describeRateWithAnnual,
   fromAnnualRatePct,
@@ -80,5 +81,58 @@ describe('periodicidad de la tasa', () => {
     expect(describeRateWithAnnual(36, 'MONTHLY')).toBe('3% mensual · 36% anual simple');
     expect(describeRateWithAnnual(36, 'ANNUAL')).toBe('36% anual');
     expect(describeRateWithAnnual(null, 'MONTHLY')).toBe('Sin intereses pactados');
+  });
+});
+
+/**
+ * Sobre qué corre el moratorio (ADR 0020).
+ *
+ * La cuota de un plan lleva su interés ordinario dentro. Cobrar mora sobre el
+ * saldo entero es cobrar interés sobre interés, que es lo que prohíbe el art.
+ * 363 del Código de Comercio salvo pacto de capitalizarlos.
+ */
+describe('base del moratorio', () => {
+  it('descuenta el interés ordinario que queda por cubrir', () => {
+    // Cuota de 6,027.73 con 1,800 de precio del préstamo: la mora corre sobre
+    // los 4,227.73 de capital.
+    expect(
+      lateInterestBase({
+        balanceCents: 602_773n,
+        ordinaryInterestPendingCents: 180_000n,
+        overPrincipalOnly: true,
+      }),
+    ).toBe(422_773n);
+  });
+
+  it('sobre el saldo entero cuando así se pactó', () => {
+    expect(
+      lateInterestBase({
+        balanceCents: 602_773n,
+        ordinaryInterestPendingCents: 180_000n,
+        overPrincipalOnly: false,
+      }),
+    ).toBe(602_773n);
+  });
+
+  it('un pagaré suelto no cambia: no lleva interés dentro', () => {
+    // Es el caso de toda la cartera anterior a los planes.
+    expect(
+      lateInterestBase({
+        balanceCents: 1_000_000n,
+        ordinaryInterestPendingCents: 0n,
+        overPrincipalOnly: true,
+      }),
+    ).toBe(1_000_000n);
+  });
+
+  it('nunca devuelve una base negativa', () => {
+    // Cobrar moratorio al revés no significa nada.
+    expect(
+      lateInterestBase({
+        balanceCents: 100_000n,
+        ordinaryInterestPendingCents: 180_000n,
+        overPrincipalOnly: true,
+      }),
+    ).toBe(0n);
   });
 });

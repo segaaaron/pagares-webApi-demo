@@ -8,6 +8,7 @@ import {
   describeRate,
   describeRateWithAnnual,
   formatMxn,
+  lateInterestBase,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -35,6 +36,20 @@ export interface NoteDetail {
   balance: { cents: string; formatted: string };
   /** Interés devengado **al día de hoy**: se calcula, no se guarda (§12.3). */
   accruedInterest: { cents: string; formatted: string };
+  /**
+   * De qué está hecha la cuota cuando el pagaré es parte de un plan (§12).
+   *
+   * El deudor firma un pagaré de $6,027.73 y tiene derecho a saber que $1,800
+   * de esos son el precio del préstamo. Se guarda al emitir, así que esto es lo
+   * pactado y no un recálculo.
+   */
+  breakdown: {
+    model: string;
+    interest: { cents: string; formatted: string };
+    principal: { cents: string; formatted: string };
+    /** Del interés de la cuota, lo que queda por cubrir. */
+    interestPending: { cents: string; formatted: string };
+  } | null;
   interestRateAnnualPct: number | null;
   /** Cómo se firmó: "3% mensual (36% anual)". Es lo que va en el documento. */
   /** Como se pactó, para el documento: «3% mensual». */
@@ -95,6 +110,8 @@ export interface NoteDetail {
     id: string;
     amount: string;
     appliedToInterest: string;
+    /** El precio del préstamo, aparte de la sanción por atraso (ADR 0020). */
+    appliedToOrdinaryInterest: string;
     appliedToPrincipal: string;
     paidOn: string;
     method: string;
@@ -212,11 +229,31 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
     const overdue = daysOverdue(dueDate, now);
     const balance = note.amountCents - note.paidCents;
 
+    /*
+     * El interés ordinario de la cuota y lo que queda de él. La mora no corre
+     * sobre esa parte (ADR 0020): sería interés sobre interés.
+     */
+    const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
+    const ordinarioAbonado = note.payments.reduce(
+      (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
+      0n,
+    );
+    const ordinarioPendiente = ordinarioDeLaCuota - ordinarioAbonado;
+
     const accrued = accrueInterest({
-      balanceCents: balance,
+      balanceCents: lateInterestBase({
+        balanceCents: balance,
+        ordinaryInterestPendingCents: ordinarioPendiente,
+        overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
+      }),
       annualRatePct: note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
       daysOverdue: overdue,
       basis: (settings?.interestBasis ?? 360) as 360 | 365,
+    });
+
+    const dinero = (cents: bigint): { cents: string; formatted: string } => ({
+      cents: cents.toString(),
+      formatted: formatMxn(cents),
     });
 
     return {
@@ -239,6 +276,15 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
       paid: { cents: note.paidCents.toString(), formatted: formatMxn(note.paidCents) },
       balance: { cents: balance.toString(), formatted: formatMxn(balance) },
       accruedInterest: { cents: accrued.toString(), formatted: formatMxn(accrued) },
+      breakdown:
+        note.planModel && note.planModel !== 'NONE'
+          ? {
+              model: note.planModel,
+              interest: dinero(ordinarioDeLaCuota),
+              principal: dinero(note.planPrincipalCents ?? note.amountCents - ordinarioDeLaCuota),
+              interestPending: dinero(ordinarioPendiente > 0n ? ordinarioPendiente : 0n),
+            }
+          : null,
       interestRateAnnualPct:
         note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
       interestPeriod: note.interestPeriod,
@@ -288,6 +334,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         id: p.id,
         amount: formatMxn(p.amountCents),
         appliedToInterest: formatMxn(p.appliedToInterestCents),
+        appliedToOrdinaryInterest: formatMxn(p.appliedToOrdinaryInterestCents),
         appliedToPrincipal: formatMxn(p.appliedToPrincipalCents),
         paidOn: p.paidOn.toISOString().slice(0, 10),
         method: p.method,

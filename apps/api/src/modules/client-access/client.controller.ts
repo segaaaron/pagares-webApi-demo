@@ -10,7 +10,14 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { accrueInterest, businessToday, daysOverdue, formatMxn, money } from '@pagares/domain-rules';
+import {
+  accrueInterest,
+  businessToday,
+  daysOverdue,
+  formatMxn,
+  lateInterestBase,
+  money,
+} from '@pagares/domain-rules';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
@@ -157,7 +164,14 @@ export class ClientController {
       // sola forma de dinero en toda la API, la misma que usa el listado de
       // administración.
       amount: money(payment.amountCents),
+      /** Moratorio: la sanción por el atraso (§12.3). */
       appliedToInterest: money(payment.appliedToInterestCents),
+      /**
+       * Interés ordinario: el precio del préstamo (§12, ADR 0020). Va aparte
+       * del moratorio porque son cosas distintas —uno es precio y el otro
+       * sanción— y sumarlos le impide al deudor verificar qué pagó.
+       */
+      appliedToOrdinaryInterest: money(payment.appliedToOrdinaryInterestCents),
       appliedToPrincipal: money(payment.appliedToPrincipalCents),
       paidOn: payment.paidOn.toISOString().slice(0, 10),
       method: payment.method,
@@ -422,6 +436,16 @@ export class ClientController {
     const overdue = daysOverdue(dueDate, now);
     const balance = note.amountCents - note.paidCents;
 
+    /*
+     * De qué está hecha su cuota (§12) y cuánto de ese precio queda por cubrir.
+     * El deudor firma un pagaré de $6,027.73: tiene derecho a saber que $1,800
+     * son el precio del préstamo y no capital.
+     */
+    const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
+    const ordinarioPendiente =
+      ordinarioDeLaCuota -
+      note.payments.reduce((suma, abono) => suma + abono.appliedToOrdinaryInterestCents, 0n);
+
     const hermanos = note.seriesId
       ? await this.prisma.promissoryNote.findMany({
           where: { seriesId: note.seriesId, ownerId: actor.id },
@@ -448,7 +472,12 @@ export class ClientController {
       amountInWords: note.amountInWords,
       accruedInterest: money(
         accrueInterest({
-          balanceCents: balance,
+          // La mora no corre sobre el interés ordinario de la cuota (ADR 0020).
+          balanceCents: lateInterestBase({
+            balanceCents: balance,
+            ordinaryInterestPendingCents: ordinarioPendiente,
+            overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
+          }),
           annualRatePct: note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
           daysOverdue: overdue,
           basis: (settings?.interestBasis ?? 360) as 360 | 365,

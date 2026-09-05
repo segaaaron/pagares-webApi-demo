@@ -12,6 +12,31 @@ export interface AccrueInterestInput {
   basis: DayCountBasis;
 }
 
+/**
+ * Sobre qué corre el moratorio (§12.3, ADR 0020).
+ *
+ * El saldo de una cuota lleva dentro su **interés ordinario**, que es el precio
+ * del préstamo. Cobrar moratorio sobre ese saldo entero es cobrar interés sobre
+ * interés, y el art. 363 del Código de Comercio dice que los intereses vencidos
+ * y no pagados no devengan intereses salvo pacto de capitalizarlos.
+ *
+ * Por eso, por omisión, la sanción corre sólo sobre el **capital** que queda por
+ * devolver. Quien tenga ese pacto puede apagarlo, y entonces es una decisión
+ * escrita y no un descuido del cálculo.
+ */
+export function lateInterestBase(input: {
+  balanceCents: bigint;
+  /** Interés ordinario de la cuota que todavía no se ha cubierto. */
+  ordinaryInterestPendingCents: bigint;
+  overPrincipalOnly: boolean;
+}): bigint {
+  if (!input.overPrincipalOnly || input.ordinaryInterestPendingCents <= 0n) {
+    return input.balanceCents > 0n ? input.balanceCents : 0n;
+  }
+  const base = input.balanceCents - input.ordinaryInterestPendingCents;
+  return base > 0n ? base : 0n;
+}
+
 export function accrueInterest({
   balanceCents,
   annualRatePct,

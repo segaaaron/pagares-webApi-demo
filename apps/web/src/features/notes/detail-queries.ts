@@ -31,6 +31,16 @@ export interface NoteDetail {
     address: string;
     phone: string;
   }[];
+  /**
+   * De qué está hecha esta cuota cuando el pagaré es parte de un plan (§12).
+   * Nulo cuando no lleva interés dentro.
+   */
+  breakdown: {
+    model: string;
+    interest: { cents: string; formatted: string };
+    principal: { cents: string; formatted: string };
+    interestPending: { cents: string; formatted: string };
+  } | null;
   /** La serie, cuando la deuda se documentó en varios pagos (§12). */
   series: {
     id: string;
@@ -62,7 +72,10 @@ export interface NoteDetail {
   payments: {
     id: string;
     amount: string;
+    /** Moratorio: la sanción por el atraso (§12.3). */
     appliedToInterest: string;
+    /** Interés ordinario: el precio del préstamo (§12, ADR 0020). */
+    appliedToOrdinaryInterest: string;
     appliedToPrincipal: string;
     paidOn: string;
     method: string;

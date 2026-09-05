@@ -13,7 +13,10 @@ export interface PaymentReceiptData extends Base {
   receiptFolio: string;
   amountPaidFormatted: string;
   paidOnFormatted: string;
+  /** Moratorio: la sanción por el atraso (§12.3). */
   appliedToInterestFormatted: string;
+  /** Interés ordinario: el precio del préstamo (§12, ADR 0020). */
+  appliedToOrdinaryInterestFormatted: string;
   appliedToPrincipalFormatted: string;
 }
 
@@ -41,6 +44,8 @@ export function paymentReceipt(data: PaymentReceiptData): {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
            style="background:${T.surface2};border-radius:10px;margin:4px 0 16px;">
       <tr><td style="padding:14px 18px;">
+        <p style="margin:0 0 6px;font-size:12px;color:${T.muted};">Aplicado a interés del préstamo</p>
+        <p style="margin:0 0 12px;font-family:${T.mono};font-size:15px;color:${T.ink};">${escapeHtml(data.appliedToOrdinaryInterestFormatted)}</p>
         <p style="margin:0 0 6px;font-size:12px;color:${T.muted};">Aplicado a interés moratorio</p>
         <p style="margin:0 0 12px;font-family:${T.mono};font-size:15px;color:${T.ink};">${escapeHtml(data.appliedToInterestFormatted)}</p>
         <p style="margin:0 0 6px;font-size:12px;color:${T.muted};">Aplicado a capital</p>
@@ -56,7 +61,8 @@ export function paymentReceipt(data: PaymentReceiptData): {
     `Hola ${data.fullName}:`,
     '',
     `Recibo ${data.receiptFolio} por ${data.amountPaidFormatted} del ${data.paidOnFormatted}.`,
-    `Aplicado a interés: ${data.appliedToInterestFormatted}`,
+    `Aplicado a interés del préstamo: ${data.appliedToOrdinaryInterestFormatted}`,
+    `Aplicado a interés moratorio: ${data.appliedToInterestFormatted}`,
     `Aplicado a capital: ${data.appliedToPrincipalFormatted}`,
     `Pagaré ${data.document.folio}, saldo ${data.document.balanceFormatted ?? ''}`,
     '',

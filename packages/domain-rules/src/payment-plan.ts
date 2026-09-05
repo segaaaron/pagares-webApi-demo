@@ -194,6 +194,14 @@ export interface PendingInstallment {
   paidCents: bigint;
   /** El interés ordinario que lleva dentro esa cuota, según el plan pactado. */
   interestCents: bigint;
+  /**
+   * Cuánto de ese interés ya se cubrió, según el libro de abonos.
+   *
+   * Cuando se conoce, manda sobre cualquier deducción: el reparto de cada abono
+   * queda escrito al registrarlo (ADR 0020), y suponerlo desde el importe
+   * pagado sería contar dos veces lo que ya está contado.
+   */
+  interestPaidCents?: bigint;
 }
 
 export interface EarlyPayoff {
@@ -248,10 +256,18 @@ export function settleEarly(input: {
     const resta = cuota.amountCents - cuota.paidCents;
     if (resta <= 0n) continue;
 
-    // Lo abonado cubrió primero el interés; lo que sobre de él sigue debiéndose.
-    const interesPagado = cuota.paidCents < cuota.interestCents ? cuota.paidCents : cuota.interestCents;
-    const interesRestante = cuota.interestCents - interesPagado;
-    // Nunca más interés que lo que resta de la cuota: el resto es capital.
+    /*
+     * Lo abonado cubrió primero el interés; lo que sobre de él sigue debiéndose.
+     * Si el libro dice cuánto se aplicó al interés, se usa ese dato; si no —una
+     * cuota anterior al ADR 0020—, se deduce con la imputación del art. 2094.
+     */
+    const interesPagado =
+      cuota.interestPaidCents ??
+      (cuota.paidCents < cuota.interestCents ? cuota.paidCents : cuota.interestCents);
+    const porCubrir = cuota.interestCents - interesPagado;
+    // Ni negativo —una reversa puede dejarlo por debajo de cero— ni más que lo
+    // que resta de la cuota: lo demás es capital.
+    const interesRestante = porCubrir > 0n ? porCubrir : 0n;
     const interes = interesRestante > resta ? resta : interesRestante;
     principalCents += resta - interes;
 

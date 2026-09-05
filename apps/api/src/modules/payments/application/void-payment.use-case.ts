@@ -67,6 +67,9 @@ export class VoidPaymentUseCase extends BaseUseCase<VoidPaymentInput, { reversal
           // Importe negativo: el libro es sólo de anexar y la suma sigue cuadrando.
           amountCents: -original.amountCents,
           appliedToInterestCents: -original.appliedToInterestCents,
+          // También el interés ordinario: si la reversa no lo devolviera, la
+          // cuota quedaría con su precio pagado y el dinero fuera (§12).
+          appliedToOrdinaryInterestCents: -original.appliedToOrdinaryInterestCents,
           appliedToPrincipalCents: -original.appliedToPrincipalCents,
           isRecovery: original.isRecovery,
           paidOn: original.paidOn,

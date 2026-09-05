@@ -21,6 +21,12 @@ const updateSchema = z
     // Umbral que dispara la advertencia de tasa: avisa, no impide (§25.14).
     interestWarningThresholdPct: z.number().min(0).max(1000),
     applyPaymentToInterestFirst: z.boolean(),
+    /**
+     * El moratorio corre sólo sobre el capital de la cuota (ADR 0020). Los
+     * intereses vencidos y no pagados no devengan intereses salvo pacto de
+     * capitalizarlos (art. 363 del Código de Comercio).
+     */
+    lateInterestOverPrincipalOnly: z.boolean(),
     prescriptionYears: z.number().int().min(1).max(20),
     /**
      * Emitir los pagarés nuevos con la cláusula "no a la orden" (art. 25 LGTOC).

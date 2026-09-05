@@ -5,6 +5,7 @@ import {
   businessToday,
   daysBetween,
   formatMxn,
+  lateInterestBase,
   settleEarly,
   type PendingInstallment,
   type PlanModel,
@@ -129,12 +130,28 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
     });
     const basis = (settings?.interestBasis ?? 360) as 360 | 365;
 
+    /*
+     * Cuánto del interés ordinario de cada cuota se ha cubierto ya. Se lee del
+     * libro de abonos y no se deduce del importe pagado: desde el ADR 0020 el
+     * reparto queda escrito en cada abono, y usar el dato real es lo que impide
+     * que esta cifra y la del recibo se contradigan.
+     */
+    const abonos = await this.prisma.payment.groupBy({
+      by: ['noteId'],
+      where: { noteId: { in: vivos.map((n) => n.id) } },
+      _sum: { appliedToOrdinaryInterestCents: true },
+    });
+    const ordinarioAbonado = new Map(
+      abonos.map((fila) => [fila.noteId, fila._sum.appliedToOrdinaryInterestCents ?? 0n]),
+    );
+
     const pending: PendingInstallment[] = vivos.map((n) => ({
       index: n.seriesIndex ?? 1,
       dueDate: n.dueDate.toISOString().slice(0, 10),
       amountCents: n.amountCents,
       paidCents: n.paidCents,
       interestCents: n.planInterestCents ?? 0n,
+      interestPaidCents: ordinarioAbonado.get(n.id) ?? 0n,
     }));
 
     const planModel = (note.planModel ?? 'NONE') as PlanModel;
@@ -148,8 +165,14 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
       if (resta <= 0n) continue;
       const atraso = Math.max(0, daysBetween(n.dueDate.toISOString().slice(0, 10), onDate));
       if (atraso === 0) continue;
+      // La mora no corre sobre el interés ordinario de la cuota (ADR 0020).
       lateInterest += accrueInterest({
-        balanceCents: resta,
+        balanceCents: lateInterestBase({
+          balanceCents: resta,
+          ordinaryInterestPendingCents:
+            (n.planInterestCents ?? 0n) - (ordinarioAbonado.get(n.id) ?? 0n),
+          overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
+        }),
         annualRatePct: n.interestRateAnnualPct === null ? null : Number(n.interestRateAnnualPct),
         daysOverdue: atraso,
         basis,

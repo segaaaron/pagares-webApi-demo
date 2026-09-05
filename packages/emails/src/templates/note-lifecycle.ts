@@ -13,6 +13,18 @@ export interface NoteToSignData extends Base {
   hasAccount: boolean;
   /** Cuántos pagarés se firmaron a la vez: uno, o los de una serie (§12). */
   installments?: number;
+  /**
+   * Lo pactado, cuando la serie lleva interés (§12).
+   *
+   * Sin esto el correo decía «12 pagarés» y el importe del primero, y el deudor
+   * tenía que multiplicar para saber a cuánto se compromete. Las tres cifras
+   * que se acuerdan de viva voz —cuota, precio del préstamo y total— van
+   * escritas, que es como no hay malentendido después.
+   */
+  plan?: {
+    totalFormatted: string;
+    interestFormatted: string;
+  };
 }
 
 /** Plantilla 2 (§16): tienes un pagaré por firmar. */
@@ -46,6 +58,17 @@ export function noteToSign(data: NoteToSignData): { subject: string; html: strin
         : ''
     }
     ${
+      data.plan
+        ? `<p style="margin:0 0 14px;">En total pagarás <strong>${escapeHtml(
+            data.plan.totalFormatted,
+          )}</strong>, de los cuales ${escapeHtml(
+            data.plan.interestFormatted,
+          )} son el interés del préstamo. Cada pago mensual es de ${escapeHtml(
+            data.document.amountFormatted,
+          )}.</p>`
+        : ''
+    }
+    ${
       data.hasAccount
         ? ''
         : '<p style="margin:0 0 14px;">Tus datos de acceso llegaron en un correo aparte.</p>'
@@ -54,7 +77,11 @@ export function noteToSign(data: NoteToSignData): { subject: string; html: strin
   return {
     subject,
     text: enSerie
-      ? `Hola ${data.fullName}:\n\n${data.organizationName} emitió ${data.installments} pagarés a tu nombre, uno por cada pago mensual.\nEl primero es de ${data.document.amountFormatted} y vence el ${data.document.dueDateFormatted} (folio ${data.document.folio}).\n\nRevísalos y fírmalos en la aplicación: ${data.appUrl}`
+      ? `Hola ${data.fullName}:\n\n${data.organizationName} emitió ${data.installments} pagarés a tu nombre, uno por cada pago mensual.\nEl primero es de ${data.document.amountFormatted} y vence el ${data.document.dueDateFormatted} (folio ${data.document.folio}).${
+          data.plan
+            ? `\n\nEn total pagarás ${data.plan.totalFormatted}, de los cuales ${data.plan.interestFormatted} son el interés del préstamo.`
+            : ''
+        }\n\nRevísalos y fírmalos en la aplicación: ${data.appUrl}`
       : `Hola ${data.fullName}:\n\n${data.organizationName} emitió un pagaré a tu nombre por ${data.document.amountFormatted}, con vencimiento el ${data.document.dueDateFormatted}.\nFolio: ${data.document.folio}\n\nRevísalo y fírmalo en la aplicación: ${data.appUrl}`,
     html: baseLayout({
       title: subject,

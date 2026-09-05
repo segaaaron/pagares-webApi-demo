@@ -9,7 +9,7 @@ import {
   type UnitOfWork,
 } from '@pagares/api-core';
 import type { RegisterPaymentRequest } from '@pagares/contracts';
-import { accrueInterest, businessToday, daysOverdue } from '@pagares/domain-rules';
+import { accrueInterest, businessToday, daysOverdue, lateInterestBase } from '@pagares/domain-rules';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
@@ -30,6 +30,8 @@ export interface RegisterPaymentOutput {
   balanceCents: string;
   status: string;
   appliedToInterestCents: string;
+  /** El precio del préstamo, aparte de la sanción por atraso (ADR 0020). */
+  appliedToOrdinaryInterestCents: string;
   appliedToPrincipalCents: string;
 }
 
@@ -67,8 +69,17 @@ export class RegisterPaymentUseCase extends BaseUseCase<RegisterPaymentInput, Re
       // saldría por otra conexión, el bloqueo se soltaría de inmediato y dos
       // abonos simultáneos se pisarían el saldo.
       const [locked] = await tx.$queryRaw<
-        { id: string; amountCents: bigint; paidCents: bigint; status: string; dueDate: Date; interestRateAnnualPct: string | null }[]
-      >`SELECT id, "amountCents", "paidCents", status::text, "dueDate", "interestRateAnnualPct"::text
+        {
+          id: string;
+          amountCents: bigint;
+          paidCents: bigint;
+          status: string;
+          dueDate: Date;
+          interestRateAnnualPct: string | null;
+          planInterestCents: bigint | null;
+        }[]
+      >`SELECT id, "amountCents", "paidCents", status::text, "dueDate", "interestRateAnnualPct"::text,
+               "planInterestCents"
         FROM "PromissoryNote" WHERE id = ${input.noteId} FOR UPDATE`;
 
       if (!locked) throw new NoteNotPayableError('inexistente');
@@ -81,15 +92,48 @@ export class RegisterPaymentUseCase extends BaseUseCase<RegisterPaymentInput, Re
       const dueDate = locked.dueDate.toISOString().slice(0, 10);
       const overdue = daysOverdue(dueDate, now);
 
+      /*
+       * El interés **ordinario** que esta cuota todavía no ha cubierto: el
+       * precio del préstamo que lleva dentro (§12), menos lo que ya se le abonó.
+       * Las reversas entran con signo negativo, así que la suma se corrige sola.
+       */
+      const ordinarioDeLaCuota = locked.planInterestCents ?? 0n;
+      const yaAbonadoAlOrdinario = await tx.payment.aggregate({
+        where: { noteId: input.noteId },
+        _sum: { appliedToOrdinaryInterestCents: true },
+      });
+      const ordinarioPendiente =
+        ordinarioDeLaCuota - (yaAbonadoAlOrdinario._sum.appliedToOrdinaryInterestCents ?? 0n);
+
+      /*
+       * Sobre qué corre el moratorio (ADR 0020).
+       *
+       * Por omisión, sólo sobre el **capital**: el art. 363 del Código de
+       * Comercio dice que los intereses vencidos y no pagados no devengan
+       * intereses salvo pacto de capitalizarlos, y la cuota lleva su interés
+       * ordinario dentro. Quien tenga ese pacto lo apaga en Ajustes, y entonces
+       * es una decisión escrita.
+       */
+      const baseDelMoratorio = lateInterestBase({
+        balanceCents,
+        ordinaryInterestPendingCents: ordinarioPendiente,
+        overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
+      });
+
       // Snapshot: el interés histórico no se recalcula aunque cambie la tasa (§12.3).
       const accrued = accrueInterest({
-        balanceCents,
+        balanceCents: baseDelMoratorio,
         annualRatePct: locked.interestRateAnnualPct === null ? null : Number(locked.interestRateAnnualPct),
         daysOverdue: overdue,
         basis: (settings?.interestBasis ?? 360) as 360 | 365,
       });
 
-      const split = splitPayment(amountCents, accrued, settings?.applyPaymentToInterestFirst ?? true);
+      const split = splitPayment({
+        amountCents,
+        lateInterestCents: accrued,
+        ordinaryInterestPendingCents: ordinarioPendiente,
+        interestFirst: settings?.applyPaymentToInterestFirst ?? true,
+      });
       const isRecovery = locked.status === 'WRITTEN_OFF';
 
       const payment = await tx.payment.create({
@@ -98,6 +142,7 @@ export class RegisterPaymentUseCase extends BaseUseCase<RegisterPaymentInput, Re
           amountCents,
           interestAccruedCents: accrued,
           appliedToInterestCents: split.toInterestCents,
+          appliedToOrdinaryInterestCents: split.toOrdinaryInterestCents,
           appliedToPrincipalCents: split.toPrincipalCents,
           isRecovery,
           paidOn: new Date(`${input.paidOn}T00:00:00Z`),
@@ -172,6 +217,7 @@ export class RegisterPaymentUseCase extends BaseUseCase<RegisterPaymentInput, Re
         balanceCents: (locked.amountCents - paidCents).toString(),
         status: derived.status,
         appliedToInterestCents: split.toInterestCents.toString(),
+        appliedToOrdinaryInterestCents: split.toOrdinaryInterestCents.toString(),
         appliedToPrincipalCents: split.toPrincipalCents.toString(),
       };
     });

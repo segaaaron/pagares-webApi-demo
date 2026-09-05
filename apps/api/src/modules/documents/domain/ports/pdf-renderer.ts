@@ -56,6 +56,8 @@ export interface ReceiptModelPort {
   amountFormatted: string;
   amountInWords: string;
   appliedToInterest: string;
+  /** El precio del préstamo, aparte de la sanción por atraso (ADR 0020). */
+  appliedToOrdinaryInterest: string;
   appliedToPrincipal: string;
   balanceAfter: string;
   paidOnFormatted: string;

@@ -26,7 +26,10 @@ export interface SettledRow {
 export interface RecoveryRow {
   paidOn: string;
   amountCents: bigint;
+  /** Moratorio cobrado: la sanción por atraso (§12.3). */
   interestCents: bigint;
+  /** Interés ordinario cobrado: la ganancia del préstamo (§12, ADR 0020). */
+  ordinaryInterestCents: bigint;
   principalCents: bigint;
   isRecovery: boolean;
   /** Condonación del remanente: cierra el pagaré, no entra caja (§25.16). */
@@ -98,7 +101,10 @@ export interface LedgerPaymentRow {
   debtorName: string;
   paidOn: string;
   amountCents: bigint;
+  /** Moratorio cobrado: la sanción por atraso (§12.3). */
   interestCents: bigint;
+  /** Interés ordinario cobrado: la ganancia del préstamo (§12, ADR 0020). */
+  ordinaryInterestCents: bigint;
   principalCents: bigint;
   method: string;
   reference: string | null;

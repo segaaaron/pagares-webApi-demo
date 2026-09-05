@@ -140,6 +140,7 @@ export class PrismaReportRepository implements ReportRepository {
       paidOn: r.paidOn.toISOString().slice(0, 10),
       amountCents: r.amountCents,
       interestCents: r.appliedToInterestCents,
+      ordinaryInterestCents: r.appliedToOrdinaryInterestCents,
       principalCents: r.appliedToPrincipalCents,
       isRecovery: r.isRecovery,
       /** Cierra el pagaré, pero no es dinero: no suma a lo cobrado (§25.16). */
@@ -265,6 +266,7 @@ export class PrismaReportRepository implements ReportRepository {
       paidOn: row.paidOn.toISOString().slice(0, 10),
       amountCents: row.amountCents,
       interestCents: row.appliedToInterestCents,
+      ordinaryInterestCents: row.appliedToOrdinaryInterestCents,
       principalCents: row.appliedToPrincipalCents,
       method: row.method,
       reference: row.reference,

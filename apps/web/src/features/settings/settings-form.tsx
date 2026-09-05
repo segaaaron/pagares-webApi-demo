@@ -20,6 +20,7 @@ export interface SettingsValues {
   interestBasis: number;
   interestWarningThresholdPct: string;
   applyPaymentToInterestFirst: boolean;
+  lateInterestOverPrincipalOnly: boolean;
   prescriptionYears: number;
   settlementToleranceCents: string;
   issueNonNegotiable: boolean;
@@ -184,6 +185,25 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
           <input type="checkbox" name="applyPaymentToInterestFirst"
                  defaultChecked={values.applyPaymentToInterestFirst} className="h-4 w-4" />
           Aplicar los abonos primero a intereses y luego a capital
+        </label>
+
+        {/*
+          * La cuota de un plan lleva su interés dentro. Cobrar mora sobre ella
+          * entera es cobrar interés sobre interés, y el art. 363 del Código de
+          * Comercio lo prohíbe salvo pacto de capitalizarlos. Se puede apagar,
+          * pero entonces es una decisión escrita y no un descuido (ADR 0020).
+          */}
+        <label className="mt-3 flex items-start gap-2 text-sm">
+          <input type="checkbox" name="lateInterestOverPrincipalOnly"
+                 defaultChecked={values.lateInterestOverPrincipalOnly} className="mt-0.5 h-4 w-4" />
+          <span>
+            Cobrar el moratorio sólo sobre el capital de la cuota
+            <span className="mt-0.5 block text-xs text-muted">
+              Recomendado. Los intereses vencidos y no pagados no devengan intereses salvo
+              pacto de capitalizarlos (art. 363 del Código de Comercio). Apágalo únicamente
+              si ese pacto existe por escrito.
+            </span>
+          </span>
         </label>
       </Panel>
 

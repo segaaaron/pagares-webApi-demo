@@ -6,6 +6,7 @@ import {
   daysBetween,
   describeRateWithAnnual,
   formatMxn,
+  lateInterestBase,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -73,6 +74,7 @@ export class SimulateSettlementUseCase extends BaseUseCase<
       where: { id: input.noteId },
       include: {
         settlements: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' }, take: 1 },
+        payments: { select: { appliedToOrdinaryInterestCents: true } },
       },
     });
     if (!note) throw new NoteNotFoundError();
@@ -90,8 +92,22 @@ export class SimulateSettlementUseCase extends BaseUseCase<
 
     const principal = note.amountCents - note.paidCents;
     const rate = note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct);
+
+    /*
+     * La mora no corre sobre el interés ordinario que la cuota lleva dentro
+     * (ADR 0020): sería interés sobre interés. La misma regla que aplica el
+     * abono, para que la cifra simulada y la cobrada no se contradigan.
+     */
+    const ordinarioPendiente =
+      (note.planInterestCents ?? 0n) -
+      note.payments.reduce((suma, abono) => suma + abono.appliedToOrdinaryInterestCents, 0n);
+
     const interest = accrueInterest({
-      balanceCents: principal,
+      balanceCents: lateInterestBase({
+        balanceCents: principal,
+        ordinaryInterestPendingCents: ordinarioPendiente,
+        overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
+      }),
       annualRatePct: rate,
       daysOverdue: overdueAtDate,
       basis: (settings?.interestBasis ?? 360) as 360 | 365,

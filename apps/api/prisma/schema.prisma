@@ -460,8 +460,17 @@ model Payment {
   noteId String
 
   amountCents             BigInt // negativo en las reversas
-  interestAccruedCents    BigInt @default(0) // snapshot al abonar (§12.3)
-  appliedToInterestCents  BigInt @default(0)
+  interestAccruedCents    BigInt @default(0) // snapshot del moratorio al abonar (§12.3)
+  appliedToInterestCents  BigInt @default(0) // moratorio: la sanción por el atraso
+  /**
+   * La parte del abono que pagó el **interés ordinario** de la cuota (§12, ADR 0020).
+   *
+   * Es el precio del préstamo, no la sanción por atraso, y va en su propia
+   * columna porque son dos cosas distintas: sin separarlas, la ganancia de quien
+   * presta se contaba como capital devuelto y el recibo decía que el deudor pagó
+   * capital cuando pagó interés.
+   */
+  appliedToOrdinaryInterestCents BigInt @default(0)
   appliedToPrincipalCents BigInt @default(0)
   isRecovery              Boolean @default(false) // abono sobre pagaré castigado
   /**
@@ -718,6 +727,18 @@ model OrganizationSettings {
   defaultInterestPeriod        InterestPeriod @default(MONTHLY) // en México se pacta casi siempre por mes
   interestWarningThresholdPct  Decimal  @db.Decimal(5, 2) @default(60.00) // avisa, no impide (§25.14)
   applyPaymentToInterestFirst  Boolean  @default(true)
+
+  /**
+   * El moratorio corre sólo sobre el **capital** de la cuota, no sobre su
+   * interés ordinario (ADR 0020).
+   *
+   * Verdadero por defecto: el art. 363 del Código de Comercio dice que los
+   * intereses vencidos y no pagados no devengan intereses salvo pacto de
+   * capitalizarlos. Cobrar mora sobre la cuota entera —que lleva su interés
+   * dentro— es justo eso. Se puede apagar cuando exista ese pacto, y entonces
+   * es una decisión escrita y no un descuido del cálculo.
+   */
+  lateInterestOverPrincipalOnly Boolean @default(true)
 
   prescriptionYears Int    @default(3) // se avisa, no se aplica sola (§25.13)
 

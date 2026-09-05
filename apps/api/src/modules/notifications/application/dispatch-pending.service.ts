@@ -252,6 +252,15 @@ export class DispatchPendingService {
             hasAccount: note.ownerId !== null,
             // Una deuda a plazos manda un solo aviso por toda la serie (§12).
             ...(payload['installments'] ? { installments: Number(payload['installments']) } : {}),
+            // Y dice a cuánto se compromete: cuota, precio del préstamo y total.
+            ...(payload['planInterestCents']
+              ? {
+                  plan: {
+                    totalFormatted: formatMxn(BigInt(String(payload['planTotalCents'] ?? '0'))),
+                    interestFormatted: formatMxn(BigInt(String(payload['planInterestCents']))),
+                  },
+                }
+              : {}),
           })
         : kind === 'signed'
           ? noteSigned({ ...common, signedAtFormatted: this.formatDate(note.acceptedAt ?? this.clock.now()) })

@@ -142,6 +142,7 @@ export class OperationalReportsUseCase extends BaseUseCase<
     const payments = await this.repo.paymentsBetween(range.from, range.to);
 
     let interest = 0n;
+    let ordinary = 0n;
     let principal = 0n;
     let recovered = 0n;
     let forgiven = 0n;
@@ -155,6 +156,7 @@ export class OperationalReportsUseCase extends BaseUseCase<
         continue;
       }
       interest += p.interestCents;
+      ordinary += p.ordinaryInterestCents;
       principal += p.principalCents;
       // La recuperación de castigos es un renglón propio: no es cobranza normal.
       if (p.isRecovery) recovered += p.amountCents;
@@ -165,9 +167,21 @@ export class OperationalReportsUseCase extends BaseUseCase<
       title: 'Recuperación del periodo',
       range,
       summary: [
-        { label: 'Total cobrado', value: formatMxn(interest + principal) },
+        { label: 'Total cobrado', value: formatMxn(interest + ordinary + principal) },
         { label: 'Aplicado a capital', value: formatMxn(principal) },
-        { label: 'Aplicado a intereses', value: formatMxn(interest) },
+        {
+          // La ganancia del préstamo va en su renglón: antes se contaba como
+          // capital devuelto, así que quien presta no la veía por ningún lado
+          // (ADR 0020).
+          label: 'Interés del préstamo',
+          value: formatMxn(ordinary),
+          detail: 'Lo que se ganó por prestar, cobrado dentro de las cuotas',
+        },
+        {
+          label: 'Interés moratorio',
+          value: formatMxn(interest),
+          detail: 'La sanción por los días de atraso',
+        },
         {
           label: 'Recuperación de castigos',
           value: formatMxn(recovered),

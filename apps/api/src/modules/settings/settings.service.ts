@@ -76,6 +76,7 @@ const EN_BLANCO = {
   defaultInterestPeriod: 'MONTHLY',
   interestWarningThresholdPct: '60',
   applyPaymentToInterestFirst: true,
+  lateInterestOverPrincipalOnly: true,
   prescriptionYears: 3,
   issueNonNegotiable: false,
   settlementToleranceCents: '0',

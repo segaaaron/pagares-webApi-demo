@@ -132,6 +132,7 @@ const CATALOG: Record<TemplateId, () => Mail> = {
       amountPaidFormatted: '$10,000.00 MXN',
       paidOnFormatted: '3 de septiembre de 2026',
       appliedToInterestFormatted: '$1,200.00 MXN',
+      appliedToOrdinaryInterestFormatted: '$1,800.00 MXN',
       appliedToPrincipalFormatted: '$8,800.00 MXN',
     }),
   'account-statement': () =>

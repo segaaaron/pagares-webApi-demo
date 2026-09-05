@@ -239,6 +239,7 @@ export class SendNoteDocumentUseCase extends BaseUseCase<
         amountPaidFormatted: formatMxn(payment.amountCents),
         paidOnFormatted: LONG_DATE.format(payment.paidOn),
         appliedToInterestFormatted: formatMxn(payment.appliedToInterestCents),
+        appliedToOrdinaryInterestFormatted: formatMxn(payment.appliedToOrdinaryInterestCents),
         appliedToPrincipalFormatted: formatMxn(payment.appliedToPrincipalCents),
       }),
       attachment,

@@ -9,6 +9,7 @@ export interface ReceiptModel {
   amountFormatted: string;
   amountInWords: string;
   appliedToInterest: string;
+  appliedToOrdinaryInterest: string;
   appliedToPrincipal: string;
   balanceAfter: string;
   paidOnFormatted: string;
@@ -68,8 +69,18 @@ export function ReceiptDocument({ model }: { model: ReceiptModel }) {
 
         <View style={s.divider} />
 
+        {/*
+          * Tres conceptos y no dos (ADR 0020). El interés del préstamo y la
+          * sanción por atraso son cosas distintas, y juntarlas le impedía al
+          * deudor verificar qué pagó: un abono a una cuota al corriente salía
+          * entero "a capital" aunque parte fuera el precio del préstamo.
+          */}
         <View style={s.row}>
-          <Text style={s.label}>Aplicado a intereses</Text>
+          <Text style={s.label}>Aplicado a interés del préstamo</Text>
+          <Text style={s.value}>{model.appliedToOrdinaryInterest}</Text>
+        </View>
+        <View style={s.row}>
+          <Text style={s.label}>Aplicado a interés moratorio</Text>
           <Text style={s.value}>{model.appliedToInterest}</Text>
         </View>
         <View style={s.row}>

@@ -55,6 +55,7 @@ export async function saveSettingsAction(
         interestBasis: num(formData, 'interestBasis'),
         interestWarningThresholdPct: num(formData, 'interestWarningThresholdPct'),
         applyPaymentToInterestFirst: formData.get('applyPaymentToInterestFirst') === 'on',
+        lateInterestOverPrincipalOnly: formData.get('lateInterestOverPrincipalOnly') === 'on',
         prescriptionYears: num(formData, 'prescriptionYears'),
         issueNonNegotiable: formData.get('issueNonNegotiable') === 'on',
         // En centavos hacia el servidor: el formulario habla en pesos porque es

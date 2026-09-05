@@ -386,11 +386,44 @@ export default async function NoteDetailPage({
                 />
               </div>
             </div>
+            {/*
+              * De qué está hecha la cuota (§12, ADR 0020).
+              *
+              * El deudor firma un pagaré de $6,027.73 y hasta ahora nadie podía
+              * decirle —ni él ver— que $1,800 de esos son el precio del
+              * préstamo. Va justo encima del saldo, que es donde se mira.
+              */}
+            {note.breakdown ? (
+              <div className="mb-4 rounded-lg bg-surface-2 px-3 py-2.5">
+                <p className="text-xs font-medium text-ink">De esta cuota</p>
+                <dl className="mt-1.5 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-muted">Interés del préstamo</dt>
+                    <dd className="tnum text-ink">{note.breakdown.interest.formatted}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted">Capital</dt>
+                    <dd className="tnum text-ink">{note.breakdown.principal.formatted}</dd>
+                  </div>
+                </dl>
+                {BigInt(note.breakdown.interestPending.cents) > 0n ? (
+                  <p className="mt-1.5 text-xs text-muted">
+                    Quedan {note.breakdown.interestPending.formatted} de ese interés por cubrir.
+                    El moratorio no corre sobre esa parte.
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-muted">
+                    El interés de esta cuota ya está cubierto.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             <dl className="space-y-2 text-sm">
               {[
                 ['Importe', note.amount.formatted, ''],
                 ['Abonado', note.paid.formatted, 'text-muted'],
-                ['Interés devengado', note.accruedInterest.formatted, 'text-warn'],
+                ['Interés moratorio', note.accruedInterest.formatted, 'text-warn'],
                 // La equivalencia anual vive aquí y no en el documento: sirve
                 // para comparar cartera, y en el título sería un número que
                 // nadie firmó.
@@ -531,7 +564,11 @@ export default async function NoteDetailPage({
                     </div>
                     <div className="text-right text-xs text-muted">
                       <p className="tnum">Capital {p.appliedToPrincipal}</p>
-                      <p className="tnum">Interés {p.appliedToInterest}</p>
+                      {/* El precio del préstamo y la sanción por atraso van
+                          separados: juntarlos impedía saber qué se cobró
+                          (ADR 0020). */}
+                      <p className="tnum">Interés del préstamo {p.appliedToOrdinaryInterest}</p>
+                      <p className="tnum">Moratorio {p.appliedToInterest}</p>
                       {!p.isReversal && !p.isWaiver ? (
                         <a href={`/pagares/${note.id}/pdf?type=receipt&paymentId=${p.id}`}
                            target="_blank" rel="noopener"

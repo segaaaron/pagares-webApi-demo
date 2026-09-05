@@ -26,7 +26,10 @@ export const paymentSchema = z
   .object({
     id: z.string().uuid(),
     amountCents: z.string(),
+    /** Moratorio: la sanción por el atraso (§12.3). */
     appliedToInterestCents: z.string(),
+    /** Interés ordinario: el precio del préstamo (§12, ADR 0020). */
+    appliedToOrdinaryInterestCents: z.string(),
     appliedToPrincipalCents: z.string(),
     paidOn: civilDateSchema,
     method: paymentMethodSchema,

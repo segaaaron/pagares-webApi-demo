@@ -98,6 +98,7 @@ export class RenderReceiptUseCase extends BaseUseCase<{ paymentId: string }, Buf
         payment.amountCents < 0n ? -payment.amountCents : payment.amountCents,
       ),
       appliedToInterest: formatMxn(payment.appliedToInterestCents),
+      appliedToOrdinaryInterest: formatMxn(payment.appliedToOrdinaryInterestCents),
       appliedToPrincipal: formatMxn(payment.appliedToPrincipalCents),
       balanceAfter: formatMxn(balanceAfter),
       paidOnFormatted: LONG_DATE.format(payment.paidOn),

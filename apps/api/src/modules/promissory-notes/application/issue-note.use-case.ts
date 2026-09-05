@@ -258,6 +258,17 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
           debtorId: debtor.id,
           ownerId: debtor.userId,
           ...(seriesId ? { seriesId, installments: input.installments } : {}),
+          /*
+           * Lo pactado viaja con el aviso cuando la serie lleva interés (§12):
+           * sin esto el correo decía «12 pagarés» y el importe del primero, y
+           * el deudor tenía que multiplicar para saber a cuánto se compromete.
+           */
+          ...(plan.totalInterestCents > 0n
+            ? {
+                planTotalCents: plan.totalCents.toString(),
+                planInterestCents: plan.totalInterestCents.toString(),
+              }
+            : {}),
         },
       });
 
