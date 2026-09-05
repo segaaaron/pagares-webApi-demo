@@ -77,6 +77,45 @@ function esDinero(valor: unknown, donde: string): void {
   expect(String(dinero['formatted']), `${donde}: texto legible`).toMatch(/^-?\$[\d,]+\.\d{2} MXN$/);
 }
 
+/**
+ * Firma un pagaré como el cliente.
+ *
+ * Hace falta a menudo porque **no se le emite otro pagaré a quien no ha firmado
+ * el anterior** (ADR 0019): para preparar el siguiente caso hay que dejar
+ * firmado lo que ya se emitió, igual que en la vida real.
+ */
+async function firmar(noteId: string, token: string): Promise<void> {
+  const sharp = (await import('sharp')).default;
+  const trazo = await sharp({
+    create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  const form = new FormData();
+  form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+  form.append(
+    'payload',
+    JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'REMOTE' }),
+  );
+
+  const respuesta = await fetch(`${API}/notes/${noteId}/signature`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  expect(respuesta.status, `firma de ${noteId}`).toBe(201);
+}
+
+/** Deja al deudor sin nada pendiente de firma, que es lo que exige el ADR 0019. */
+async function firmarPendientes(token: string): Promise<void> {
+  const suyos = await call('/me/notes', { token });
+  const filas = suyos.body as unknown as Record<string, unknown>[];
+  for (const fila of filas) {
+    if (fila['status'] === 'PENDING_SIGNATURE') await firmar(String(fila['id']), token);
+  }
+}
+
 let adminToken = '';
 let clienteToken = '';
 let noteId = '';
@@ -157,6 +196,11 @@ beforeAll(async () => {
   const firmado = filas.find((fila) => fila['status'] !== 'PENDING_SIGNATURE');
   expect(firmado, 'el pagaré importado es suyo y está firmado en papel').toBeTruthy();
   noteId = String(firmado?.['id']);
+
+  // El pagaré emitido arriba se queda sin firmar, y mientras siga así no se le
+  // puede emitir otro (ADR 0019). Se firma para que las pruebas de más abajo
+  // puedan seguir emitiendo.
+  await firmarPendientes(clienteToken);
 
   const abono = await call(`/admin/notes/${noteId}/payments`, {
     method: 'POST',
@@ -412,26 +456,7 @@ describe('§12 · el plan sólo con el folio firmado', () => {
     primera = String(cuotas[0]?.['id']);
 
     // Firma sólo la primera: es el caso que importa, la serie a medio firmar.
-    const sharp = (await import('sharp')).default;
-    const trazo = await sharp({
-      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
-    })
-      .png()
-      .toBuffer();
-
-    const form = new FormData();
-    form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
-    form.append(
-      'payload',
-      JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'REMOTE' }),
-    );
-
-    const firmado = await fetch(`${API}/notes/${primera}/signature`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${clienteToken}` },
-      body: form,
-    });
-    expect(firmado.status, 'la primera cuota queda firmada').toBe(201);
+    await firmar(primera, clienteToken);
   });
 
   it('la cuota firmada trae el plan, con el tamaño pactado', async () => {
@@ -562,6 +587,9 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
   let firmadas: string[] = [];
 
   beforeAll(async () => {
+    // Lo que quedó sin firmar de la serie anterior impide emitir otra (ADR 0019).
+    await firmarPendientes(clienteToken);
+
     const perfil = await call('/me/profile', { token: clienteToken });
     const phone = String((perfil.body as Record<string, unknown>)['phone']);
     const email = String((perfil.body as Record<string, unknown>)['email']);
@@ -588,28 +616,10 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
     expect(emitido.status).toBe(201);
     const notas = (emitido.body['series'] as { notes: Record<string, unknown>[] }).notes;
 
-    const sharp = (await import('sharp')).default;
-    const trazo = await sharp({
-      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
-    })
-      .png()
-      .toBuffer();
-
     // Firma la vencida y la siguiente: con las dos, la identidad usa sus dos
     // términos —el moratorio de una y el interés perdonado de la otra—.
     for (const nota of notas.slice(0, 2)) {
-      const form = new FormData();
-      form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
-      form.append(
-        'payload',
-        JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'REMOTE' }),
-      );
-      const firmado = await fetch(`${API}/notes/${String(nota['id'])}/signature`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${clienteToken}` },
-        body: form,
-      });
-      expect(firmado.status).toBe(201);
+      await firmar(String(nota['id']), clienteToken);
       firmadas.push(String(nota['id']));
     }
   });

@@ -94,3 +94,19 @@ export class SimulationDateInPastError extends BaseDomainError {
     super('La fecha de la simulación no puede ser anterior a hoy', 'date');
   }
 }
+
+/**
+ * No se le emite otro pagaré a quien no ha firmado el anterior (ADR 0019).
+ *
+ * Un título sin firma no obliga a nadie: apilarle otro encima es acumular
+ * papeles que no valen y perder de vista qué aceptó realmente el deudor. El
+ * folio pendiente va en el mensaje porque quien emite necesita saber cuál es
+ * para ir a por esa firma, no un «no se pudo».
+ */
+export class DebtorHasUnsignedNoteError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.DEBTOR_HAS_UNSIGNED_NOTE;
+  readonly httpStatus = 409;
+  constructor(readonly folio: string) {
+    super(`El deudor todavía no firma el pagaré ${folio}: hasta entonces no se le emite otro`);
+  }
+}

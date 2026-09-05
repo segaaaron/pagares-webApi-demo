@@ -12,6 +12,8 @@ export const ERROR_CODES = {
   INTEREST_RATE_OUT_OF_RANGE: 'interest_rate_out_of_range',
   PLACE_REQUIRED: 'place_required',
   NOTE_NOT_EDITABLE: 'note_not_editable',
+  /** No se le emite otro pagaré a quien no ha firmado el anterior (§12, ADR 0019). */
+  DEBTOR_HAS_UNSIGNED_NOTE: 'debtor_has_unsigned_note',
 
   // Firma
   SIGNATURE_EMPTY: 'signature_empty',

@@ -357,7 +357,9 @@ describe('§12.4 · idempotencia', () => {
       debtor: {
         fullName: 'Cliente idempotencia',
         address: 'Calle de prueba 3',
-        phone: '+524430000010',
+        // Único por ejecución: al mismo deudor no se le emite otro pagaré
+        // mientras no firme el anterior (ADR 0019).
+        phone: `+52443${String(Date.now()).slice(-7)}`,
       },
       issuePlace: 'Morelia, Michoacán',
       issueDate: futureDate(-1),

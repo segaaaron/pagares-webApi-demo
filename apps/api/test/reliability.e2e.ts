@@ -132,6 +132,32 @@ describe('§4 · dos altas simultáneas no repiten folio', () => {
   });
 });
 
+describe('§12 · dos emisiones simultáneas al mismo deudor', () => {
+  it('sólo una pasa: la otra se topa con la firma pendiente', async () => {
+    /*
+     * La regla del ADR 0019 —nada nuevo mientras quede algo sin firmar— sería
+     * un adorno sin el cerrojo: dos altas a la vez leerían las dos que no hay
+     * nada pendiente y emitirían las dos.
+     */
+    const label = unique();
+    const phone = `+52443${String(Date.now()).slice(-7)}`;
+
+    const results = await Promise.all(
+      Array.from({ length: 2 }, (_, index) =>
+        call('/admin/notes', {
+          method: 'POST',
+          token: adminToken,
+          idempotencyKey: randomUUID(),
+          body: noteBody(`${label}-${index}`, phone),
+        }),
+      ),
+    );
+
+    const estados = results.map((r) => r.status).sort();
+    expect(estados).toEqual([201, 409]);
+  });
+});
+
 describe('§12.2 · dos abonos simultáneos no sobrepasan el saldo', () => {
   let noteId = '';
 

@@ -249,3 +249,106 @@ describe('idempotencia', () => {
     expect(different.status).toBe(422);
   });
 });
+
+/**
+ * Nada nuevo mientras quede algo sin firmar (ADR 0019).
+ *
+ * Un pagaré sin firma no obliga al deudor: es una petición, no una deuda.
+ * Emitirle otro encima acumula papeles que no valen y deja al administrador sin
+ * saber qué aceptó de verdad.
+ */
+describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () => {
+  /** Emite para un deudor identificado por su teléfono. */
+  async function emitirPara(
+    phone: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    return call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: { fullName: 'Deudor de la regla', address: 'Calle de prueba 9', phone },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+        ...extra,
+      },
+    });
+  }
+
+  const nuevoTelefono = (): string =>
+    `+52443${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 1000)}`;
+
+  it('el segundo pagaré es 409, y dice cuál falta por firmar', async () => {
+    const phone = nuevoTelefono();
+    const primero = await emitirPara(phone);
+    expect(primero.status).toBe(201);
+
+    const segundo = await emitirPara(phone);
+    expect(segundo.status).toBe(409);
+    // El folio pendiente va en el mensaje: quien emite necesita saber a por
+    // cuál firma tiene que ir, no un «no se pudo».
+    expect(String(segundo.body['title'])).toContain(String(primero.body['folio']));
+    expect(String(segundo.body['type'])).toContain('debtor_has_unsigned_note');
+  });
+
+  it('la misma persona tecleada de nuevo tampoco cuela', async () => {
+    /*
+     * Sin identificarla por teléfono, volver a escribir sus datos creaba otra
+     * ficha y la regla se saltaba sola. El teléfono es obligatorio y es la
+     * identidad que ya usaba la importación (§24.5).
+     */
+    const phone = nuevoTelefono();
+    expect((await emitirPara(phone)).status).toBe(201);
+
+    const otraVez = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        // Otro nombre y otro domicilio, el mismo teléfono con espacios.
+        debtor: { fullName: 'Deudor Tecleado Otra Vez', address: 'Otra calle 3', phone },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '500000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+      },
+    });
+    expect(otraVez.status).toBe(409);
+  });
+
+  it('una serie entera sí se emite: es un solo acto', async () => {
+    // Las doce cuotas nacen juntas y se firman juntas. Si la regla contara
+    // contra sí misma, no habría planes de pago (§12).
+    const resultado = await emitirPara(nuevoTelefono(), {
+      amountCents: '6000000',
+      installments: 12,
+      plan: { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
+    });
+
+    expect(resultado.status).toBe(201);
+    expect((resultado.body['series'] as { notes: unknown[] }).notes).toHaveLength(12);
+  });
+
+  it('anulado el pendiente, se vuelve a poder emitir', async () => {
+    // Lo anulado no se debe, así que ya no bloquea nada (§13.7).
+    const phone = nuevoTelefono();
+    const primero = await emitirPara(phone);
+    expect(primero.status).toBe(201);
+
+    const anulado = await call(`/admin/notes/${String(primero.body['id'])}/void`, {
+      method: 'POST',
+      idempotent: true,
+      body: { reasonCode: 'capture_error', reasonNote: 'Prueba de la regla de firma' },
+    });
+    expect(anulado.status).toBe(201);
+
+    expect((await emitirPara(phone)).status).toBe(201);
+  });
+});

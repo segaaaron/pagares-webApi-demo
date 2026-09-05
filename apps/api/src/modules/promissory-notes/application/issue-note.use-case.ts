@@ -28,6 +28,16 @@ import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-log
 import { NumberingService } from '../../numbering/numbering.service.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { assertNoteInvariants } from '../domain/note-invariants.js';
+import { DebtorHasUnsignedNoteError } from '../domain/note.errors.js';
+
+/**
+ * Llave del cerrojo que serializa la emisión por deudor.
+ *
+ * Sin él, dos altas a la vez para el mismo deudor leen las dos que no hay nada
+ * pendiente y las dos emiten: la regla de «nada nuevo sin firmar» sería un
+ * adorno. Se toma por teléfono, así que no estorba a nadie más (§12).
+ */
+const ISSUE_LOCK = 776_2;
 
 export interface IssueNoteOutput {
   id: string;
@@ -117,7 +127,16 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
 
     return this.uow.run(async (scope) => {
       const tx = scope.client;
+      /*
+       * El cerrojo va por **teléfono** y antes de resolver al deudor: si se
+       * tomara sobre su ficha, dos altas simultáneas de alguien que todavía no
+       * existe crearían dos fichas, cada una con su llave, y no se estorbarían.
+       * El teléfono es la identidad desde antes de la primera fila.
+       */
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ISSUE_LOCK}::int, hashtext(${input.debtor.phone.replace(/[\s()-]/g, '')})::int)`;
+
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
+      await this.assertNadaPendienteDeFirma(tx, debtor.id);
 
       const creados: {
         id: string;
@@ -265,6 +284,25 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
   }
 
   /**
+   * Nada nuevo mientras quede algo sin firmar (ADR 0019).
+   *
+   * Un pagaré sin firma no obliga al deudor: es una petición, no una deuda.
+   * Emitirle otro encima acumula papeles que no valen y deja al administrador
+   * sin saber qué aceptó de verdad. La serie no cuenta contra sí misma —sus
+   * cuotas nacen en el mismo acto— porque la comprobación corre antes de
+   * crearlas.
+   */
+  private async assertNadaPendienteDeFirma(tx: TxClient, debtorId: string): Promise<void> {
+    const pendiente = await tx.promissoryNote.findFirst({
+      where: { debtorId, status: { in: ['PENDING_SIGNATURE', 'PROCESSING_SIGNATURE'] } },
+      orderBy: { createdAt: 'asc' },
+      select: { folio: true },
+    });
+
+    if (pendiente) throw new DebtorHasUnsignedNoteError(pendiente.folio);
+  }
+
+  /**
    * Reutiliza el deudor si ya existe; si no, lo crea con el pagaré.
    *
    * Y en los dos casos: **si tiene correo y todavía no tiene cuenta, se le
@@ -284,14 +322,30 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
      * partiría su historial en dos y, además, chocaría contra el índice único
      * de la cuenta enlazada: `Debtor.userId` es 1-a-1 (§25.2).
      */
-    const byEmail =
-      !input.debtor.id && input.debtor.email
-        ? await tx.debtor.findFirst({ where: { email: input.debtor.email.toLowerCase() } })
-        : null;
+    /*
+     * También por teléfono, y no sólo por correo.
+     *
+     * El teléfono es obligatorio y el correo no, así que buscar sólo por correo
+     * creaba una ficha nueva cada vez que se tecleaba al mismo deudor a mano:
+     * su historial partido en dos y, ahora, la regla de «nada nuevo sin firmar»
+     * (ADR 0019) burlada sin querer con sólo volver a teclearlo. La importación
+     * ya identificaba por teléfono (§24.5); esto es la misma identidad.
+     */
+    const telefono = input.debtor.phone.replace(/[\s()-]/g, '');
+    const existente = !input.debtor.id
+      ? await tx.debtor.findFirst({
+          where: {
+            OR: [
+              ...(input.debtor.email ? [{ email: input.debtor.email.toLowerCase() }] : []),
+              { phone: { in: [input.debtor.phone, telefono] } },
+            ],
+          },
+        })
+      : null;
 
     const debtor = input.debtor.id
       ? await tx.debtor.findUniqueOrThrow({ where: { id: input.debtor.id } })
-      : (byEmail ??
+      : (existente ??
         (await tx.debtor.create({
           data: {
             fullName: input.debtor.fullName,

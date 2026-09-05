@@ -139,14 +139,30 @@ export default async function NoteDetailPage({
         description={presentation.description}
         actions={
           <>
-            {/* Emitir otro al mismo deudor sin volver a teclear sus datos (§19.6). */}
-            <Link
-              href={`/pagares/nuevo?duplicar=${note.id}`}
-              className="btn btn-secondary"
-              title="Emitir otro pagaré con estos mismos datos"
-            >
-              Duplicar
-            </Link>
+            {/*
+              * Emitir otro al mismo deudor sin volver a teclear sus datos
+              * (§19.6) — salvo mientras éste siga sin firma: no se le emite
+              * otro pagaré a quien no ha firmado el anterior (ADR 0019). El
+              * botón se queda a la vista, apagado y con el motivo, en vez de
+              * desaparecer y dejar al administrador buscándolo (§19.5).
+              */}
+            {note.status === 'PENDING_SIGNATURE' || note.status === 'PROCESSING_SIGNATURE' ? (
+              <span
+                aria-disabled="true"
+                className="btn btn-secondary cursor-not-allowed opacity-50"
+                title="Primero hay que firmar este pagaré: hasta entonces no se le emite otro al mismo deudor"
+              >
+                Duplicar
+              </span>
+            ) : (
+              <Link
+                href={`/pagares/nuevo?duplicar=${note.id}`}
+                className="btn btn-secondary"
+                title="Emitir otro pagaré con estos mismos datos"
+              >
+                Duplicar
+              </Link>
+            )}
             <a
               href={`/pagares/${note.id}/pdf?type=note`}
               target="_blank"

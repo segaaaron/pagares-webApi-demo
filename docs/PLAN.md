@@ -557,6 +557,8 @@ Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pag
 
 **El plan es por folio y sólo con el folio firmado** (ADR 0018). Mientras el deudor no firma una cuota, ese título no le obliga: en `/me/notes` y `/me/notes/:id` el objeto `plan` —`{seriesId, size, signedCount, paidCount, model, total, paid, pending}`— viaja sólo con la cuota firmada, y sus cifras salen únicamente de lo firmado. Una serie a medio firmar se ve partida: lo firmado como plan, lo pendiente como folios sueltos cuya única acción es firmarlos. `GET /me/notes/:id/early-payoff` sigue la misma regla; el panel ve la serie entera.
 
+**Nada nuevo mientras quede algo sin firmar** (ADR 0019). Emitir devuelve **409 `debtor_has_unsigned_note`** si el deudor tiene un pagaré en `PENDING_SIGNATURE` o `PROCESSING_SIGNATURE`, y el mensaje trae el folio que falta por firmar. La serie completa sí se emite —sus cuotas nacen en el mismo acto—; lo anulado y lo renovado no bloquean; la importación de cartera vieja tampoco queda sujeta, porque entra firmada en papel. La emisión se serializa con un cerrojo por teléfono e identifica al deudor por teléfono además de por correo: sin eso, volver a teclearlo creaba otra ficha y la regla se saltaba sola.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**
