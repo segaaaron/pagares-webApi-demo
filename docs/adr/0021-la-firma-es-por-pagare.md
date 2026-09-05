@@ -33,6 +33,13 @@ el deudor puso **en ese documento** es lo que hace que no haya nada que discutir
 se presente uno solo ante un juez. Una firma replicada a doce documentos por un servidor es
 defendible, pero es una discusión; doce firmas no lo son.
 
+**Y no se repite en ninguno.** Firmar dos pagarés con la **misma imagen al byte** se
+rechaza con `409 signature_reused`, diciendo en qué folio se usó ya. Nadie dibuja dos veces
+exactamente lo mismo —cambian el pulso, los puntos y hasta la compresión—, así que cuando
+el hash coincide es que se reenvió el trazo anterior: eso no son doce firmas, es una
+copiada doce veces, que es justo lo que esta decisión descarta. Sin la comprobación, la
+regla sería una intención y la aplicación podría cumplirla o no sin que nadie se enterara.
+
 ## Consecuencias
 
 Firmar un plan de doce cuesta doce firmas, y eso es trabajo real para el deudor. La

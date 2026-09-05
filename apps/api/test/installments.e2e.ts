@@ -367,6 +367,25 @@ describe('§12 · liquidación anticipada', () => {
  * el recibo le decía al deudor que había pagado capital cuando pagó interés, y
  * la ganancia de quien presta se contaba como devolución.
  */
+async function trazoUnico(): Promise<Buffer> {
+  /*
+   * Un trazo distinto en cada firma: la misma imagen no vale para dos pagarés
+   * (ADR 0021). Se dibujan unos pixeles negros al azar sobre el lienzo, que es
+   * lo más parecido a que nadie firma dos veces igual.
+   */
+  const sharp = (await import('sharp')).default;
+  const ancho = 400;
+  const alto = 160;
+  const lienzo = Buffer.alloc(ancho * alto * 3, 255);
+  for (let i = 0; i < 400; i += 1) {
+    const p = Math.floor(Math.random() * ancho * alto) * 3;
+    lienzo[p] = 0;
+    lienzo[p + 1] = 0;
+    lienzo[p + 2] = 0;
+  }
+  return sharp(lienzo, { raw: { width: ancho, height: alto, channels: 3 } }).png().toBuffer();
+}
+
 describe('§12.3 · el abono distingue el precio del préstamo de la sanción', () => {
   /** Firma un pagaré por la vía del administrador para poder abonarle. */
   async function abonar(
@@ -392,12 +411,7 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
 
     // Un pagaré sin firmar no admite abonos (§11.3), así que se firma por la
     // vía del panel, que es la que existe sin aplicación de por medio.
-    const sharp = (await import('sharp')).default;
-    const trazo = await sharp({
-      create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
-    })
-      .png()
-      .toBuffer();
+    const trazo = await trazoUnico();
 
     const form = new FormData();
     form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
@@ -511,5 +525,73 @@ describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
     expect(mora(sinPlan)).toBeGreaterThan(0n);
     expect(mora(conPlan)).toBeGreaterThan(0n);
     expect(mora(conPlan)).toBeLessThan(mora(sinPlan));
+  });
+});
+
+/**
+ * La misma firma no vale para dos pagarés (ADR 0021).
+ *
+ * Cada título se firma por separado y con su propio trazo. Dos documentos con
+ * la misma imagen al byte no son dos firmas: son una copiada, y convertiría
+ * doce actos de voluntad en uno solo replicado por el servidor.
+ */
+describe('§8 · una firma, un pagaré', () => {
+  it('reenviar el mismo trazo a otra cuota es 409', async () => {
+    const emision = await emitir(3, '900000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
+    const trazo = await trazoUnico();
+
+    const firmar = async (noteId: string): Promise<Response> => {
+      const form = new FormData();
+      form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+      form.append(
+        'payload',
+        JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
+      );
+      return fetch(`${API}/notes/${noteId}/signature`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: form,
+      });
+    };
+
+    const primera = await firmar(String(notas[0]?.id));
+    expect(primera.status).toBe(201);
+
+    // Nadie dibuja dos veces exactamente lo mismo: si el hash coincide, es que
+    // se reenvió el trazo anterior.
+    const segunda = await firmar(String(notas[1]?.id));
+    expect(segunda.status).toBe(409);
+    const problema = (await segunda.json()) as Record<string, unknown>;
+    expect(String(problema['type'])).toContain('signature_reused');
+    // El folio donde ya se usó va en el mensaje: es lo que permite entenderlo.
+    expect(String(problema['title'])).toContain(String(notas[0]?.folio));
+  });
+
+  it('con su propio trazo, cada cuota se firma sin problema', async () => {
+    const emision = await emitir(2, '900000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
+
+    for (const nota of notas) {
+      const form = new FormData();
+      const trazo = await trazoUnico();
+      form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+      form.append(
+        'payload',
+        JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
+      );
+      const r = await fetch(`${API}/notes/${nota.id}/signature`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: form,
+      });
+      expect(r.status, `firma de la cuota ${nota.index}`).toBe(201);
+    }
   });
 });

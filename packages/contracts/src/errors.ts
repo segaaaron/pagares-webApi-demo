@@ -21,6 +21,8 @@ export const ERROR_CODES = {
   UNSUPPORTED_FORMAT: 'unsupported_format',
   SIGNATURE_REQUIRED: 'signature_required',
   SIGNATURE_PROCESSING_FAILED: 'signature_processing_failed',
+  /** La misma firma no vale para dos pagarés (§8, ADR 0021). */
+  SIGNATURE_REUSED: 'signature_reused',
 
   // Abonos
   PAYMENT_EXCEEDS_BALANCE: 'payment_exceeds_balance',

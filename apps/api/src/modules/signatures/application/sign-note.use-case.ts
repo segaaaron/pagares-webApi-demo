@@ -16,6 +16,7 @@ import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-log
 import { OBJECT_STORAGE, type ObjectStorage } from '../../media/domain/ports/object-storage.js';
 import { IMAGE_COMPRESSOR, type ImageCompressor } from '../../media/domain/ports/image-compressor.js';
 import { deriveState } from '../../promissory-notes/domain/note-status.js';
+import { SignatureReusedError } from '../domain/signature.errors.js';
 import { InvalidStatusTransitionError } from '../../promissory-notes/domain/note.errors.js';
 
 export interface SignNoteInput {
@@ -88,6 +89,21 @@ export class SignNoteUseCase extends BaseUseCase<SignNoteInput, SignNoteOutput> 
     }
 
     const image = await this.compressor.compress(input.signaturePng, 'signature');
+
+    /*
+     * La misma firma no se repite en ningún pagaré (ADR 0021).
+     *
+     * Dos títulos con la imagen idéntica al byte no son dos firmas: son una
+     * copiada. Nadie dibuja dos veces exactamente lo mismo —cambian el pulso,
+     * los puntos y hasta la compresión—, así que cuando el hash coincide es que
+     * se reenvió el trazo anterior, y eso convierte doce actos de voluntad en
+     * uno solo replicado.
+     */
+    const yaUsada = await this.prisma.signature.findFirst({
+      where: { sha256: image.sha256, noteId: { not: note.id } },
+      select: { note: { select: { folio: true } } },
+    });
+    if (yaUsada) throw new SignatureReusedError(yaUsada.note.folio);
     const key = `signatures/${note.id}/${image.sha256}.webp`;
     const thumbKey = `signatures/${note.id}/${image.sha256}-thumb.webp`;
     const vectorKey = `signatures/${note.id}/${image.sha256}.pkdrawing`;

@@ -84,13 +84,27 @@ function esDinero(valor: unknown, donde: string): void {
  * el anterior** (ADR 0019): para preparar el siguiente caso hay que dejar
  * firmado lo que ya se emitió, igual que en la vida real.
  */
-async function firmar(noteId: string, token: string): Promise<void> {
+async function trazoUnico(): Promise<Buffer> {
+  /*
+   * Un trazo distinto en cada firma: la misma imagen no vale para dos pagarés
+   * (ADR 0021). Se dibujan unos pixeles negros al azar sobre el lienzo, que es
+   * lo más parecido a que nadie firma dos veces igual.
+   */
   const sharp = (await import('sharp')).default;
-  const trazo = await sharp({
-    create: { width: 400, height: 160, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
-  })
-    .png()
-    .toBuffer();
+  const ancho = 400;
+  const alto = 160;
+  const lienzo = Buffer.alloc(ancho * alto * 3, 255);
+  for (let i = 0; i < 400; i += 1) {
+    const p = Math.floor(Math.random() * ancho * alto) * 3;
+    lienzo[p] = 0;
+    lienzo[p + 1] = 0;
+    lienzo[p + 2] = 0;
+  }
+  return sharp(lienzo, { raw: { width: ancho, height: alto, channels: 3 } }).png().toBuffer();
+}
+
+async function firmar(noteId: string, token: string): Promise<void> {
+  const trazo = await trazoUnico();
 
   const form = new FormData();
   form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');

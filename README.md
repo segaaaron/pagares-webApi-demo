@@ -255,7 +255,7 @@ consumen tanto la API como el panel, de modo que no hay dos definiciones del mis
 
 ```bash
 pnpm verify         # 415 unitarias + lint + typecheck + arquitectura
-pnpm test:e2e       # 141 contra la API real: e2e, seguridad, concurrencia y contrato
+pnpm test:e2e       # 143 contra la API real: e2e, seguridad, concurrencia y contrato
 pnpm test:a11y      # 23 de navegador: accesibilidad y flujos del panel
 pnpm perf:k6        # carga: 100 usuarios, 30 minutos
 ```
