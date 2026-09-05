@@ -561,6 +561,8 @@ Los abonos libres siguen siendo compatibles: cada pagaré de la serie admite pag
 
 **El interés del préstamo entra en el flujo de pagos** (ADR 0020). El abono se reparte en **tres** conceptos y no en dos —moratorio, interés ordinario y capital—, en ese orden (art. 2094 CCF), y cada uno se guarda en su columna. El **moratorio corre sólo sobre el capital** de la cuota por omisión (`lateInterestOverPrincipalOnly`): los intereses vencidos y no pagados no devengan intereses salvo pacto de capitalizarlos (art. 363 del Código de Comercio), y la cuota lleva su interés dentro. La regla vive en `lateInterestBase` y la usan los cuatro sitios que calculan mora. El detalle del pagaré —panel y aplicación— enseña `breakdown`: de qué está hecha la cuota y cuánto de su interés queda por cubrir. Recibo, correo del recibo, informe de recuperación y póliza contable separan los dos intereses.
 
+**La firma es por pagaré** (ADR 0021). Cada título se firma por separado, con su propio trazo y su propia constancia: `POST /notes/:id/signature` es la única puerta y no hay firma de serie. Un pagaré es un título ejecutivo autónomo, y lo que evita cualquier discusión ante un juez es que lleve la firma que el deudor puso en **ese** documento. El coste es real —doce cuotas son doce firmas, y hasta terminarlas no se le emite nada nuevo (ADR 0019)—, así que la aplicación tiene que decir cuántas faltan y qué desbloquean.
+
 ### 12.1 Reglas transversales del dinero
 
 - **Enteros de centavos** (`BigInt`) en base, `Money` VO en dominio, `Int64` en el contrato. Formateo sólo en el presenter. **Nunca `Float`.**

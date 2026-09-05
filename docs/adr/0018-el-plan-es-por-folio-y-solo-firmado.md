@@ -45,7 +45,7 @@ Firmar de una en una hace que el plan aparezca a trozos: se firma la primera y s
 pagaré suelto; se firma la segunda y aparece un plan con dos cuotas. La pantalla va
 contando la deuda a plazos según se firma, que es raro de leer.
 
-La cura no es relajar esta regla sino **firmar la serie de una vez**, como se firma el
-talonario de papel: un trazo aplicado a los doce títulos en una transacción, con su
-constancia en cada uno. Está propuesto y pendiente de aprobación; hasta entonces, lo que se
-ve a trozos es la verdad de lo que hay firmado.
+Se propuso firmar la serie de una vez, y **se descartó**: la firma es por pagaré (ADR
+0021). Así que el plan a trozos no es un estado transitorio sino el definitivo, y es la
+verdad de lo que el deudor ha aceptado hasta ese momento. Lo que sí exige es que la
+aplicación diga cuántas firmas faltan y qué desbloquean.

@@ -60,6 +60,7 @@ mensaje del 409 trae el folio, así que se ve enseguida que es de otra persona.
 Un mismo deudor tecleado dos veces sigue produciendo dos fichas y su historial partido. Es
 un defecto anterior a esta regla y no lo tapa: se decide aparte.
 
-Y refuerza lo que ya estaba propuesto: **firmar la serie de una vez**. Con doce cuotas que
-se firman una a una, el deudor no puede recibir nada nuevo hasta terminar las doce, que es
-justo lo que se quiere; pero también hace más molesto el camino de las doce firmas.
+Con la firma por pagaré (ADR 0021), el deudor no puede recibir nada nuevo hasta terminar
+las doce firmas. Es el efecto buscado —no se le apila deuda que no ha aceptado— y también
+el incentivo para que termine; pero obliga a que la aplicación le diga cuántas le faltan y
+qué desbloquean, en el momento en que pide algo y no puede.
