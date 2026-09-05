@@ -447,6 +447,21 @@ export class ClientController {
      * son el precio del préstamo y no capital.
      */
     const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
+    /*
+     * El acuse de entrega del pagaré firmado (§24.1).
+     *
+     * Que conste a qué correo salió, cuándo y si se entregó es lo que hace cara
+     * una objeción: un documento recibido y no objetado durante meses pesa,
+     * porque el peritaje sólo aparece cuando alguien niega haber firmado.
+     */
+    const entrega = note.signature
+      ? await this.prisma.emailDelivery.findFirst({
+          where: { noteId: note.id, templateId: 'note-signed-receipt' },
+          orderBy: { sentAt: 'desc' },
+          select: { to: true, sentAt: true, status: true, deliveredAt: true },
+        })
+      : null;
+
     const ordinarioPendiente = pendingOrdinaryInterest({
       planInterestCents: ordinarioDeLaCuota,
       appliedCents: note.payments.reduce(
@@ -581,6 +596,19 @@ export class ClientController {
             /** Si el aparato verificó al firmante antes del trazo (§24.1). */
             biometricVerified: note.signature.biometricVerified,
             certified: false,
+            /**
+             * A dónde se mandó el pagaré firmado y qué pasó con el envío.
+             * Nulo cuando todavía no ha salido —o cuando el deudor no tiene
+             * correo—, que no es lo mismo que haber fallado.
+             */
+            delivery: entrega
+              ? {
+                  to: entrega.to,
+                  sentAt: entrega.sentAt.toISOString(),
+                  status: entrega.status,
+                  deliveredAt: entrega.deliveredAt?.toISOString() ?? null,
+                }
+              : null,
           }
         : null,
       payments: note.payments.map((p) => ({
