@@ -482,3 +482,94 @@ describe('§17.1 · el pagaré en PDF', () => {
     expect(documento.texto).toContain(String(emitido.body['folio']));
   });
 });
+
+/**
+ * La verificación del firmante (§24.1).
+ *
+ * El trazo prueba que **alguien** dibujó; no prueba quién. Que el aparato
+ * verifique al firmante —Face ID, huella o su código— antes de capturar el
+ * trazo es lo único que ata la firma a una persona desde el cliente, así que el
+ * dato viaja con la captura y queda en la evidencia.
+ */
+describe('§24.1 · el aparato verifica a quien firma', () => {
+  async function trazo(): Promise<Buffer> {
+    const sharp = (await import('sharp')).default;
+    const ancho = 400;
+    const alto = 160;
+    const lienzo = Buffer.alloc(ancho * alto * 3, 255);
+    for (let i = 0; i < 400; i += 1) {
+      const p = Math.floor(Math.random() * ancho * alto) * 3;
+      lienzo[p] = 0;
+      lienzo[p + 1] = 0;
+      lienzo[p + 2] = 0;
+    }
+    return sharp(lienzo, { raw: { width: ancho, height: alto, channels: 3 } }).png().toBuffer();
+  }
+
+  async function emitirYFirmar(payload: Record<string, unknown>): Promise<number> {
+    const emitido = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: {
+          fullName: 'Deudor que firma',
+          address: 'Calle de prueba 30',
+          phone: `+52443${String(Date.now()).slice(-7)}`,
+        },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-1),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '1000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+      },
+    });
+    expect(emitido.status).toBe(201);
+
+    const form = new FormData();
+    const png = await trazo();
+    form.append('signature', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'firma.png');
+    form.append('payload', JSON.stringify(payload));
+
+    const respuesta = await fetch(`${API}/notes/${String(emitido.body['id'])}/signature`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    return respuesta.status;
+  }
+
+  it('acepta la firma que dice que el aparato verificó al firmante', async () => {
+    const estado = await emitirYFirmar({
+      capturedAt: new Date().toISOString(),
+      strokeCount: 3,
+      mode: 'IN_PERSON',
+      biometricVerified: true,
+    });
+    expect(estado).toBe(201);
+  });
+
+  it('y la que no lo dice: no todos los aparatos tienen biometría', async () => {
+    // Nulo no es falso. Un 422 aquí dejaría a alguien sin poder firmar su
+    // pagaré por no tener huella configurada.
+    const estado = await emitirYFirmar({
+      capturedAt: new Date().toISOString(),
+      strokeCount: 3,
+      mode: 'IN_PERSON',
+    });
+    expect(estado).toBe(201);
+  });
+
+  it('un campo inventado sigue siendo 422', async () => {
+    // El cuerpo es estricto a propósito (API3): aceptar cualquier cosa es cómo
+    // se cuelan campos que nadie declaró.
+    const estado = await emitirYFirmar({
+      capturedAt: new Date().toISOString(),
+      strokeCount: 3,
+      mode: 'IN_PERSON',
+      loQueSea: true,
+    });
+    expect(estado).toBe(422);
+  });
+});

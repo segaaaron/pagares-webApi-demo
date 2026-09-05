@@ -307,6 +307,18 @@ export class RenderEvidenceUseCase extends BaseUseCase<{ noteId: string }, Buffe
         })
       : null;
 
+    /*
+     * El acuse: el pagaré firmado sale por correo al deudor en el momento de
+     * firmar, y aquí se hace constar que salió y qué pasó con él. Un documento
+     * recibido y no objetado durante meses pesa, porque el peritaje sólo
+     * aparece cuando alguien niega haber firmado.
+     */
+    const entrega = await this.prisma.emailDelivery.findFirst({
+      where: { noteId: note.id, templateId: 'note-signed-receipt' },
+      orderBy: { sentAt: 'desc' },
+      select: { to: true, sentAt: true, status: true, deliveredAt: true },
+    });
+
     return this.renderer.renderEvidence({
       noteFolio: note.folio,
       organizationName: settings?.legalName ?? note.creditorName,
@@ -342,6 +354,21 @@ export class RenderEvidenceUseCase extends BaseUseCase<{ noteId: string }, Buffe
       inputType: note.signature.inputType,
       strokeCount: note.signature.strokeCount,
       durationMs: note.signature.durationMs,
+      biometricVerified: note.signature.biometricVerified,
+      delivery: entrega
+        ? {
+            to: entrega.to,
+            sentAtFormatted: DATE_TIME.format(entrega.sentAt),
+            statusLabel:
+              entrega.status === 'DELIVERED' && entrega.deliveredAt
+                ? `Entregado el ${DATE_TIME.format(entrega.deliveredAt)}`
+                : entrega.status === 'SENT'
+                  ? 'Enviado; el proveedor no ha confirmado la entrega'
+                  : entrega.status === 'BOUNCED'
+                    ? 'Rebotado: el correo no llegó'
+                    : entrega.status,
+          }
+        : null,
       issuedAtFormatted: DATE_TIME.format(this.clock.now()),
     });
   }

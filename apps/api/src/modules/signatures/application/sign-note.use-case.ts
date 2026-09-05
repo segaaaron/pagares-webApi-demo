@@ -28,6 +28,8 @@ export interface SignNoteInput {
     strokeCount?: number | undefined;
     durationMs?: number | undefined;
     inputType?: string | undefined;
+    /** Si el aparato verificó al firmante antes del trazo. Nulo: no se sabe. */
+    biometricVerified?: boolean | undefined;
     deviceModel?: string | undefined;
     osVersion?: string | undefined;
     appVersion?: string | undefined;
@@ -143,6 +145,9 @@ export class SignNoteUseCase extends BaseUseCase<SignNoteInput, SignNoteOutput> 
             strokeCount: input.capture.strokeCount ?? null,
             durationMs: input.capture.durationMs ?? null,
             inputType: input.capture.inputType ?? null,
+            // Nulo cuando el aparato no tiene biometría: no afirmar nada es
+            // distinto de afirmar que falló (§24.1).
+            biometricVerified: input.capture.biometricVerified ?? null,
             deviceModel: input.capture.deviceModel ?? null,
             osVersion: input.capture.osVersion ?? null,
             appVersion: input.capture.appVersion ?? null,

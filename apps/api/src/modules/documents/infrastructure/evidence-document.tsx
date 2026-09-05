@@ -21,6 +21,8 @@ export interface EvidenceModel {
   inputType: string | null;
   strokeCount: number | null;
   durationMs: number | null;
+  biometricVerified: boolean | null;
+  delivery: { sentAtFormatted: string; to: string; statusLabel: string } | null;
   issuedAtFormatted: string;
   organizationPhone?: string | null | undefined;
   organizationEmail?: string | null | undefined;
@@ -116,6 +118,23 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
         <Row label="Sistema" value={model.osVersion ?? 'No registrado'} />
         <Row label="Versión de la aplicación" value={model.appVersion ?? 'No registrada'} />
 
+        {/*
+          * Quién firmó, que es la parte floja de una firma electrónica simple:
+          * el trazo prueba que alguien dibujó, la verificación del aparato
+          * convierte «alguien con el teléfono» en «quien lo desbloquea».
+          */}
+        <Seccion>Verificación del firmante</Seccion>
+        <Row
+          label="El aparato verificó al firmante"
+          value={
+            model.biometricVerified === null
+              ? 'No consta: el aparato no informó de una verificación'
+              : model.biometricVerified
+                ? 'Sí, antes de capturar el trazo (biometría o código del aparato)'
+                : 'No'
+          }
+        />
+
         <Seccion>Trazo</Seccion>
         <Row label="Método de entrada" value={model.inputType ?? 'No registrado'} />
         <Row label="Número de trazos" value={model.strokeCount !== null ? String(model.strokeCount) : 'No registrado'} />
@@ -123,6 +142,22 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
           label="Duración de la firma"
           value={model.durationMs !== null ? `${(model.durationMs / 1000).toFixed(1)} segundos` : 'No registrada'}
         />
+
+        {/*
+          * El acuse de entrega.
+          *
+          * Un documento que el deudor recibió y no objetó durante meses pesa,
+          * porque la carga de la prueba no empieza siendo del acreedor: el
+          * peritaje aparece cuando alguien niega haber firmado.
+          */}
+        {model.delivery ? (
+          <>
+            <Seccion>Entrega al suscriptor</Seccion>
+            <Row label="Enviado a" value={model.delivery.to} />
+            <Row label="Fecha de envío" value={model.delivery.sentAtFormatted} />
+            <Row label="Estado del envío" value={model.delivery.statusLabel} />
+          </>
+        ) : null}
 
         {inPerson ? (
           <Text style={s.notice}>
