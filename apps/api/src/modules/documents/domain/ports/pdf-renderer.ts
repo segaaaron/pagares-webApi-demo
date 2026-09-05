@@ -86,6 +86,10 @@ export interface ReceiptModelPort {
   noteFolio: string;
   organizationName: string;
   organizationAddress: string;
+  /** Contacto al pie: a quién llamar si el documento genera dudas. */
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
+
   debtorName: string;
   amountFormatted: string;
   amountInWords: string;
@@ -104,8 +108,13 @@ export interface ReleaseModelPort {
   noteFolio: string;
   organizationName: string;
   organizationAddress: string;
+  /** Contacto al pie: a quién llamar si el documento genera dudas. */
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
   debtorName: string;
   amountFormatted: string;
+  /** El importe también en letra: así lo lee un finiquito. */
+  amountInWords?: string;
   settledOnFormatted: string;
   issuedAtFormatted: string;
   place: string;
@@ -115,8 +124,16 @@ export interface StatementModelPort {
   statementFolio: string;
   organizationName: string;
   organizationAddress: string;
+  /** Contacto al pie: a quién llamar si el documento genera dudas. */
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
   debtorName: string;
+  debtorPhone?: string | null | undefined;
   cutoffFormatted: string;
+  issuedAtFormatted?: string;
+  /** Lo vencido, aparte: es la cifra por la que se llama. */
+  overdueCount?: number;
+  overdueBalance?: string;
   notes: {
     folio: string;
     issueDate: string;
@@ -125,6 +142,7 @@ export interface StatementModelPort {
     paid: string;
     balance: string;
     statusLabel: string;
+    daysOverdue?: number;
   }[];
   totalBalance: string;
   totalPaid: string;
@@ -134,6 +152,10 @@ export interface EvidenceModelPort {
   noteFolio: string;
   organizationName: string;
   organizationAddress: string;
+  /** Contacto al pie: a quién llamar si el documento genera dudas. */
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
+
   debtorName: string;
   amountFormatted: string;
   documentSha256: string;

@@ -1,10 +1,13 @@
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Document, Page, Text, View } from '@react-pdf/renderer';
+import { base, Campo, Membrete, Marco, Pie, Renglon, Seccion, Titulo } from './documento-base.js';
 
 export interface ReceiptModel {
   receiptFolio: string;
   noteFolio: string;
   organizationName: string;
   organizationAddress: string;
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
   debtorName: string;
   amountFormatted: string;
   amountInWords: string;
@@ -16,88 +19,77 @@ export interface ReceiptModel {
   methodLabel: string;
   reference: string | null;
   issuedAtFormatted: string;
+  verifyUrl?: string | null | undefined;
 }
 
 /**
- * Recibo de abono (§17.1). Desglosa interés y capital porque sin ese desglose el
- * deudor no puede verificar por qué su saldo bajó lo que bajó.
+ * Recibo de abono (§17.1).
+ *
+ * Es el papel con el que el deudor demuestra que pagó, así que dice **de quién**
+ * se recibió, **cuánto**, **a qué pagaré** se aplicó y **en qué se repartió**.
+ * Sin ese desglose no puede verificar por qué su saldo bajó lo que bajó, que es
+ * justo la llamada que llega dos días después.
  */
-const s = StyleSheet.create({
-  page: { paddingHorizontal: 48, paddingVertical: 44, fontSize: 10, color: '#121B17' },
-  eyebrow: { fontSize: 8, letterSpacing: 2, color: '#0B5340', textTransform: 'uppercase' },
-  folio: { fontSize: 11, color: '#0B5340', marginTop: 2 },
-  amount: { fontSize: 26, marginTop: 16 },
-  words: { fontSize: 9, color: '#6A7A71', marginBottom: 20 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
-  label: { fontSize: 9, color: '#6A7A71' },
-  value: { fontSize: 10 },
-  divider: { borderTopWidth: 0.6, borderTopColor: '#D2DAD4', marginVertical: 14 },
-  total: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8 },
-  totalLabel: { fontSize: 10, fontWeight: 'bold' },
-  footer: { position: 'absolute', bottom: 28, left: 48, right: 48, fontSize: 7, color: '#6A7A71' },
-});
-
 export function ReceiptDocument({ model }: { model: ReceiptModel }) {
   return (
     <Document title={`Recibo ${model.receiptFolio}`} author={model.organizationName}>
-      <Page size="LETTER" style={s.page}>
-        <Text style={s.eyebrow}>Recibo de pago</Text>
-        <Text style={s.folio}>{model.receiptFolio}</Text>
+      <Page size="LETTER" style={base.page}>
+        <Marco />
+        <Membrete emisor={model} etiqueta="RECIBO" folio={model.receiptFolio} />
 
-        <Text style={s.amount}>{model.amountFormatted}</Text>
-        <Text style={s.words}>{model.amountInWords}</Text>
+        <Titulo>RECIBO DE PAGO</Titulo>
 
-        <View style={s.row}>
-          <Text style={s.label}>Recibido de</Text>
-          <Text style={s.value}>{model.debtorName}</Text>
-        </View>
-        <View style={s.row}>
-          <Text style={s.label}>Aplicado al pagaré</Text>
-          <Text style={s.value}>{model.noteFolio}</Text>
-        </View>
-        <View style={s.row}>
-          <Text style={s.label}>Fecha de pago</Text>
-          <Text style={s.value}>{model.paidOnFormatted}</Text>
-        </View>
-        <View style={s.row}>
-          <Text style={s.label}>Forma de pago</Text>
-          <Text style={s.value}>
-            {model.methodLabel}
-            {model.reference ? ` · ${model.reference}` : ''}
-          </Text>
+        <View style={{ borderWidth: 0.8, borderColor: '#101A16', paddingHorizontal: 14, paddingVertical: 10, marginBottom: 14 }}>
+          <Text style={{ fontSize: 22, fontFamily: 'Times-Bold' }}>{model.amountFormatted}</Text>
+          <Text style={{ fontSize: 8.5, color: '#6A7A71', marginTop: 3 }}>{model.amountInWords}</Text>
         </View>
 
-        <View style={s.divider} />
+        {/* En prosa y no sólo en campos: es la fórmula que cualquiera reconoce
+            como un recibo, y la que sirve si hay que enseñarlo. */}
+        <Text style={{ fontSize: 11, fontFamily: 'Times-Roman', lineHeight: 1.6, marginBottom: 6 }}>
+          Recibí de <Text style={{ fontFamily: 'Times-Bold' }}>{model.debtorName}</Text> la
+          cantidad de <Text style={{ fontFamily: 'Times-Bold' }}>{model.amountFormatted}</Text> (
+          {model.amountInWords}) el {model.paidOnFormatted}, que se aplica al pagaré{' '}
+          <Text style={{ fontFamily: 'Times-Bold' }}>{model.noteFolio}</Text>.
+        </Text>
+
+        <View style={base.fila}>
+          <Campo label="Fecha de pago" value={model.paidOnFormatted} />
+          <Campo
+            label="Forma de pago"
+            value={model.methodLabel + (model.reference ? ` · ${model.reference}` : '')}
+          />
+        </View>
 
         {/*
           * Tres conceptos y no dos (ADR 0020). El interés del préstamo y la
-          * sanción por atraso son cosas distintas, y juntarlas le impedía al
-          * deudor verificar qué pagó: un abono a una cuota al corriente salía
-          * entero "a capital" aunque parte fuera el precio del préstamo.
+          * sanción por atraso son cosas distintas: juntarlas le impedía al
+          * deudor verificar qué pagó, y un abono a una cuota al corriente salía
+          * entero «a capital» aunque parte fuera el precio del préstamo.
           */}
-        <View style={s.row}>
-          <Text style={s.label}>Aplicado a interés del préstamo</Text>
-          <Text style={s.value}>{model.appliedToOrdinaryInterest}</Text>
-        </View>
-        <View style={s.row}>
-          <Text style={s.label}>Aplicado a interés moratorio</Text>
-          <Text style={s.value}>{model.appliedToInterest}</Text>
-        </View>
-        <View style={s.row}>
-          <Text style={s.label}>Aplicado a capital</Text>
-          <Text style={s.value}>{model.appliedToPrincipal}</Text>
+        <Seccion>En qué se aplicó</Seccion>
+        <Renglon concepto="Interés del préstamo" importe={model.appliedToOrdinaryInterest} />
+        <Renglon concepto="Interés moratorio" importe={model.appliedToInterest} />
+        <Renglon concepto="Capital" importe={model.appliedToPrincipal} />
+        <Renglon concepto="Total recibido" importe={model.amountFormatted} total />
+
+        <Seccion>Cómo queda el pagaré</Seccion>
+        <Renglon concepto="Saldo pendiente tras este pago" importe={model.balanceAfter} total />
+
+        <View style={{ flexGrow: 1 }} />
+
+        <View style={base.firma}>
+          <View style={base.firmaLinea} />
+          <Text style={base.firmaNombre}>{model.organizationName}</Text>
+          <Text style={base.evidencia}>QUIEN RECIBE</Text>
         </View>
 
-        <View style={s.divider} />
-
-        <View style={s.total}>
-          <Text style={s.totalLabel}>Saldo pendiente tras este pago</Text>
-          <Text style={s.totalLabel}>{model.balanceAfter}</Text>
-        </View>
-
-        <Text style={s.footer} fixed>
-          {model.organizationName} · {model.organizationAddress} · Emitido el {model.issuedAtFormatted}
+        <Text style={base.nota}>
+          Conserva este recibo: es el comprobante del pago. Los abonos quedan además anotados en
+          el propio pagaré, y al quedar cubierto puedes pedir la devolución del título original.
         </Text>
+
+        <Pie emisor={model} verifyUrl={model.verifyUrl} issuedAtFormatted={model.issuedAtFormatted} />
       </Page>
     </Document>
   );

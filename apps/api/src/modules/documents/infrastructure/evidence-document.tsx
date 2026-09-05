@@ -1,4 +1,5 @@
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { base, GRIS, Membrete, Marco, Pie, REGLA, Seccion, Titulo } from './documento-base.js';
 
 export interface EvidenceModel {
   noteFolio: string;
@@ -21,6 +22,9 @@ export interface EvidenceModel {
   strokeCount: number | null;
   durationMs: number | null;
   issuedAtFormatted: string;
+  organizationPhone?: string | null | undefined;
+  organizationEmail?: string | null | undefined;
+  verifyUrl?: string | null | undefined;
 }
 
 /**
@@ -31,17 +35,21 @@ export interface EvidenceModel {
  * firmó, con qué dispositivo y desde qué dirección".
  */
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 48, paddingVertical: 44, fontSize: 9.5, color: '#121B17' },
-  eyebrow: { fontSize: 8, letterSpacing: 2, color: '#0B5340', textTransform: 'uppercase' },
-  title: { fontSize: 17, marginTop: 6, marginBottom: 4 },
-  intro: { fontSize: 10, lineHeight: 1.6, color: '#39473F', marginBottom: 20 },
-  section: { fontSize: 8, letterSpacing: 1, color: '#6A7A71', textTransform: 'uppercase', marginTop: 16, marginBottom: 6 },
-  row: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#E8EDE9' },
-  label: { width: '38%', color: '#6A7A71' },
+  intro: { fontSize: 10, fontFamily: 'Times-Roman', lineHeight: 1.65, marginBottom: 6 },
+  row: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.4, borderBottomColor: REGLA },
+  label: { width: '38%', color: GRIS },
   value: { width: '62%' },
-  hash: { width: '62%', fontFamily: 'Courier', fontSize: 8 },
-  notice: { marginTop: 22, padding: 12, backgroundColor: '#F4E9D4', fontSize: 8.5, lineHeight: 1.5, color: '#8A5A12' },
-  footer: { position: 'absolute', bottom: 28, left: 48, right: 48, fontSize: 7, color: '#6A7A71' },
+  hash: { width: '62%', fontFamily: 'Courier', fontSize: 7.5 },
+  notice: {
+    marginTop: 18,
+    padding: 11,
+    backgroundColor: '#F7EEDC',
+    borderLeftWidth: 2,
+    borderLeftColor: '#8A5A12',
+    fontSize: 8.5,
+    lineHeight: 1.5,
+    color: '#8A5A12',
+  },
 });
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -66,15 +74,21 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
 
   return (
     <Document title={`Evidencia de firma ${model.noteFolio}`} author={model.organizationName}>
-      <Page size="LETTER" style={s.page}>
-        <Text style={s.eyebrow}>Certificado</Text>
-        <Text style={s.title}>Evidencia de firma electrónica</Text>
+      <Page size="LETTER" style={base.page}>
+        <Marco />
+        <Membrete emisor={model} etiqueta="CERTIFICADO" folio={model.noteFolio} />
+
+        <Titulo nota="Cómo, cuándo y desde dónde se firmó">EVIDENCIA DE FIRMA</Titulo>
+
         <Text style={s.intro}>
           Este documento hace constar las circunstancias en que se capturó la firma del pagaré{' '}
-          {model.noteFolio}, por {model.amountFormatted}, suscrito por {model.debtorName}.
+          <Text style={{ fontFamily: 'Times-Bold' }}>{model.noteFolio}</Text>, por{' '}
+          {model.amountFormatted}, suscrito por{' '}
+          <Text style={{ fontFamily: 'Times-Bold' }}>{model.debtorName}</Text>. Las huellas de
+          abajo permiten comprobar que ni el documento ni el trazo cambiaron desde entonces.
         </Text>
 
-        <Text style={s.section}>Integridad</Text>
+        <Seccion>Integridad</Seccion>
         <View style={s.row}>
           <Text style={s.label}>Huella del documento</Text>
           <Text style={s.hash}>{model.documentSha256}</Text>
@@ -84,14 +98,14 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
           <Text style={s.hash}>{model.signatureSha256}</Text>
         </View>
 
-        <Text style={s.section}>Momento</Text>
+        <Seccion>Momento</Seccion>
         <Row label="Firma capturada" value={model.capturedAtFormatted} />
         {model.acceptedAtFormatted ? <Row label="Aceptación registrada" value={model.acceptedAtFormatted} /> : null}
         {model.scrolledToEndAtFormatted ? (
           <Row label="Documento leído hasta el final" value={model.scrolledToEndAtFormatted} />
         ) : null}
 
-        <Text style={s.section}>Modalidad y origen</Text>
+        <Seccion>Modalidad y origen</Seccion>
         <Row
           label="Modalidad"
           value={modeLabel}
@@ -102,7 +116,7 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
         <Row label="Sistema" value={model.osVersion ?? 'No registrado'} />
         <Row label="Versión de la aplicación" value={model.appVersion ?? 'No registrada'} />
 
-        <Text style={s.section}>Trazo</Text>
+        <Seccion>Trazo</Seccion>
         <Row label="Método de entrada" value={model.inputType ?? 'No registrado'} />
         <Row label="Número de trazos" value={model.strokeCount !== null ? String(model.strokeCount) : 'No registrado'} />
         <Row
@@ -118,9 +132,16 @@ export function EvidenceDocument({ model }: { model: EvidenceModel }) {
           </Text>
         ) : null}
 
-        <Text style={s.footer} fixed>
-          {model.organizationName} · {model.organizationAddress} · Emitido el {model.issuedAtFormatted}
+        <Text style={base.nota}>
+          Este certificado acompaña al pagaré y no lo sustituye. Comprueba las huellas contra el
+          documento que tengas: si alguna no coincide, el archivo no es el que se firmó.
         </Text>
+
+        <Pie
+          emisor={model}
+          verifyUrl={model.verifyUrl}
+          issuedAtFormatted={model.issuedAtFormatted}
+        />
       </Page>
     </Document>
   );

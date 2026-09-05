@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import { createHash } from 'node:crypto';
-import { amountToWords, businessToday, formatMxn } from '@pagares/domain-rules';
+import { amountToWords, businessToday, daysOverdue, formatMxn } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import { NumberingService } from '../../numbering/numbering.service.js';
@@ -92,6 +92,8 @@ export class RenderReceiptUseCase extends BaseUseCase<{ paymentId: string }, Buf
       noteFolio: payment.note.folio,
       organizationName: settings?.legalName ?? payment.note.creditorName,
       organizationAddress: settings?.address ?? '',
+      organizationPhone: settings?.phone ?? null,
+      organizationEmail: settings?.email ?? null,
       debtorName: payment.note.debtor.fullName,
       amountFormatted: formatMxn(payment.amountCents),
       amountInWords: amountToWords(
@@ -173,8 +175,13 @@ export class RenderReleaseUseCase extends BaseUseCase<{ noteId: string }, Buffer
       noteFolio: note.folio,
       organizationName: settings?.legalName ?? note.creditorName,
       organizationAddress: settings?.address ?? '',
+      organizationPhone: settings?.phone ?? null,
+      organizationEmail: settings?.email ?? null,
       debtorName: note.debtor.fullName,
       amountFormatted: formatMxn(note.amountCents),
+      // También en letra: es como se lee un finiquito y como se evita que un
+      // dígito cambiado pase inadvertido.
+      amountInWords: note.amountInWords,
       settledOnFormatted: LONG_DATE.format(lastPayment?.paidOn ?? note.updatedAt),
       issuedAtFormatted: LONG_DATE.format(new Date(`${businessToday(now)}T00:00:00Z`)),
       place: settings?.defaultIssuePlace ?? note.issuePlace,
@@ -211,32 +218,60 @@ export class RenderStatementUseCase extends BaseUseCase<{ debtorId: string }, Bu
 
     let totalBalance = 0n;
     let totalPaid = 0n;
+    // Lo vencido va aparte: es la cifra por la que se llama, y sumada con el
+    // resto desaparece justo cuando importa.
+    let overdueBalance = 0n;
+    let overdueCount = 0;
+
     for (const note of debtor.promissoryNotes) {
       if (note.status === 'VOID' || note.status === 'RENEWED') continue;
-      totalBalance += note.amountCents - note.paidCents;
+      const saldo = note.amountCents - note.paidCents;
+      totalBalance += saldo;
       totalPaid += note.paidCents;
+
+      if (saldo > 0n && daysOverdue(note.dueDate.toISOString().slice(0, 10), now) > 0) {
+        overdueBalance += saldo;
+        overdueCount += 1;
+      }
     }
 
     return this.renderer.renderStatement({
       statementFolio,
       organizationName: settings?.legalName ?? '',
       organizationAddress: settings?.address ?? '',
+      organizationPhone: settings?.phone ?? null,
+      organizationEmail: settings?.email ?? null,
       debtorName: debtor.fullName,
+      debtorPhone: debtor.phone,
       cutoffFormatted: LONG_DATE.format(new Date(`${today}T00:00:00Z`)),
       notes: debtor.promissoryNotes.map((n) => ({
         folio: n.folio,
-        issueDate: n.issueDate.toISOString().slice(0, 10),
-        dueDate: n.dueDate.toISOString().slice(0, 10),
+        // En corto y como se leen aquí: «03/09/26». La fecha en formato de
+        // máquina obliga a traducirla mentalmente en cada renglón.
+        issueDate: SHORT_DATE.format(n.issueDate),
+        dueDate: SHORT_DATE.format(n.dueDate),
         amount: formatMxn(n.amountCents),
         paid: formatMxn(n.paidCents),
         balance: formatMxn(n.amountCents - n.paidCents),
         statusLabel: STATUS_LABEL[n.status] ?? n.status,
+        daysOverdue: Math.max(0, daysOverdue(n.dueDate.toISOString().slice(0, 10), now)),
       })),
       totalBalance: formatMxn(totalBalance),
       totalPaid: formatMxn(totalPaid),
+      ...(overdueCount > 0
+        ? { overdueCount, overdueBalance: formatMxn(overdueBalance) }
+        : {}),
+      issuedAtFormatted: LONG_DATE.format(new Date(`${today}T00:00:00Z`)),
     });
   }
 }
+
+const SHORT_DATE = new Intl.DateTimeFormat('es-MX', {
+  day: '2-digit',
+  month: '2-digit',
+  year: '2-digit',
+  timeZone: 'America/Mexico_City',
+});
 
 const DATE_TIME = new Intl.DateTimeFormat('es-MX', {
   dateStyle: 'long',
@@ -276,6 +311,8 @@ export class RenderEvidenceUseCase extends BaseUseCase<{ noteId: string }, Buffe
       noteFolio: note.folio,
       organizationName: settings?.legalName ?? note.creditorName,
       organizationAddress: settings?.address ?? '',
+      organizationPhone: settings?.phone ?? null,
+      organizationEmail: settings?.email ?? null,
       debtorName: note.debtor.fullName,
       amountFormatted: formatMxn(note.amountCents),
       // La huella del documento es la del contenido que se firmó, no la del PDF

@@ -97,6 +97,16 @@ export class BuildLegalPackageUseCase extends BaseUseCase<{ noteId: string }, Le
     entries.push({ name: '04-bitacora-de-gestion.csv', content: this.activityLog(note) });
     contents.push('04-bitacora-de-gestion.csv');
 
+    /*
+     * Un índice al frente del paquete.
+     *
+     * Quien abre este zip es un abogado que no conoce el sistema: sin una hoja
+     * que diga qué es cada archivo y de qué asunto se trata, tiene que abrirlos
+     * todos para orientarse. Va en texto plano a propósito, para que se lea sin
+     * depender de nada.
+     */
+    entries.unshift({ name: '00-indice.txt', content: this.indice(note, contents) });
+
     // Escaneos del expediente, con el perfil `legal-exhibit` (§8.3).
     const assetIds = (note.legalCase?.actions ?? []).flatMap((action) => action.assetIds);
     if (assetIds.length > 0) {
@@ -138,6 +148,47 @@ export class BuildLegalPackageUseCase extends BaseUseCase<{ noteId: string }, Le
    * Bitácora en CSV y no en PDF: el abogado la cruza con sus fechas, y para eso
    * una tabla que se abre en una hoja de cálculo sirve más que una página bonita.
    */
+  /** La hoja que explica el paquete: de qué asunto es y qué hay dentro. */
+  private indice(
+    note: {
+      folio: string;
+      amountCents: bigint;
+      paidCents: bigint;
+      dueDate: Date;
+      status: string;
+      debtor: { fullName: string; phone: string };
+    },
+    contents: string[],
+  ): string {
+    const fecha = businessToday(this.clock.now());
+    const saldo = note.amountCents - note.paidCents;
+
+    return [
+      `PAQUETE LEGAL · PAGARÉ ${note.folio}`,
+      `Armado el ${fecha}`,
+      '',
+      `Deudor:    ${note.debtor.fullName} · ${note.debtor.phone}`,
+      `Importe:   ${formatMxn(note.amountCents)}`,
+      `Abonado:   ${formatMxn(note.paidCents)}`,
+      `Saldo:     ${formatMxn(saldo)}`,
+      `Vence:     ${note.dueDate.toISOString().slice(0, 10)}`,
+      `Estado:    ${note.status}`,
+      '',
+      'QUÉ HAY EN ESTE PAQUETE',
+      '',
+      '01-pagare.pdf                  El título, con su firma y los abonos anotados.',
+      '02-certificado-de-evidencia.pdf  Cómo, cuándo y desde dónde se firmó.',
+      '03-estado-de-cuenta.pdf        Todos los pagarés del deudor al corte de hoy.',
+      '04-bitacora-de-gestion.csv     Gestiones de cobranza, abonos y actos del expediente.',
+      '05-escaneos/                   Documentos escaneados del expediente, si los hay.',
+      '',
+      contents.length > 0 ? `Archivos incluidos: ${contents.join(', ')}` : '',
+      '',
+      'Si falta alguna pieza, el motivo está en 00-FALTAN-ESTAS-PIEZAS.txt.',
+      '',
+    ].join('\n');
+  }
+
   private activityLog(note: {
     folio: string;
     activities: {

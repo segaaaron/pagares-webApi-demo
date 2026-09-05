@@ -18,62 +18,20 @@ import type { NoteDocumentModel } from '../domain/ports/pdf-renderer.js';
  * Se construye con flexbox: añadir un bloque recoloca lo demás solo. Con
  * coordenadas habría que recalcular a mano todo lo que va debajo.
  */
-const TINTA = '#101A16';
-const VERDE = '#0B5340';
-const GRIS = '#6A7A71';
-const REGLA = '#C9D3CC';
+import {
+  base,
+  Campo,
+  Marco,
+  Membrete,
+  Pie,
+  Titulo,
+  REGLA,
+  TINTA,
+  GRIS,
+} from './documento-base.js';
 
+/** Lo propio del pagaré. Lo compartido —marco, membrete, pie— vive en la base. */
 const s = StyleSheet.create({
-  page: {
-    paddingHorizontal: 42,
-    paddingTop: 38,
-    // El pie va fijo abajo: sin este hueco, la nota legal se le pega encima.
-    paddingBottom: 76,
-    fontSize: 9.5,
-    fontFamily: 'Helvetica',
-    color: TINTA,
-  },
-
-  // Marco doble: es la convención de los títulos de crédito impresos, y de paso
-  // hace evidente si a una copia le falta un trozo.
-  marcoExterior: {
-    position: 'absolute',
-    top: 22,
-    left: 22,
-    right: 22,
-    bottom: 22,
-    borderWidth: 1.4,
-    borderColor: VERDE,
-  },
-  marcoInterior: {
-    position: 'absolute',
-    top: 27,
-    left: 27,
-    right: 27,
-    bottom: 27,
-    borderWidth: 0.4,
-    borderColor: REGLA,
-  },
-
-  membrete: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  emisor: { flex: 1, paddingRight: 20 },
-  emisorNombre: { fontSize: 11, fontFamily: 'Times-Bold', color: TINTA },
-  emisorDato: { fontSize: 7.5, color: GRIS, marginTop: 1.5 },
-
-  cajaFolio: { borderWidth: 0.8, borderColor: VERDE, paddingHorizontal: 10, paddingVertical: 6 },
-  cajaFolioEtiqueta: { fontSize: 6.5, letterSpacing: 1.4, color: VERDE },
-  cajaFolioValor: { fontSize: 12, fontFamily: 'Courier-Bold', color: TINTA, marginTop: 2 },
-
-  titulo: {
-    fontSize: 20,
-    fontFamily: 'Times-Bold',
-    letterSpacing: 6,
-    textAlign: 'center',
-    marginTop: 22,
-    color: TINTA,
-  },
-  reglaTitulo: { borderTopWidth: 0.8, borderTopColor: VERDE, marginTop: 6, marginBottom: 16 },
-
   // La cifra va en su caja, como en un cheque: es lo primero que se busca.
   cajaImporte: {
     borderWidth: 0.8,
@@ -87,7 +45,7 @@ const s = StyleSheet.create({
   },
   importe: { fontSize: 24, fontFamily: 'Times-Bold' },
   importeLetra: { fontSize: 8.5, color: GRIS, marginTop: 3, maxWidth: 300 },
-  moneda: { fontSize: 8, letterSpacing: 1.2, color: VERDE },
+  moneda: { fontSize: 8, letterSpacing: 1.2, color: '#0B5340' },
 
   promesa: { fontSize: 11, fontFamily: 'Times-Roman', lineHeight: 1.65, marginBottom: 14 },
   clausula: {
@@ -96,24 +54,12 @@ const s = StyleSheet.create({
     lineHeight: 1.5,
     color: TINTA,
     borderLeftWidth: 2,
-    borderLeftColor: VERDE,
+    borderLeftColor: '#0B5340',
     paddingLeft: 8,
     marginBottom: 14,
   },
 
-  fila: { flexDirection: 'row', gap: 18 },
-  campo: { flex: 1, borderBottomWidth: 0.4, borderBottomColor: REGLA, paddingBottom: 4, marginBottom: 9 },
-  etiqueta: { fontSize: 6.5, color: GRIS, letterSpacing: 0.8 },
-  valor: { fontSize: 9.5, marginTop: 2.5 },
-
-  seccion: { fontSize: 7, letterSpacing: 1.6, color: VERDE, marginTop: 6, marginBottom: 7 },
-
-  firma: { marginTop: 26, alignItems: 'center' },
   firmaImagen: { height: 58, objectFit: 'contain' },
-  firmaLinea: { borderTopWidth: 0.8, borderTopColor: TINTA, width: 250, marginTop: 4 },
-  firmaNombre: { fontSize: 9.5, fontFamily: 'Times-Bold', marginTop: 5 },
-  evidencia: { fontSize: 6.5, color: GRIS, marginTop: 3, fontFamily: 'Courier' },
-
   avalNota: { fontSize: 7, color: GRIS, marginTop: 4, lineHeight: 1.4 },
 
   abono: {
@@ -125,49 +71,7 @@ const s = StyleSheet.create({
     fontSize: 8.5,
   },
   abonoTotal: { borderBottomWidth: 0, marginTop: 2 },
-
-  ejecutivo: { fontSize: 7, color: GRIS, marginTop: 14, fontFamily: 'Times-Roman', lineHeight: 1.4 },
-
-  pie: {
-    position: 'absolute',
-    bottom: 34,
-    left: 42,
-    right: 42,
-    borderTopWidth: 0.4,
-    borderTopColor: REGLA,
-    paddingTop: 5,
-    fontSize: 6.5,
-    color: GRIS,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-
-  // Marca diagonal para lo que todavía no obliga a nadie o ya no vale: una
-  // copia sin firma no debe poder pasar por un título exigible.
-  marca: {
-    position: 'absolute',
-    top: 430,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    // Cabe la frase más larga («PENDIENTE DE FIRMA») sin salirse del papel:
-    // una marca cortada por los bordes parece un fallo de impresión.
-    fontSize: 26,
-    fontFamily: 'Helvetica-Bold',
-    color: '#B3261E',
-    opacity: 0.11,
-    letterSpacing: 4,
-  },
 });
-
-function Campo({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={s.campo}>
-      <Text style={s.etiqueta}>{label.toUpperCase()}</Text>
-      <Text style={s.valor}>{value}</Text>
-    </View>
-  );
-}
 
 /** Lo que dice la marca de agua, o nada cuando el título está vivo y firmado. */
 function marcaDe(status: string): string | null {
@@ -185,31 +89,14 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
 
   return (
     <Document title={`Pagaré ${model.folio}`} author={model.organizationName}>
-      <Page size="LETTER" style={s.page}>
-        <View style={s.marcoExterior} fixed />
-        <View style={s.marcoInterior} fixed />
+      <Page size="LETTER" style={base.page}>
+        <Marco />
+        {marca ? <Text style={base.marca} fixed>{marca}</Text> : null}
 
-        {marca ? <Text style={s.marca} fixed>{marca}</Text> : null}
-
-        <View style={s.membrete}>
-          <View style={s.emisor}>
-            <Text style={s.emisorNombre}>{model.organizationName}</Text>
-            {model.organizationAddress ? (
-              <Text style={s.emisorDato}>{model.organizationAddress}</Text>
-            ) : null}
-            <Text style={s.emisorDato}>
-              {[model.organizationPhone, model.organizationEmail].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-          <View style={s.cajaFolio}>
-            <Text style={s.cajaFolioEtiqueta}>FOLIO</Text>
-            <Text style={s.cajaFolioValor}>{model.folio}</Text>
-          </View>
-        </View>
+        <Membrete emisor={model} etiqueta="FOLIO" folio={model.folio} />
 
         {/* Requisito I del art. 170: la mención de ser pagaré, en el texto. */}
-        <Text style={s.titulo}>PAGARÉ</Text>
-        <View style={s.reglaTitulo} />
+        <Titulo>PAGARÉ</Titulo>
 
         <View style={s.cajaImporte}>
           <View>
@@ -239,11 +126,11 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           </Text>
         )}
 
-        <View style={s.fila}>
+        <View style={base.fila}>
           <Campo label="Lugar de expedición" value={model.issuePlace} />
           <Campo label="Fecha de expedición" value={model.issueDateFormatted} />
         </View>
-        <View style={s.fila}>
+        <View style={base.fila}>
           <Campo label="Lugar de pago" value={model.paymentPlace} />
           <Campo label="Fecha de pago" value={model.dueDateFormatted} />
         </View>
@@ -255,12 +142,12 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           */}
         {model.plan ? (
           <>
-            <Text style={s.seccion}>PLAN DE PAGOS PACTADO</Text>
-            <View style={s.fila}>
+            <Text style={base.seccion}>PLAN DE PAGOS PACTADO</Text>
+            <View style={base.fila}>
               <Campo label="Esta cuota" value={model.plan.positionLabel} />
               <Campo label="Interés del préstamo" value={model.plan.rateLabel} />
             </View>
-            <View style={s.fila}>
+            <View style={base.fila}>
               <Campo label="Cálculo del interés" value={model.plan.modelLabel} />
               <Campo
                 label="De esta cuota"
@@ -270,22 +157,22 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           </>
         ) : null}
 
-        <View style={s.fila}>
+        <View style={base.fila}>
           <Campo label="Interés moratorio" value={model.interestRateLabel} />
           <Campo label="Moneda" value={model.currency} />
         </View>
 
-        <Text style={s.seccion}>DATOS DEL SUSCRIPTOR</Text>
-        <View style={s.fila}>
+        <Text style={base.seccion}>DATOS DEL SUSCRIPTOR</Text>
+        <View style={base.fila}>
           <Campo label="Nombre" value={model.debtor.fullName} />
           <Campo label="Teléfono" value={model.debtor.phone} />
         </View>
-        <View style={s.fila}>
+        <View style={base.fila}>
           <Campo label="Domicilio" value={model.debtor.address} />
         </View>
 
         {model.observations ? (
-          <View style={s.fila}>
+          <View style={base.fila}>
             <Campo label="Observaciones" value={model.observations} />
           </View>
         ) : null}
@@ -300,7 +187,7 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           */}
         {model.payments.length > 0 ? (
           <View style={{ marginTop: 14 }}>
-            <Text style={s.seccion}>ABONOS ANOTADOS EN ESTE TÍTULO</Text>
+            <Text style={base.seccion}>ABONOS ANOTADOS EN ESTE TÍTULO</Text>
             {model.payments.map((abono, indice) => (
               <View key={`${abono.dateFormatted}-${indice}`} style={s.abono}>
                 <Text>{abono.dateFormatted}</Text>
@@ -318,19 +205,19 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
 
         {/* Requisito VI: la firma del suscriptor. Debajo, su evidencia: sin el
             instante y la huella, la imagen es sólo un dibujo. */}
-        <View style={s.firma}>
+        <View style={base.firma}>
           {model.signaturePngBase64 ? (
             <Image style={s.firmaImagen} src={model.signaturePngBase64} />
           ) : null}
-          <View style={s.firmaLinea} />
-          <Text style={s.firmaNombre}>{model.debtor.fullName}</Text>
+          <View style={base.firmaLinea} />
+          <Text style={base.firmaNombre}>{model.debtor.fullName}</Text>
           {model.signatureCapturedAt ? (
-            <Text style={s.evidencia}>
+            <Text style={base.evidencia}>
               Firmado el {model.signatureCapturedAt} · SHA-256{' '}
               {model.signatureSha256?.slice(0, 32)}
             </Text>
           ) : (
-            <Text style={s.evidencia}>PENDIENTE DE FIRMA</Text>
+            <Text style={base.evidencia}>PENDIENTE DE FIRMA</Text>
           )}
         </View>
 
@@ -342,11 +229,11 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           */}
         {model.guarantors.length > 0 ? (
           <View style={{ marginTop: 18 }}>
-            <Text style={s.seccion}>AVAL DECLARADO</Text>
+            <Text style={base.seccion}>AVAL DECLARADO</Text>
             {model.guarantors.map((guarantor) => (
               <View key={guarantor.position} style={{ marginBottom: 6 }}>
-                <Text style={s.firmaNombre}>{guarantor.fullName}</Text>
-                <Text style={s.evidencia}>
+                <Text style={base.firmaNombre}>{guarantor.fullName}</Text>
+                <Text style={base.evidencia}>
                   {guarantor.address} · {guarantor.phone}
                 </Text>
               </View>
@@ -361,21 +248,17 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
 
         {/* Lo que este papel es, dicho una vez y sin adornos: es la diferencia
             entre reclamar en un juicio ordinario o en uno ejecutivo. */}
-        <Text style={s.ejecutivo}>
+        <Text style={base.nota}>
           Este pagaré es título ejecutivo y trae aparejada ejecución (arts. 167 y 174 de la Ley
           General de Títulos y Operaciones de Crédito). Prescribe a los tres años de su
           vencimiento (art. 165).
         </Text>
 
-        <View style={s.pie} fixed>
-          <Text>
-            {[model.organizationName, model.organizationAddress].filter(Boolean).join(' · ')}
-          </Text>
-          <Text>
-            {model.verifyUrl ? `Verifica en ${model.verifyUrl} · ` : ''}
-            Emitido el {model.issuedAtFormatted}
-          </Text>
-        </View>
+        <Pie
+          emisor={model}
+          verifyUrl={model.verifyUrl}
+          issuedAtFormatted={model.issuedAtFormatted}
+        />
       </Page>
     </Document>
   );
