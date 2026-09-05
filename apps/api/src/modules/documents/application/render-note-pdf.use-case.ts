@@ -2,6 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import { businessToday, describeRate, formatMxn } from '@pagares/domain-rules';
 import sharp from 'sharp';
+import QRCode from 'qrcode';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import { OBJECT_STORAGE, type ObjectStorage } from '../../media/domain/ports/object-storage.js';
@@ -49,6 +50,7 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
     if (!note) throw new NotFoundException('El pagaré no existe');
 
     const settings = await this.prisma.organizationSettings.findUnique({ where: { id: 'singleton' } });
+    const verifyUrl = `${this.env.WEB_URL}/p/${note.publicToken}`;
 
     return this.renderer.renderNote({
       folio: note.folio,
@@ -106,7 +108,26 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
       paidFormatted: formatMxn(note.paidCents),
       balanceFormatted: formatMxn(note.amountCents - note.paidCents),
       // Dónde comprobar que este papel corresponde a un pagaré real (§17.1).
-      verifyUrl: `${this.env.WEB_URL}/p/${note.publicToken}`,
+      verifyUrl,
+      /*
+       * El QR va junto al enlace en texto y no en su lugar: un expediente en
+       * papel no siempre se puede escanear, y un enlace que no se puede teclear
+       * no verifica nada.
+       */
+      verifyQrBase64: await QRCode.toDataURL(verifyUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 0,
+        width: 220,
+      }).catch(() => null),
+      interestBasis: settings?.interestBasis ?? 360,
+      signatureEvidence: note.signature
+        ? {
+            deviceModel: note.signature.deviceModel,
+            strokeCount: note.signature.strokeCount,
+            durationMs: note.signature.durationMs,
+            mode: note.signature.mode,
+          }
+        : null,
       issuedAtFormatted: DATE.format(new Date(`${businessToday(this.clock.now())}T12:00:00Z`)),
       negotiable: note.negotiable,
       observations: note.observations,

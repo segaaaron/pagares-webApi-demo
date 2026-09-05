@@ -71,6 +71,9 @@ const s = StyleSheet.create({
     fontSize: 8.5,
   },
   abonoTotal: { borderBottomWidth: 0, marginTop: 2 },
+
+  verificacion: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  qr: { width: 52, height: 52 },
 });
 
 /** Lo que dice la marca de agua, o nada cuando el título está vivo y firmado. */
@@ -158,7 +161,13 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
         ) : null}
 
         <View style={base.fila}>
-          <Campo label="Interés moratorio" value={model.interestRateLabel} />
+          {/* La tasa sin su base no se puede recalcular: 3 % mensual sobre 360
+              días no da lo mismo que sobre 365. El art. 174 exige además que el
+              moratorio esté pactado en el documento para poder cobrarlo. */}
+          <Campo
+            label="Interés moratorio"
+            value={`${model.interestRateLabel} · base ${model.interestBasis} días`}
+          />
           <Campo label="Moneda" value={model.currency} />
         </View>
 
@@ -177,35 +186,11 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           </View>
         ) : null}
 
-        {/*
-          * Los abonos, anotados en el propio título (art. 17 LGTOC).
-          *
-          * Es lo que hace el tenedor con un pagaré de papel cuando recibe un
-          * pago parcial, y por una razón práctica: sin la anotación, quien
-          * tenga el documento puede cobrar dos veces lo mismo y el deudor que
-          * ya pagó no tiene con qué defenderse.
-          */}
-        {model.payments.length > 0 ? (
-          <View style={{ marginTop: 14 }}>
-            <Text style={base.seccion}>ABONOS ANOTADOS EN ESTE TÍTULO</Text>
-            {model.payments.map((abono, indice) => (
-              <View key={`${abono.dateFormatted}-${indice}`} style={s.abono}>
-                <Text>{abono.dateFormatted}</Text>
-                <Text style={{ fontFamily: 'Courier' }}>{abono.amountFormatted}</Text>
-              </View>
-            ))}
-            <View style={[s.abono, s.abonoTotal]}>
-              <Text style={{ fontFamily: 'Helvetica-Bold' }}>Saldo pendiente</Text>
-              <Text style={{ fontFamily: 'Courier-Bold' }}>{model.balanceFormatted}</Text>
-            </View>
-          </View>
-        ) : null}
-
-        <View style={{ flexGrow: 1 }} />
-
         {/* Requisito VI: la firma del suscriptor. Debajo, su evidencia: sin el
             instante y la huella, la imagen es sólo un dibujo. */}
-        <View style={base.firma}>
+        {/* La firma no se parte entre hojas: media firma al pie de la primera
+            es exactamente lo que no puede pasar en un título. */}
+        <View style={base.firma} wrap={false}>
           {model.signaturePngBase64 ? (
             <Image style={s.firmaImagen} src={model.signaturePngBase64} />
           ) : null}
@@ -253,6 +238,94 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           General de Títulos y Operaciones de Crédito). Prescribe a los tres años de su
           vencimiento (art. 165).
         </Text>
+
+        {/*
+          * El anexo va en su propia hoja, y a propósito: la primera es el
+          * título —promesa, datos, abonos y firma— y la segunda es lo que
+          * permite comprobarlo. Mezclarlos hacía que la firma acabara sola al
+          * dorso, que es lo último que se quiere en un pagaré.
+          */}
+        {/*
+          * Evidencia de la firma, titulada por lo que es.
+          *
+          * Son registros **propios del emisor**: no hay constancia de
+          * conservación de un prestador acreditado ni sello de tiempo de un
+          * tercero. Decir lo contrario en un papel que va a un juzgado es lo
+          * único que puede hundirlo, así que se dice al revés y sin rodeos.
+          */}
+        {model.payments.length > 0 || model.signatureSha256 ? (
+          <View break>
+            <Text style={base.titulo}>ANEXO</Text>
+            <View style={base.reglaTitulo} />
+          </View>
+        ) : null}
+
+        {/*
+          * Los abonos, anotados en el propio título (art. 17 LGTOC).
+          *
+          * Es lo que hace el tenedor con un pagaré de papel cuando recibe un
+          * pago parcial, y por una razón práctica: sin la anotación, quien
+          * tenga el documento puede cobrar dos veces lo mismo y el deudor que
+          * ya pagó no tiene con qué defenderse.
+          */}
+        {model.payments.length > 0 ? (
+          <View>
+            <Text style={base.seccion}>ABONOS ANOTADOS EN ESTE TÍTULO</Text>
+            {model.payments.map((abono, indice) => (
+              <View key={`${abono.dateFormatted}-${indice}`} style={s.abono}>
+                <Text>{abono.dateFormatted}</Text>
+                <Text style={{ fontFamily: 'Courier' }}>{abono.amountFormatted}</Text>
+              </View>
+            ))}
+            <View style={[s.abono, s.abonoTotal]}>
+              <Text style={{ fontFamily: 'Helvetica-Bold' }}>Saldo pendiente</Text>
+              <Text style={{ fontFamily: 'Courier-Bold' }}>{model.balanceFormatted}</Text>
+            </View>
+          </View>
+        ) : null}
+
+
+        {model.signatureSha256 ? (
+          <View>
+            <Text style={base.seccion}>EVIDENCIA DE FIRMA ELECTRÓNICA</Text>
+            <View style={base.fila}>
+              <Campo label="Huella de la firma (SHA-256)" value={model.signatureSha256} />
+            </View>
+            <View style={base.fila}>
+              <Campo label="Capturada" value={model.signatureCapturedAt ?? 'No registrada'} />
+              <Campo
+                label="Modalidad"
+                value={
+                  model.signatureEvidence?.mode === 'IN_PERSON'
+                    ? 'Presencial, en dispositivo del acreedor'
+                    : model.signatureEvidence?.mode === 'PAPER'
+                      ? 'Firmada en papel'
+                      : 'Remota, en dispositivo del suscriptor'
+                }
+              />
+            </View>
+            <Text style={s.avalNota}>
+              Estos son registros propios del emisor —huella, instante y circunstancias de la
+              captura— y no una constancia de conservación NOM-151 ni un sello de tiempo emitido
+              por un prestador de servicios de certificación acreditado.
+            </Text>
+          </View>
+        ) : null}
+
+        {model.verifyQrBase64 ? (
+          <View style={s.verificacion}>
+            <Image style={s.qr} src={model.verifyQrBase64} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 7.5, fontFamily: 'Helvetica-Bold' }}>
+                Verifica este pagaré
+              </Text>
+              <Text style={{ fontSize: 7, color: GRIS, marginTop: 2 }}>
+                Escanea el código o abre {model.verifyUrl}. La página dice el folio, el importe,
+                el estado y la huella de la firma para contrastarla con este archivo.
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <Pie
           emisor={model}

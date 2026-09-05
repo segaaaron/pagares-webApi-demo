@@ -49,6 +49,17 @@ export interface NoteDocumentModel {
   balanceFormatted: string;
   /** Dónde se comprueba que este papel corresponde a un pagaré real. */
   verifyUrl: string | null;
+  /** El mismo enlace como código QR (PNG en base64), para leerlo del papel. */
+  verifyQrBase64: string | null;
+  /** Días base del interés: 360 o 365. Sin la base, la tasa no se puede recalcular. */
+  interestBasis: number;
+  /** Lo que se sabe de la captura de la firma, para el bloque de evidencia. */
+  signatureEvidence: {
+    deviceModel: string | null;
+    strokeCount: number | null;
+    durationMs: number | null;
+    mode: string;
+  } | null;
   /** Cuándo se generó esta copia. Un PDF sin fecha no se puede contrastar. */
   issuedAtFormatted: string;
   /**

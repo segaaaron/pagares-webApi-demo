@@ -14,6 +14,7 @@ import {
   accrueInterest,
   businessToday,
   daysOverdue,
+  describeRate,
   formatMxn,
   lateInterestBase,
   money,
@@ -26,6 +27,8 @@ import { OBJECT_STORAGE, type ObjectStorage } from '../media/domain/ports/object
 import { NOTE_DOCUMENTS, type NoteDocuments } from '../../shared/domain/note-documents.port.js';
 import { withClock, isSigned, type NoteStatus } from '../promissory-notes/domain/note-status.js';
 import { planOf, type PlanMember, type PlanView } from './plan-view.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.schema.js';
 import { SimulateEarlyPayoffUseCase } from '../promissory-notes/application/simulate-early-payoff.use-case.js';
 
 const OPEN = ['ISSUED', 'PARTIALLY_PAID', 'RESTRUCTURED'] as const;
@@ -44,6 +47,7 @@ export class ClientController {
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
     @Inject(NOTE_DOCUMENTS) private readonly documents: NoteDocuments,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(ENV) private readonly env: Env,
     private readonly earlyPayoff: SimulateEarlyPayoffUseCase,
   ) {}
 
@@ -489,10 +493,49 @@ export class ClientController {
           basis: (settings?.interestBasis ?? 360) as 360 | 365,
         }),
       ),
+      /**
+       * Las tasas pactadas, separadas y con su base (§12.3, ADR 0016).
+       *
+       * El deudor no podía comprobar lo que le cobran contra lo que firmó: la
+       * respuesta traía un número anual suelto, sin decir si era el precio del
+       * préstamo o la sanción por atraso, ni sobre cuántos días se calcula. Una
+       * tasa sin su base no se puede recalcular: 3 % mensual sobre 360 días no
+       * da lo mismo que sobre 365.
+       */
+      rates: {
+        /** El precio del préstamo. Sólo existe cuando el pagaré es cuota de un plan. */
+        ordinary:
+          note.planModel && note.planModel !== 'NONE' && note.interestRateAnnualPct !== null
+            ? {
+                value: Number(note.interestRateAnnualPct),
+                annualPct: Number(note.interestRateAnnualPct),
+                period: note.interestPeriod,
+                basisDays: settings?.interestBasis ?? 360,
+                label: describeRate(Number(note.interestRateAnnualPct), note.interestPeriod),
+                model: note.planModel,
+              }
+            : null,
+        /** La sanción por pagar tarde (art. 174 LGTOC). */
+        late:
+          note.interestRateAnnualPct === null
+            ? null
+            : {
+                value: Number(note.interestRateAnnualPct),
+                annualPct: Number(note.interestRateAnnualPct),
+                period: note.interestPeriod,
+                basisDays: settings?.interestBasis ?? 360,
+                label: describeRate(Number(note.interestRateAnnualPct), note.interestPeriod),
+              },
+      },
       issueDate: note.issueDate.toISOString().slice(0, 10),
       dueDate,
       daysOverdue: overdue,
       paymentPlace: note.paymentPlace,
+      /**
+       * Dónde comprobar el título, sin sesión. Es el mismo enlace que va
+       * impreso al pie del PDF y detrás del código QR.
+       */
+      verifyUrl: `${this.env.WEB_URL}/p/${note.publicToken}`,
       /**
        * El plan al que pertenece este pagaré (§12).
        *
@@ -521,6 +564,23 @@ export class ClientController {
         fullName: guarantor.fullName,
       })),
       signatureUrl: note.signature ? await this.storage.signedUrl(note.signature.assetId) : null,
+      /**
+       * La evidencia de la firma, consultable y no sólo al subirla.
+       *
+       * Son registros **propios del emisor**: no hay constancia NOM-151 ni
+       * sello de tiempo de un prestador acreditado, y por eso el campo se llama
+       * evidencia y no certificación.
+       */
+      signature: note.signature
+        ? {
+            sha256: note.signature.sha256,
+            capturedAt: note.signature.capturedAt.toISOString(),
+            mode: note.signature.mode,
+            strokeCount: note.signature.strokeCount,
+            durationMs: note.signature.durationMs,
+            certified: false,
+          }
+        : null,
       payments: note.payments.map((p) => ({
         // El identificador va aquí porque el recibo se pide por abono: sin él,
         // el detalle enseñaba una lista de la que no se podía descargar nada.

@@ -39,6 +39,10 @@ export class PublicNotesController {
         paymentPlace: true,
         creditorName: true,
         debtor: { select: { fullName: true } },
+        // La huella de la firma: es lo que un perito contrasta contra el
+        // archivo que le entregan. Sin ella, esta página sólo confirma que el
+        // folio existe.
+        signature: { select: { sha256: true, capturedAt: true, mode: true } },
       },
     });
     if (!note) throw new NotFoundException('El documento no existe');
@@ -55,6 +59,22 @@ export class PublicNotesController {
       paymentPlace: note.paymentPlace,
       creditorName: note.creditorName,
       debtorName: note.debtor.fullName,
+      /**
+       * Evidencia de la firma, para contrastar el papel con el original.
+       *
+       * `certified: false` va explícito y no se omite: son registros propios
+       * del emisor, no una constancia de conservación NOM-151 ni un sello de
+       * tiempo de un prestador acreditado. Callarlo aquí invitaría a leer esta
+       * página como una certificación que no es.
+       */
+      signature: note.signature
+        ? {
+            sha256: note.signature.sha256,
+            capturedAt: note.signature.capturedAt.toISOString(),
+            mode: note.signature.mode,
+            certified: false,
+          }
+        : null,
     };
   }
 }

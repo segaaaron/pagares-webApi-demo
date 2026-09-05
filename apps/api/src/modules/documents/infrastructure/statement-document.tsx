@@ -147,9 +147,10 @@ export function StatementDocument({ model }: { model: StatementModel }) {
         </View>
 
         <Text style={base.nota}>
-          Este estado de cuenta es informativo y refleja lo registrado al corte indicado. No
-          sustituye a los pagarés: cada uno es un título independiente y se paga por separado. Si
-          algo no coincide con tus comprobantes, avísanos antes de pagar.
+          Este estado de cuenta es informativo y refleja lo registrado al corte del{' '}
+          {model.cutoffFormatted}. No sustituye a los pagarés: cada uno es un título
+          independiente y se paga por separado. Tampoco es un comprobante fiscal. Si algo no
+          coincide con tus comprobantes, avísanos antes de pagar.
         </Text>
 
         <Pie

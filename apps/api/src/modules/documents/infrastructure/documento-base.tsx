@@ -102,7 +102,7 @@ export const base = StyleSheet.create({
   cifra: { fontFamily: 'Courier' },
   cifraFuerte: { fontFamily: 'Courier-Bold' },
 
-  firma: { marginTop: 30, alignItems: 'center' },
+  firma: { marginTop: 22, alignItems: 'center' },
   firmaLinea: { borderTopWidth: 0.8, borderTopColor: TINTA, width: 250 },
   firmaNombre: { fontSize: 9.5, fontFamily: 'Times-Bold', marginTop: 5 },
   evidencia: { fontSize: 6.5, color: GRIS, marginTop: 3, fontFamily: 'Courier' },
@@ -242,11 +242,15 @@ export function Pie({
 }) {
   return (
     <View style={base.pie} fixed>
-      <Text>{[emisor.organizationName, emisor.organizationAddress].filter(Boolean).join(' · ')}</Text>
+      {/* Sólo el nombre: con el domicilio, el texto de la izquierda invadía el
+          enlace de verificación y los dos se leían encimados. */}
+      <Text style={{ maxWidth: '32%' }}>{emisor.organizationName}</Text>
       <Text
         render={({ pageNumber, totalPages }) =>
+          // La numeración va siempre, aunque haya una sola hoja: es lo que
+          // impide presentar media copia como si fuera el documento entero.
           `${verifyUrl ? `Verifica en ${verifyUrl} · ` : ''}Emitido el ${issuedAtFormatted}` +
-          (totalPages > 1 ? ` · Página ${pageNumber} de ${totalPages}` : '')
+          ` · Hoja ${pageNumber} de ${totalPages}`
         }
       />
     </View>

@@ -88,6 +88,13 @@ export function ReceiptDocument({ model }: { model: ReceiptModel }) {
           Conserva este recibo: es el comprobante del pago. Los abonos quedan además anotados en
           el propio pagaré, y al quedar cubierto puedes pedir la devolución del título original.
         </Text>
+        {/* Dicho antes de abril: quien crea que esto le sirve para deducir se
+            lleva el disgusto cuando su contador se lo explique. */}
+        <Text style={base.nota}>
+          Este recibo NO es un comprobante fiscal. Acredita el pago frente al acreedor, no ante
+          el SAT: el comprobante con efectos fiscales es el CFDI que, en su caso, emita el
+          acreedor por los intereses cobrados.
+        </Text>
 
         <Pie emisor={model} verifyUrl={model.verifyUrl} issuedAtFormatted={model.issuedAtFormatted} />
       </Page>
