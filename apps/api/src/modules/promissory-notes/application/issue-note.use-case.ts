@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   BaseUseCase,
   CLOCK,
@@ -11,8 +11,6 @@ import {
 import type { CreateNoteRequest } from '@pagares/contracts';
 import type { DomainEvent } from '@pagares/api-core';
 import {
-  addYears,
-  amountToWords,
   buildPaymentPlan,
   businessToday,
   installmentDates,
@@ -25,10 +23,10 @@ import {
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
-import { NumberingService } from '../../numbering/numbering.service.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { assertNoteInvariants } from '../domain/note-invariants.js';
-import { assertNothingUnsigned, normalizePhone } from './assert-nothing-unsigned.js';
+import { normalizePhone } from './assert-nothing-unsigned.js';
+import { NoteFactory } from './note-factory.js';
 
 
 export interface IssueNoteOutput {
@@ -70,7 +68,7 @@ export interface IssueNoteOutput {
 export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOutput> {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly numbering: NumberingService,
+    private readonly notes: NoteFactory,
     private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork<TxClient>,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -129,8 +127,6 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
        * Antes de resolver al deudor: el cerrojo va por teléfono, que es la
        * identidad desde antes de que exista su primera ficha (ADR 0019).
        */
-      await assertNothingUnsigned(tx, telefonoDelDeudor);
-
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
 
       const creados: {
@@ -147,58 +143,50 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
       for (const [posicion, cuota] of plan.rows.entries()) {
         const importe = cuota.paymentCents;
         const vencimiento = vencimientos[posicion] as string;
-        // Un folio por título: cada pagaré de la serie es un documento
-        // independiente y se reclama por separado.
-        const folio = await this.numbering.next(tx, 'NOTE', Number(today.slice(0, 4)), {
-          prefix: settings?.noteFolioPrefix ?? 'PAG',
-          padding: 6,
-        });
-
-        const note = await tx.promissoryNote.create({
-          data: {
-            folio,
-            publicToken: randomBytes(16).toString('hex'), // 128 bits: consultable, no enumerable
-            status: 'PENDING_SIGNATURE',
+        const note = await this.notes.create(
+          tx,
+          {
+            debtorId: debtor.id,
+            ownerId: debtor.userId,
+            debtorPhone: telefonoDelDeudor,
             issuePlace: input.issuePlace,
-            issueDate: new Date(`${input.issueDate}T00:00:00Z`),
+            issueDate: input.issueDate,
             paymentPlace: input.paymentPlace,
-            dueDate: new Date(`${vencimiento}T00:00:00Z`),
-            prescribesOn: new Date(`${addYears(vencimiento, prescriptionYears)}T00:00:00Z`),
+            dueDate: vencimiento,
             creditorName: input.creditorName,
-            // La forma del título se congela al emitir: cambiar la preferencia
-            // mañana no puede cambiar lo que dice un documento ya firmado.
-            negotiable: !(settings?.issueNonNegotiable ?? false),
             amountCents: importe,
             currency: input.currency,
-            amountInWords: amountToWords(importe),
             // El papel dice lo pactado; la aritmética usa la anual (§12.3).
             interestRateAnnualPct:
               input.interestRate === null
                 ? null
                 : toAnnualRatePct(input.interestRate.value, input.interestRate.period),
             interestPeriod: input.interestRate?.period ?? 'ANNUAL',
+            // La forma del título se congela al emitir: cambiar la preferencia
+            // mañana no puede cambiar lo que dice un documento ya firmado.
+            negotiable: !(settings?.issueNonNegotiable ?? false),
             observations: input.observations ?? null,
             requiresGuarantors: input.requiresGuarantors,
-            debtorId: debtor.id,
-            ownerId: debtor.userId,
-            createdBy: ctx.actorId ?? 'system',
+            guarantors: input.guarantors.map((g) => ({
+              position: g.position,
+              fullName: g.fullName,
+              address: g.address,
+              phone: g.phone,
+            })),
             ...(seriesId
-              ? { seriesId, seriesIndex: posicion + 1, seriesSize: input.installments }
+              ? { series: { id: seriesId, index: posicion + 1, size: input.installments } }
               : {}),
             // De qué está hecha la cuota, tal como se pactó (§12).
-            planModel: input.plan.model,
-            planInterestCents: cuota.interestCents,
-            planPrincipalCents: cuota.principalCents,
-            guarantors: {
-              create: input.guarantors.map((g) => ({
-                position: g.position,
-                fullName: g.fullName,
-                address: g.address,
-                phone: g.phone,
-              })),
+            plan: {
+              model: input.plan.model,
+              interestCents: cuota.interestCents,
+              principalCents: cuota.principalCents,
             },
+            createdBy: ctx.actorId ?? 'system',
           },
-        });
+          'issue',
+          { folioPrefix: settings?.noteFolioPrefix ?? 'PAG', prescriptionYears },
+        );
 
         creados.push({
           id: note.id,

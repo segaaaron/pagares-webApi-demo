@@ -19,10 +19,15 @@ deudor tiene algún pagaré en `PENDING_SIGNATURE` o `PROCESSING_SIGNATURE`. El 
 pendiente va en el mensaje: quien emite necesita saber a por qué firma ir, no un «no se
 pudo».
 
-La regla vive en `assertNothingUnsigned` y la aplican **los dos caminos que suman un
-pagaré**: la emisión y la renovación. Son tres los sitios del código que crean títulos —el
-tercero es la importación—, y vigilar sólo uno habría dejado la regla abierta por los
-otros: bastaba renovar para acabar con dos papeles sin firma.
+La regla no se comprueba en cada caso de uso: vive dentro de **`NoteFactory`**, la única
+puerta por la que nace un pagaré (§11). Emitir, renovar e importar pasan por ahí, así que
+un cuarto camino que alguien añada mañana la cumple sin tener que acordarse.
+
+Esa puerta existe justamente por esto. Antes, los tres caminos repetían por su cuenta lo
+derivado —folio, token público, importe en letra, prescripción— y cada uno decidía si
+comprobaba algo: la regla vigilaba la emisión y **no la renovación**, así que bastaba
+renovar para acabar con dos papeles sin firma. Con la lógica repetida, la siguiente copia
+vuelve a olvidarse.
 
 Tres precisiones que la regla necesita para no significar otra cosa:
 

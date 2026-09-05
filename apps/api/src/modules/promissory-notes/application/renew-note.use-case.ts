@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   BaseUseCase,
   CLOCK,
@@ -8,13 +8,12 @@ import {
   type ExecutionContext,
   type UnitOfWork,
 } from '@pagares/api-core';
-import { addYears, amountToWords, businessToday } from '@pagares/domain-rules';
+import { businessToday } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
-import { assertNothingUnsigned } from './assert-nothing-unsigned.js';
+import { NoteFactory } from './note-factory.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
-import { NumberingService } from '../../numbering/numbering.service.js';
 import { FINAL_STATUSES } from '../domain/note-status.js';
 
 export interface RenewNoteInput {
@@ -37,7 +36,7 @@ export interface RenewNoteInput {
 export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; folio: string }> {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly numbering: NumberingService,
+    private readonly notes: NoteFactory,
     private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork<TxClient>,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -69,50 +68,43 @@ export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; 
       const actor = ctx.actorId ?? 'system';
 
       /*
-       * Renovar crea un pagaré nuevo que el deudor tiene que firmar, así que la
-       * regla del ADR 0019 también manda aquí: nada nuevo mientras quede algo
-       * sin firmar.
+       * Renovar crea un pagaré nuevo, así que pasa por la misma puerta que la
+       * emisión (§11): folio, token, importe en letra, prescripción y la regla
+       * de la firma pendiente salen de un solo sitio y no de una copia.
        *
        * El que se renueva **no cuenta contra sí mismo** —pasa a RENEWED y deja
-       * de deberse—, porque renovar no suma un título: lo cambia por otro. Lo
-       * que la regla impide es que el deudor acabe con dos papeles sin firma.
+       * de deberse—, porque renovar no suma un título: lo cambia por otro.
        */
       const deudor = await tx.debtor.findUniqueOrThrow({
         where: { id: previous.debtorId },
         select: { phone: true },
       });
-      await assertNothingUnsigned(tx, deudor.phone, previous.id);
 
-      const folio = await this.numbering.next(tx, 'NOTE', Number(today.slice(0, 4)), {
-        prefix: settings?.noteFolioPrefix ?? 'PAG',
-        padding: 6,
-      });
-
-      const created = await tx.promissoryNote.create({
-        data: {
-          folio,
-          publicToken: randomBytes(16).toString('hex'),
-          status: 'PENDING_SIGNATURE',
+      const created = await this.notes.create(
+        tx,
+        {
+          debtorId: previous.debtorId,
+          ownerId: previous.ownerId,
+          debtorPhone: deudor.phone,
           issuePlace: previous.issuePlace,
-          issueDate: new Date(`${today}T00:00:00Z`),
+          issueDate: today,
           paymentPlace: previous.paymentPlace,
-          dueDate: new Date(`${input.newDueDate}T00:00:00Z`),
-          prescribesOn: new Date(`${addYears(input.newDueDate, prescriptionYears)}T00:00:00Z`),
+          dueDate: input.newDueDate,
           creditorName: previous.creditorName,
+          amountCents,
+          currency: previous.currency,
+          interestRateAnnualPct: previous.interestRateAnnualPct,
+          interestPeriod: previous.interestPeriod,
           // La renovación conserva la forma del título que sustituye: es el
           // mismo trato, con otra fecha.
           negotiable: previous.negotiable,
-          amountCents,
-          currency: previous.currency,
-          amountInWords: amountToWords(amountCents),
-          interestRateAnnualPct: previous.interestRateAnnualPct,
           observations: `Renovación de ${previous.folio}. ${input.reason}`,
-          debtorId: previous.debtorId,
-          ownerId: previous.ownerId,
           renewedFromId: previous.id,
           createdBy: actor,
         },
-      });
+        'renewal',
+        { folioPrefix: settings?.noteFolioPrefix ?? 'PAG', prescriptionYears },
+      );
 
       await tx.promissoryNote.update({
         where: { id: previous.id },
@@ -126,7 +118,7 @@ export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; 
           action: 'note.renew',
           targetType: 'PromissoryNote',
           targetId: previous.id,
-          metadata: { newNoteId: created.id, newFolio: folio, amountCents: amountCents.toString() },
+          metadata: { newNoteId: created.id, newFolio: created.folio, amountCents: amountCents.toString() },
           ...(ctx.ip !== undefined ? { ip: ctx.ip } : {}),
         },
         tx,
@@ -136,10 +128,10 @@ export class RenewNoteUseCase extends BaseUseCase<RenewNoteInput, { id: string; 
         eventId: randomUUID(),
         eventType: 'NoteRenewed',
         occurredAt: now,
-        payload: { previousNoteId: previous.id, noteId: created.id, folio },
+        payload: { previousNoteId: previous.id, noteId: created.id, folio: created.folio },
       });
 
-      return { id: created.id, folio };
+      return { id: created.id, folio: created.folio };
     });
   }
 }

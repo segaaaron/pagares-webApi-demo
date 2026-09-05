@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
 import {
   BaseUseCase,
   CLOCK,
@@ -10,8 +9,6 @@ import {
 } from '@pagares/api-core';
 import type { ImportIssue, ImportResult } from '@pagares/contracts';
 import {
-  addYears,
-  amountToWords,
   businessToday,
   classifyAging,
   classifyPortfolio,
@@ -21,7 +18,7 @@ import {
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
-import { NumberingService } from '../../numbering/numbering.service.js';
+import { NoteFactory } from './note-factory.js';
 import { parseCsv } from '../../../shared/domain/csv.js';
 import { deriveState } from '../domain/note-status.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
@@ -34,6 +31,8 @@ export interface ImportNotesInput {
 interface Candidate {
   row: number;
   debtorId: string;
+  /** Identidad del deudor, la misma que usa el resto del sistema (ADR 0019). */
+  phone: string;
   ownerId: string | null;
   amountCents: bigint;
   paidCents: bigint;
@@ -67,7 +66,7 @@ const REQUIRED = ['telefono_deudor', 'importe', 'fecha_emision', 'vencimiento'] 
 export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResult> {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly numbering: NumberingService,
+    private readonly notes: NoteFactory,
     private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork<TxClient>,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -177,6 +176,7 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
       candidates.push({
         row: number,
         debtorId: debtor.id,
+        phone: debtor.phone,
         // Si el deudor ya tiene cuenta, el pagaré importado es suyo también en
         // la aplicación: sin dueño no lo vería nadie desde el iPhone (§25.2).
         ownerId: debtor.userId,
@@ -240,62 +240,61 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
       const tx = scope.client;
 
       for (const candidate of fresh) {
-        const folio = await this.numbering.next(tx, 'NOTE', Number(candidate.issueDate.slice(0, 4)), {
-          prefix: settings?.noteFolioPrefix ?? 'PAG',
-          padding: 6,
-        });
-
         const overdue = daysOverdue(candidate.dueDate, now);
         const balance = candidate.amountCents - candidate.paidCents;
 
-        const created = await tx.promissoryNote.create({
-          data: {
-            folio,
-            publicToken: randomBytes(16).toString('hex'),
-            // El estado se deriva del saldo y del reloj, igual que en el resto
-            // del sistema: importar no es una vía para teclear un estado (§11.2).
-            status: deriveState({
-              amountCents: candidate.amountCents,
-              paidCents: candidate.paidCents,
-              daysOverdue: overdue,
-              // Firmado en papel: por eso entra ya emitido y no "por firmar".
-              hasSignature: true,
-              signatureProcessing: false,
-              voidedAt: null,
-              writtenOffAt: null,
-              renewedById: null,
-              hasActiveSettlement: false,
-            }).status,
-            portfolioClass: classifyPortfolio(overdue),
-            agingBucket: classifyAging(overdue),
-            daysOverdue: overdue,
+        /*
+         * Por la misma puerta que la emisión (§11), con una diferencia: la
+         * cartera vieja **entra firmada en papel**, así que no está sujeta a la
+         * regla de la firma pendiente —no añade ningún título por firmar— y su
+         * estado se deriva del saldo y del reloj en vez de nacer "por firmar".
+         */
+        const created = await this.notes.create(
+          tx,
+          {
+            debtorId: candidate.debtorId,
+            ownerId: candidate.ownerId,
+            debtorPhone: candidate.phone,
             issuePlace: settings?.defaultIssuePlace ?? 'Morelia, Michoacán',
-            issueDate: new Date(`${candidate.issueDate}T00:00:00Z`),
+            issueDate: candidate.issueDate,
             paymentPlace: settings?.defaultPaymentPlace ?? 'Morelia, Michoacán',
-            dueDate: new Date(`${candidate.dueDate}T00:00:00Z`),
+            dueDate: candidate.dueDate,
             creditorName: settings?.legalName ?? 'Créditos Morelia',
             amountCents: candidate.amountCents,
-            amountInWords: amountToWords(candidate.amountCents),
             interestRateAnnualPct:
               candidate.annualRatePct === null
                 ? null
                 : toAnnualRatePct(candidate.annualRatePct, candidate.period),
             interestPeriod: candidate.period,
-            paidCents: candidate.paidCents,
-            debtorId: candidate.debtorId,
-            ownerId: candidate.ownerId,
-            // Firmado en papel: no hay trazo digital que custodiar (§25.3).
-            signatureMode: 'PAPER',
-            acceptedAt: new Date(`${candidate.issueDate}T00:00:00Z`),
-            prescribesOn: new Date(
-              `${addYears(candidate.dueDate, prescriptionYears)}T00:00:00Z`,
-            ),
+            negotiable: !(settings?.issueNonNegotiable ?? false),
             observations: candidate.originalFolio
               ? `Importado de la cartera anterior. Folio original: ${candidate.originalFolio}`
               : 'Importado de la cartera anterior.',
+            imported: {
+              paidCents: candidate.paidCents,
+              // El estado se deriva, igual que en el resto del sistema:
+              // importar no es una vía para teclear un estado (§11.2).
+              status: deriveState({
+                amountCents: candidate.amountCents,
+                paidCents: candidate.paidCents,
+                daysOverdue: overdue,
+                hasSignature: true,
+                signatureProcessing: false,
+                voidedAt: null,
+                writtenOffAt: null,
+                renewedById: null,
+                hasActiveSettlement: false,
+              }).status,
+              portfolioClass: classifyPortfolio(overdue),
+              agingBucket: classifyAging(overdue),
+              daysOverdue: overdue,
+              acceptedAt: new Date(`${candidate.issueDate}T00:00:00Z`),
+            },
             createdBy: ctx.actorId ?? 'system',
           },
-        });
+          'import',
+          { folioPrefix: settings?.noteFolioPrefix ?? 'PAG', prescriptionYears },
+        );
 
         if (balance < 0n) {
           // No debería ocurrir: la validación lo impide. Si ocurre, se corta la
