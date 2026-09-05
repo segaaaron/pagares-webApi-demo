@@ -561,6 +561,22 @@ describe('§24.1 · el aparato verifica a quien firma', () => {
     expect(estado).toBe(201);
   });
 
+  it('la cadena "false" no se convierte en un sí', async () => {
+    /*
+     * `z.coerce.boolean()` volvía `true` la cadena `"false"`, así que un cliente
+     * que dijera expresamente que **no** hubo verificación acababa certificando
+     * que sí la hubo. En un papel que va a un juzgado eso es una falsedad, no
+     * un fallo de tipos: mejor un 422 que lo delate.
+     */
+    const estado = await emitirYFirmar({
+      capturedAt: new Date().toISOString(),
+      strokeCount: 3,
+      mode: 'IN_PERSON',
+      biometricVerified: 'false',
+    });
+    expect(estado).toBe(422);
+  });
+
   it('un campo inventado sigue siendo 422', async () => {
     // El cuerpo es estricto a propósito (API3): aceptar cualquier cosa es cómo
     // se cuelan campos que nadie declaró.

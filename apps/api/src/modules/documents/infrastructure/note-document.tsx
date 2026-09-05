@@ -164,9 +164,15 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           {/* La tasa sin su base no se puede recalcular: 3 % mensual sobre 360
               días no da lo mismo que sobre 365. El art. 174 exige además que el
               moratorio esté pactado en el documento para poder cobrarlo. */}
+          {/* La base sólo se dice cuando hay tasa: «sin intereses pactados ·
+              base 360 días» es una contradicción impresa en un título. */}
           <Campo
             label="Interés moratorio"
-            value={`${model.interestRateLabel} · base ${model.interestBasis} días`}
+            value={
+              model.interestRateAnnualPct === null
+                ? model.interestRateLabel
+                : `${model.interestRateLabel} · base ${model.interestBasis} días`
+            }
           />
           <Campo label="Moneda" value={model.currency} />
         </View>
@@ -335,8 +341,11 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
                 Verifica este pagaré
               </Text>
               <Text style={{ fontSize: 7, color: GRIS, marginTop: 2 }}>
-                Escanea el código o abre {model.verifyUrl}. La página dice el folio, el importe,
-                el estado y la huella de la firma para contrastarla con este archivo.
+                Escanea el código o abre {model.verifyUrl}. La página dice el folio, el importe y
+                el estado
+                {model.signatureSha256
+                  ? ', y la huella de la firma para contrastarla con este archivo.'
+                  : '.'}
               </Text>
             </View>
           </View>

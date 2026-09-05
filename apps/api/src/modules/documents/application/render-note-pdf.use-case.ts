@@ -120,6 +120,8 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
         width: 220,
       }).catch(() => null),
       interestBasis: settings?.interestBasis ?? 360,
+      interestRateAnnualPct:
+        note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
       signatureEvidence: note.signature
         ? {
             deviceModel: note.signature.deviceModel,

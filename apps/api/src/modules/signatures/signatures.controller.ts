@@ -33,7 +33,14 @@ const captureSchema = z
      * Opcional a propósito, y nulo cuando el aparato no tiene biometría: no
      * afirmar nada es distinto de afirmar que falló.
      */
-    biometricVerified: z.coerce.boolean().optional(),
+    /*
+     * Booleano de verdad, sin convertir: `z.coerce.boolean()` volvía `true` la
+     * cadena `"false"` —y `"0"`—, así que un cliente que dijera expresamente
+     * que **no** hubo verificación acababa certificando que sí la hubo. En un
+     * papel que va a un juzgado eso no es un fallo de tipos, es una falsedad.
+     * Prefiero un 422 que lo delate.
+     */
+    biometricVerified: z.boolean().optional(),
     deviceModel: z.string().max(80).optional(),
     osVersion: z.string().max(40).optional(),
     appVersion: z.string().max(40).optional(),

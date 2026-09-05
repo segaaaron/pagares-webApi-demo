@@ -53,6 +53,8 @@ export interface NoteDocumentModel {
   verifyQrBase64: string | null;
   /** Días base del interés: 360 o 365. Sin la base, la tasa no se puede recalcular. */
   interestBasis: number;
+  /** Nula cuando no se pactaron intereses: entonces la base no significa nada. */
+  interestRateAnnualPct: number | null;
   /** Lo que se sabe de la captura de la firma, para el bloque de evidencia. */
   signatureEvidence: {
     deviceModel: string | null;
