@@ -9,6 +9,7 @@ import {
   describeRateWithAnnual,
   formatMxn,
   lateInterestBase,
+  pendingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -238,7 +239,11 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
       (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
       0n,
     );
-    const ordinarioPendiente = ordinarioDeLaCuota - ordinarioAbonado;
+    const ordinarioPendiente = pendingOrdinaryInterest({
+      planInterestCents: ordinarioDeLaCuota,
+      appliedCents: ordinarioAbonado,
+      balanceCents: balance,
+    });
 
     const accrued = accrueInterest({
       balanceCents: lateInterestBase({
@@ -282,7 +287,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
               model: note.planModel,
               interest: dinero(ordinarioDeLaCuota),
               principal: dinero(note.planPrincipalCents ?? note.amountCents - ordinarioDeLaCuota),
-              interestPending: dinero(ordinarioPendiente > 0n ? ordinarioPendiente : 0n),
+              interestPending: dinero(ordinarioPendiente),
             }
           : null,
       interestRateAnnualPct:

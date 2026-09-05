@@ -6,6 +6,7 @@ import {
   daysBetween,
   formatMxn,
   lateInterestBase,
+  pendingOrdinaryInterest,
   settleEarly,
   type PendingInstallment,
   type PlanModel,
@@ -169,8 +170,11 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
       lateInterest += accrueInterest({
         balanceCents: lateInterestBase({
           balanceCents: resta,
-          ordinaryInterestPendingCents:
-            (n.planInterestCents ?? 0n) - (ordinarioAbonado.get(n.id) ?? 0n),
+          ordinaryInterestPendingCents: pendingOrdinaryInterest({
+            planInterestCents: n.planInterestCents ?? 0n,
+            appliedCents: ordinarioAbonado.get(n.id) ?? 0n,
+            balanceCents: resta,
+          }),
           overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
         }),
         annualRatePct: n.interestRateAnnualPct === null ? null : Number(n.interestRateAnnualPct),

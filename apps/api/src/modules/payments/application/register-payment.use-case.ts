@@ -9,7 +9,13 @@ import {
   type UnitOfWork,
 } from '@pagares/api-core';
 import type { RegisterPaymentRequest } from '@pagares/contracts';
-import { accrueInterest, businessToday, daysOverdue, lateInterestBase } from '@pagares/domain-rules';
+import {
+  accrueInterest,
+  businessToday,
+  daysOverdue,
+  lateInterestBase,
+  pendingOrdinaryInterest,
+} from '@pagares/domain-rules';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
@@ -102,8 +108,11 @@ export class RegisterPaymentUseCase extends BaseUseCase<RegisterPaymentInput, Re
         where: { noteId: input.noteId },
         _sum: { appliedToOrdinaryInterestCents: true },
       });
-      const ordinarioPendiente =
-        ordinarioDeLaCuota - (yaAbonadoAlOrdinario._sum.appliedToOrdinaryInterestCents ?? 0n);
+      const ordinarioPendiente = pendingOrdinaryInterest({
+        planInterestCents: ordinarioDeLaCuota,
+        appliedCents: yaAbonadoAlOrdinario._sum.appliedToOrdinaryInterestCents ?? 0n,
+        balanceCents,
+      });
 
       /*
        * Sobre qué corre el moratorio (ADR 0020).

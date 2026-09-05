@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildPaymentPlan, PLAN_MODELS, settleEarly } from './payment-plan.js';
+import {
+  buildPaymentPlan,
+  pendingOrdinaryInterest,
+  PLAN_MODELS,
+  settleEarly,
+} from './payment-plan.js';
 
 /**
  * Plan de pagos pactado (§12).
@@ -256,5 +261,62 @@ describe('liquidación anticipada', () => {
     expect(liquidacion.interestDueCents).toBe(0n);
     expect(liquidacion.savedCents).toBe(0n);
     expect(liquidacion.principalCents).toBe(liquidacion.payoffCents);
+  });
+});
+
+describe('interés ordinario que queda por cubrir', () => {
+  it('es lo pactado menos lo ya aplicado', () => {
+    expect(
+      pendingOrdinaryInterest({
+        planInterestCents: 180_000n,
+        appliedCents: 50_000n,
+        balanceCents: 400_000n,
+      }),
+    ).toBe(130_000n);
+  });
+
+  it('una cuota liquidada no debe interés, aunque nadie lo aplicara', () => {
+    /*
+     * El caso que rompía la pantalla: los abonos anteriores al ADR 0020 no
+     * separaban interés de capital, así que «aplicado» es cero aunque la cuota
+     * se pagara entera. Un pagaré pagado decía que quedaban $1,800 por cubrir.
+     */
+    expect(
+      pendingOrdinaryInterest({
+        planInterestCents: 180_000n,
+        appliedCents: 0n,
+        balanceCents: 0n,
+      }),
+    ).toBe(0n);
+  });
+
+  it('nunca pasa del saldo: no se debe interés de lo que ya no se debe', () => {
+    expect(
+      pendingOrdinaryInterest({
+        planInterestCents: 180_000n,
+        appliedCents: 0n,
+        balanceCents: 50_000n,
+      }),
+    ).toBe(50_000n);
+  });
+
+  it('una reversa que deja el aplicado por encima no lo vuelve negativo', () => {
+    expect(
+      pendingOrdinaryInterest({
+        planInterestCents: 180_000n,
+        appliedCents: 200_000n,
+        balanceCents: 400_000n,
+      }),
+    ).toBe(0n);
+  });
+
+  it('un pagaré suelto no tiene interés dentro', () => {
+    expect(
+      pendingOrdinaryInterest({
+        planInterestCents: 0n,
+        appliedCents: 0n,
+        balanceCents: 400_000n,
+      }),
+    ).toBe(0n);
   });
 });

@@ -221,6 +221,28 @@ export interface EarlyPayoff {
 }
 
 /**
+ * Cuánto del interés ordinario de una cuota queda de verdad por cubrir (§12).
+ *
+ * No basta con restar lo aplicado: hay abonos anteriores al ADR 0020 que no
+ * separaban el interés del capital, y en ellos «aplicado al interés» es cero
+ * aunque la cuota esté pagada entera. Sin el tope, un pagaré liquidado decía
+ * que quedaban $1,800 por cubrir.
+ *
+ * El tope es el saldo: no puede quedar debiéndose interés de una cuota que ya
+ * no se debe.
+ */
+export function pendingOrdinaryInterest(input: {
+  planInterestCents: bigint;
+  appliedCents: bigint;
+  balanceCents: bigint;
+}): bigint {
+  const pendiente = input.planInterestCents - input.appliedCents;
+  if (pendiente <= 0n) return 0n;
+  if (input.balanceCents <= 0n) return 0n;
+  return pendiente < input.balanceCents ? pendiente : input.balanceCents;
+}
+
+/**
  * Liquidación anticipada: qué pasa si el deudor paga hoy lo que le queda (§12).
  *
  * Que se ahorre algo o no **depende de cómo se pactó el interés**, y por eso no

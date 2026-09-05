@@ -72,5 +72,10 @@ La condonación del remanente (§25.16) sigue registrándose como capital condon
 acotada por la tolerancia —son unos pesos para cerrar—, así que separarla añadiría ruido sin
 cambiar ninguna cifra que alguien mire.
 
+Lo que queda por cubrir del interés **se topa con el saldo**. Sin ese tope, un pagaré
+liquidado antes de este cambio —sus abonos no separaban interés de capital, así que
+«aplicado al interés» es cero— decía que quedaban $1,800 por cubrir con saldo en cero. No
+se puede deber el interés de una cuota que ya no se debe.
+
 Los abonos anteriores a este cambio se quedan como están: su reparto era el correcto según
 la regla de entonces, y reescribir el libro de abonos sería justo lo que §12.2 prohíbe.

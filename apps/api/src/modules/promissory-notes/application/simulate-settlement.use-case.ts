@@ -7,6 +7,7 @@ import {
   describeRateWithAnnual,
   formatMxn,
   lateInterestBase,
+  pendingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -98,9 +99,14 @@ export class SimulateSettlementUseCase extends BaseUseCase<
      * (ADR 0020): sería interés sobre interés. La misma regla que aplica el
      * abono, para que la cifra simulada y la cobrada no se contradigan.
      */
-    const ordinarioPendiente =
-      (note.planInterestCents ?? 0n) -
-      note.payments.reduce((suma, abono) => suma + abono.appliedToOrdinaryInterestCents, 0n);
+    const ordinarioPendiente = pendingOrdinaryInterest({
+      planInterestCents: note.planInterestCents ?? 0n,
+      appliedCents: note.payments.reduce(
+        (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
+        0n,
+      ),
+      balanceCents: principal,
+    });
 
     const interest = accrueInterest({
       balanceCents: lateInterestBase({

@@ -17,6 +17,7 @@ import {
   formatMxn,
   lateInterestBase,
   money,
+  pendingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
@@ -442,9 +443,14 @@ export class ClientController {
      * son el precio del préstamo y no capital.
      */
     const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
-    const ordinarioPendiente =
-      ordinarioDeLaCuota -
-      note.payments.reduce((suma, abono) => suma + abono.appliedToOrdinaryInterestCents, 0n);
+    const ordinarioPendiente = pendingOrdinaryInterest({
+      planInterestCents: ordinarioDeLaCuota,
+      appliedCents: note.payments.reduce(
+        (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
+        0n,
+      ),
+      balanceCents: balance,
+    });
 
     const hermanos = note.seriesId
       ? await this.prisma.promissoryNote.findMany({
