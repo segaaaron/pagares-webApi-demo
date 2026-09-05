@@ -64,21 +64,21 @@ export const base = StyleSheet.create({
     fontFamily: 'Times-Bold',
     letterSpacing: 4,
     textAlign: 'center',
-    marginTop: 22,
+    marginTop: 14,
     color: TINTA,
   },
-  reglaTitulo: { borderTopWidth: 0.8, borderTopColor: VERDE, marginTop: 6, marginBottom: 16 },
+  reglaTitulo: { borderTopWidth: 0.8, borderTopColor: VERDE, marginTop: 5, marginBottom: 12 },
   subtitulo: { fontSize: 8.5, color: GRIS, textAlign: 'center', marginTop: -10, marginBottom: 16 },
 
-  seccion: { fontSize: 7, letterSpacing: 1.6, color: VERDE, marginTop: 14, marginBottom: 7 },
+  seccion: { fontSize: 7, letterSpacing: 1.6, color: VERDE, marginTop: 10, marginBottom: 5 },
 
   fila: { flexDirection: 'row', gap: 18 },
   campo: {
     flex: 1,
     borderBottomWidth: 0.4,
     borderBottomColor: REGLA,
-    paddingBottom: 4,
-    marginBottom: 9,
+    paddingBottom: 3,
+    marginBottom: 7,
   },
   etiqueta: { fontSize: 6.5, color: GRIS, letterSpacing: 0.8 },
   valor: { fontSize: 9.5, marginTop: 2.5 },
@@ -102,12 +102,12 @@ export const base = StyleSheet.create({
   cifra: { fontFamily: 'Courier' },
   cifraFuerte: { fontFamily: 'Courier-Bold' },
 
-  firma: { marginTop: 22, alignItems: 'center' },
+  firma: { marginTop: 14, alignItems: 'center' },
   firmaLinea: { borderTopWidth: 0.8, borderTopColor: TINTA, width: 250 },
   firmaNombre: { fontSize: 9.5, fontFamily: 'Times-Bold', marginTop: 5 },
   evidencia: { fontSize: 6.5, color: GRIS, marginTop: 3, fontFamily: 'Courier' },
 
-  nota: { fontSize: 7, color: GRIS, marginTop: 14, fontFamily: 'Times-Roman', lineHeight: 1.4 },
+  nota: { fontSize: 7, color: GRIS, marginTop: 10, fontFamily: 'Times-Roman', lineHeight: 1.4 },
 
   /*
    * El pie va en dos renglones centrados y no en dos columnas.

@@ -37,17 +37,17 @@ const s = StyleSheet.create({
     borderWidth: 0.8,
     borderColor: TINTA,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 14,
+    paddingVertical: 8,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  importe: { fontSize: 24, fontFamily: 'Times-Bold' },
+  importe: { fontSize: 22, fontFamily: 'Times-Bold' },
   importeLetra: { fontSize: 8.5, color: GRIS, marginTop: 3, maxWidth: 300 },
   moneda: { fontSize: 8, letterSpacing: 1.2, color: '#0B5340' },
 
-  promesa: { fontSize: 11, fontFamily: 'Times-Roman', lineHeight: 1.65, marginBottom: 14 },
+  promesa: { fontSize: 10.5, fontFamily: 'Times-Roman', lineHeight: 1.55, marginBottom: 10 },
   clausula: {
     fontSize: 8.5,
     fontFamily: 'Times-Roman',
@@ -59,7 +59,7 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
 
-  firmaImagen: { height: 58, objectFit: 'contain' },
+  firmaImagen: { height: 46, objectFit: 'contain' },
   avalNota: { fontSize: 7, color: GRIS, marginTop: 4, lineHeight: 1.4 },
 
   abono: {
@@ -237,9 +237,27 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           </View>
         ) : null}
 
+        {model.verifyQrBase64 ? (
+          <View style={s.verificacion}>
+            <Image style={s.qr} src={model.verifyQrBase64} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 7.5, fontFamily: 'Helvetica-Bold' }}>
+                Verifica este pagaré
+              </Text>
+              <Text style={{ fontSize: 7, color: GRIS, marginTop: 2 }}>
+                Escanea el código o abre {model.verifyUrl}. La página dice el folio, el importe y
+                el estado
+                {model.signatureSha256
+                  ? ', y la huella de la firma para contrastarla con este archivo.'
+                  : '.'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Lo que este papel es, dicho una vez y sin adornos: es la diferencia
             entre reclamar en un juicio ordinario o en uno ejecutivo. */}
-        <Text style={base.nota}>
+        <Text style={base.nota} wrap={false}>
           Este pagaré es título ejecutivo y trae aparejada ejecución (arts. 167 y 174 de la Ley
           General de Títulos y Operaciones de Crédito). Prescribe a los tres años de su
           vencimiento (art. 165).
@@ -259,7 +277,14 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           * tercero. Decir lo contrario en un papel que va a un juzgado es lo
           * único que puede hundirlo, así que se dice al revés y sin rodeos.
           */}
-        {model.payments.length > 0 || model.signatureSha256 ? (
+        {/*
+          * El anexo se lleva su hoja sólo cuando hay evidencia que enseñar.
+          *
+          * Con unos pocos abonos y nada más, romper la página dejaba una hoja
+          * con tres renglones y el resto en blanco, que es peor que no tener
+          * anexo: el documento parece mal armado antes de que nadie lo lea.
+          */}
+        {model.signatureSha256 ? (
           <View break>
             <Text style={base.titulo}>ANEXO</Text>
             <View style={base.reglaTitulo} />
@@ -315,24 +340,6 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
               captura— y no una constancia de conservación NOM-151 ni un sello de tiempo emitido
               por un prestador de servicios de certificación acreditado.
             </Text>
-          </View>
-        ) : null}
-
-        {model.verifyQrBase64 ? (
-          <View style={s.verificacion}>
-            <Image style={s.qr} src={model.verifyQrBase64} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 7.5, fontFamily: 'Helvetica-Bold' }}>
-                Verifica este pagaré
-              </Text>
-              <Text style={{ fontSize: 7, color: GRIS, marginTop: 2 }}>
-                Escanea el código o abre {model.verifyUrl}. La página dice el folio, el importe y
-                el estado
-                {model.signatureSha256
-                  ? ', y la huella de la firma para contrastarla con este archivo.'
-                  : '.'}
-              </Text>
-            </View>
           </View>
         ) : null}
 

@@ -169,14 +169,37 @@ function Origen({ user }: { user: UserRow }) {
   const ultimo = user.lastDevice;
   if (ultimo) {
     const aparato = [ultimo.model, ultimo.osVersion].filter(Boolean).join(' · ');
+    /*
+     * Sin plataforma no se dice «Navegador»: se dice que no consta.
+     *
+     * El servidor guarda lo que le mandan al entrar, y una aplicación que no
+     * manda su aparato deja el campo vacío. Rellenarlo con «Navegador» era
+     * inventar el dato —el deudor entraba desde el teléfono y la pantalla decía
+     * lo contrario—, y ese es el peor error posible en una tabla que existe
+     * para saber desde dónde entra cada quien (§24.3).
+     */
+    const desde =
+      aparato ||
+      (ultimo.platform === 'ios'
+        ? 'iOS'
+        : ultimo.platform === 'web'
+          ? 'Navegador'
+          : 'No informado');
+
     return (
       <span
-        className="chip bg-accent-soft text-accent-ink"
-        title={`Última entrada: ${dateTime(ultimo.at)}${
-          ultimo.appVersion ? ` · app ${ultimo.appVersion}` : ''
+        className={`chip ${
+          ultimo.platform ? 'bg-accent-soft text-accent-ink' : 'bg-surface-2 text-muted'
         }`}
+        title={
+          ultimo.platform
+            ? `Última entrada: ${dateTime(ultimo.at)}${
+                ultimo.appVersion ? ` · app ${ultimo.appVersion}` : ''
+              }`
+            : `Última entrada: ${dateTime(ultimo.at)} · la aplicación no informó del aparato`
+        }
       >
-        {aparato || (ultimo.platform === 'ios' ? 'iOS' : 'Navegador')}
+        {desde}
       </span>
     );
   }
