@@ -121,6 +121,12 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
       installments: input.installments,
       model: input.plan.model,
     });
+    /*
+     * El teléfono es la identidad del deudor a efectos de la regla del ADR
+     * 0019: es obligatorio, el correo no, y es el mismo criterio con el que la
+     * importación reconoce a quién pertenece cada fila (§24.5).
+     */
+    const telefonoDelDeudor = input.debtor.phone.replace(/[\s()-]/g, '');
     const vencimientos = installmentDates(input.dueDate, input.installments);
     const enSerie = input.installments > 1;
     const seriesId = enSerie ? randomUUID() : null;
@@ -133,10 +139,11 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
        * existe crearían dos fichas, cada una con su llave, y no se estorbarían.
        * El teléfono es la identidad desde antes de la primera fila.
        */
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ISSUE_LOCK}::int, hashtext(${input.debtor.phone.replace(/[\s()-]/g, '')})::int)`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ISSUE_LOCK}::int, hashtext(${telefonoDelDeudor})::int)`;
+
+      await this.assertNadaPendienteDeFirma(tx, telefonoDelDeudor);
 
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
-      await this.assertNadaPendienteDeFirma(tx, debtor.id);
 
       const creados: {
         id: string;
@@ -292,9 +299,22 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
    * cuotas nacen en el mismo acto— porque la comprobación corre antes de
    * crearlas.
    */
-  private async assertNadaPendienteDeFirma(tx: TxClient, debtorId: string): Promise<void> {
+  private async assertNadaPendienteDeFirma(tx: TxClient, phone: string): Promise<void> {
+    /*
+     * Se busca por **teléfono** y no por ficha a propósito.
+     *
+     * Por ficha, volver a teclear al mismo deudor —el correo es opcional— creaba
+     * una ficha nueva sin nada pendiente y la regla se saltaba sola. Y unir las
+     * fichas por teléfono tampoco vale: dos personas que comparten línea
+     * acabarían con el pagaré de una emitido a nombre de la otra, que es un
+     * defecto peor y silencioso. Así la regla no se puede burlar y cada ficha
+     * sigue siendo de quien es.
+     */
     const pendiente = await tx.promissoryNote.findFirst({
-      where: { debtorId, status: { in: ['PENDING_SIGNATURE', 'PROCESSING_SIGNATURE'] } },
+      where: {
+        debtor: { phone: { in: [phone, `+${phone.replace(/^\+/, '')}`] } },
+        status: { in: ['PENDING_SIGNATURE', 'PROCESSING_SIGNATURE'] },
+      },
       orderBy: { createdAt: 'asc' },
       select: { folio: true },
     });
@@ -322,30 +342,14 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
      * partiría su historial en dos y, además, chocaría contra el índice único
      * de la cuenta enlazada: `Debtor.userId` es 1-a-1 (§25.2).
      */
-    /*
-     * También por teléfono, y no sólo por correo.
-     *
-     * El teléfono es obligatorio y el correo no, así que buscar sólo por correo
-     * creaba una ficha nueva cada vez que se tecleaba al mismo deudor a mano:
-     * su historial partido en dos y, ahora, la regla de «nada nuevo sin firmar»
-     * (ADR 0019) burlada sin querer con sólo volver a teclearlo. La importación
-     * ya identificaba por teléfono (§24.5); esto es la misma identidad.
-     */
-    const telefono = input.debtor.phone.replace(/[\s()-]/g, '');
-    const existente = !input.debtor.id
-      ? await tx.debtor.findFirst({
-          where: {
-            OR: [
-              ...(input.debtor.email ? [{ email: input.debtor.email.toLowerCase() }] : []),
-              { phone: { in: [input.debtor.phone, telefono] } },
-            ],
-          },
-        })
-      : null;
+    const byEmail =
+      !input.debtor.id && input.debtor.email
+        ? await tx.debtor.findFirst({ where: { email: input.debtor.email.toLowerCase() } })
+        : null;
 
     const debtor = input.debtor.id
       ? await tx.debtor.findUniqueOrThrow({ where: { id: input.debtor.id } })
-      : (existente ??
+      : (byEmail ??
         (await tx.debtor.create({
           data: {
             fullName: input.debtor.fullName,

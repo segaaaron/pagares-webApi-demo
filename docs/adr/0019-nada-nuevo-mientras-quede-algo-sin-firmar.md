@@ -35,10 +35,15 @@ Dos cosas que la hacen real y no un adorno:
   resolver la ficha. Sin él, dos altas simultáneas leen las dos que no hay nada pendiente y
   emiten las dos. Y sobre la ficha no serviría: si el deudor todavía no existe, cada
   transacción crearía la suya y las llaves no coincidirían.
-- **Identificar al deudor también por teléfono**, no sólo por correo. El correo es
-  opcional, así que volver a teclear al mismo deudor creaba otra ficha y la regla se
-  saltaba sola sin mala intención. La importación ya identificaba por teléfono; ahora la
-  emisión usa la misma identidad.
+- **La comprobación busca por teléfono, no por ficha.** El correo es opcional, así que
+  volver a teclear al mismo deudor creaba una ficha nueva sin nada pendiente y la regla se
+  saltaba sola sin mala intención.
+
+  Se probó antes a **unir las fichas** por teléfono, y se descartó: dos personas que
+  comparten línea —una familia, un negocio— acabarían con el pagaré de una emitido a
+  nombre de la otra. Un título a nombre equivocado es un defecto peor que un historial
+  partido, y además silencioso. Así la regla no se puede burlar y cada ficha sigue siendo
+  de quien es.
 
 ## Consecuencias
 
@@ -47,9 +52,13 @@ panel lo dice antes de que ocurra donde puede: el botón «Duplicar» de un paga
 se queda a la vista, apagado y con el motivo, en vez de llevar a un formulario que va a
 rebotar.
 
-Dos deudores que compartan teléfono se tratan como uno. Es el mismo criterio que ya usaba
-la importación, y el caso contrario —un deudor con dos fichas— hacía más daño: partía su
-historial y burlaba esta regla.
+Dos deudores que compartan teléfono se bloquean entre sí: si uno tiene un pagaré sin
+firmar, al otro no se le emite. Es el precio de que la regla no se pueda burlar, y se
+prefiere a la alternativa —unir sus fichas— que emitiría títulos a nombre equivocado. El
+mensaje del 409 trae el folio, así que se ve enseguida que es de otra persona.
+
+Un mismo deudor tecleado dos veces sigue produciendo dos fichas y su historial partido. Es
+un defecto anterior a esta regla y no lo tapa: se decide aparte.
 
 Y refuerza lo que ya estaba propuesto: **firmar la serie de una vez**. Con doce cuotas que
 se firman una a una, el deudor no puede recibir nada nuevo hasta terminar las doce, que es
