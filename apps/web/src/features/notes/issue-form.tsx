@@ -6,7 +6,6 @@ import { DateField } from '@/shared/ui/date-field';
 import { PlanPreview } from './plan-preview';
 import { DebtorPicker, type DebtorHit } from './debtor-picker';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
-import { toAnnualRatePct } from '@pagares/domain-rules';
 import { useBlockingActionState } from '@/shared/ui/blocking';
 
 /**
@@ -132,8 +131,6 @@ export function IssueForm({
   const [vencimiento, setVencimiento] = useState(defaults.defaultDueDate);
 
   const [importe, setImporte] = useState(plantilla?.amount ?? '');
-  const annual = rate === '' ? null : toAnnualRatePct(Number(rate), period);
-  const aboveThreshold = annual !== null && annual > defaults.interestWarningThresholdPct;
 
   return (
     <form action={action} className="space-y-6">
@@ -172,23 +169,10 @@ export function IssueForm({
                 * acreedor cree que está cobrando.
                 */}
               <input type="hidden" name="interestPeriod" value={period} />
-              <span className="input w-32 rounded-l-none border-l-0 text-muted">
+              <span className="input flex w-32 shrink-0 items-center justify-center whitespace-nowrap rounded-l-none border-l-0 text-muted">
                 % {period === 'BIWEEKLY' ? 'quincenal' : 'mensual'}
               </span>
             </div>
-            {aboveThreshold ? (
-              <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-warn-soft px-2.5 py-2 text-xs text-warn">
-                <span aria-hidden className="mt-0.5 shrink-0">
-                  <NavIcon.alert />
-                </span>
-                <span>
-                  Equivale a <span className="tnum font-semibold">{Number(annual?.toFixed(2))}% anual</span>, por
-                  encima del umbral de {defaults.interestWarningThresholdPct}% que fijaste en Ajustes. Un
-                  juez puede reducir de oficio un interés notoriamente usurario. Puedes continuar; es
-                  tu decisión.
-                </span>
-              </p>
-            ) : null}
             {state.fieldErrors?.['interestRate.value'] ? (
               <p className="mt-1 text-xs text-crit">{state.fieldErrors['interestRate.value']}</p>
             ) : (

@@ -2,7 +2,6 @@
 
 import { buildPaymentPlan, installmentDates, toAnnualRatePct, type PlanModel } from '@pagares/domain-rules';
 import { money, shortDate } from '@/shared/lib/format';
-import { NavIcon } from '@/shared/ui/icons/nav-icons';
 
 /**
  * El plan de pagos, antes de emitirlo.
@@ -72,21 +71,6 @@ export function PlanPreview({
         />
         <Cifra etiqueta="Te devuelven" valor={money(plan.totalCents.toString())} />
       </dl>
-
-      {model === 'GLOBAL' ? (
-        <p className="flex items-start gap-2 border-b border-line bg-warn-soft px-4 py-2.5 text-xs text-warn">
-          {/* El aviso no se fía sólo del color: lleva icono y texto. */}
-          <span aria-hidden className="mt-0.5 shrink-0">
-            <NavIcon.alert />
-          </span>
-          <span>
-            Sobre saldo global el interés se calcula siempre sobre los{' '}
-            {money(plan.principalCents.toString())} originales, aunque el deudor ya haya pagado la
-            mitad. Con la misma tasa, Banxico documenta que el costo real puede casi duplicarse
-            frente a saldos insolutos. Es legal y se usa; que sea una decisión y no un descuido.
-          </span>
-        </p>
-      ) : null}
 
       <div className="max-h-72 overflow-y-auto">
         <table className="w-full text-sm">
