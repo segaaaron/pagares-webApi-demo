@@ -312,6 +312,21 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
     input: CreateNoteRequest,
     ctx: ExecutionContext,
   ): Promise<{ id: string; userId: string | null; phone: string }> {
+    /*
+     * El cerrojo va **antes de leer la ficha**, no dentro de `NoteFactory`.
+     *
+     * Abrirle la cuenta al deudor forma parte de emitir, y dos emisiones
+     * simultáneas a la misma persona leían las dos que no tenía cuenta y la
+     * creaban las dos: la segunda reventaba contra el índice único del correo
+     * con un 500 en vez del 409 que le tocaba. Con el correo obligatorio en la
+     * ficha eso dejó de ser un caso raro y pasó a ser el camino normal.
+     *
+     * Es el mismo cerrojo de aviso que usa la regla de la firma pendiente
+     * (ADR 0019), aquí por ficha: dos altas a la vez se ordenan solas y la
+     * segunda encuentra el trabajo hecho.
+     */
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.debtor.id})::int)`;
+
     const debtor = await tx.debtor.findUnique({ where: { id: input.debtor.id } });
     if (!debtor) throw new DebtorNotFoundError();
 

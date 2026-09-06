@@ -18,8 +18,19 @@ const createUserSchema = z
     fullName: z.string().trim().min(3).max(160),
     phone: phoneSchema.optional(),
     role: z.enum(['ADMIN', 'CLIENT']).default('CLIENT'),
-    /** Enlaza la cuenta con la ficha del deudor, no con su correo (§25.2). */
-    debtorId: z.string().uuid().optional(),
+    /**
+     * La ficha del deudor a la que pertenece esta cuenta. **Obligatoria.**
+     *
+     * Una cuenta existe para que alguien consulte **sus** pagarés, así que sin
+     * ficha no puede consultar nada: entra, no ve nada y no aparece en el
+     * buscador de la emisión, que busca fichas y no cuentas. Se enlaza contra la
+     * persona y no contra el correo, para que quien vuelva con otra dirección
+     * conserve sus pagarés (§25.2).
+     *
+     * El nombre y el teléfono los pone la ficha, no este cuerpo: aceptarlos
+     * permitía enlazar la cuenta a este deudor con los datos de otro.
+     */
+    debtorId: z.string().uuid(),
   })
   .strict();
 

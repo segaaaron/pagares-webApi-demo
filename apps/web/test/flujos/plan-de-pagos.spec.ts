@@ -72,10 +72,20 @@ test('quincenal cobra cada quince días, y el interés es por quincena', async (
   await expect(plan).toContainText('cuotas quincenales');
   await expect(plan).toContainText('$1,800.00');
 
-  // Quince días exactos entre la primera cuota y la segunda.
+  // Doce cuotas, y quince días exactos entre la primera y la segunda. Las
+  // fechas se calculan desde hoy, así que se comprueba la distancia y no un día
+  // concreto: escrito a mano, esto caducaba mañana.
   const filas = plan.locator('tbody tr');
-  await expect(filas.first()).toContainText('20 sep 2026');
-  await expect(filas.nth(1)).toContainText('05 oct 2026');
+  await expect(filas).toHaveCount(12);
+
+  const fecha = async (n: number): Promise<Date> => {
+    const texto = ((await filas.nth(n).locator('td').nth(1).textContent()) ?? '').trim();
+    const [dia, mes, anio] = texto.split(' ') as [string, string, string];
+    const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return new Date(Date.UTC(Number(anio), MESES.indexOf(mes), Number(dia)));
+  };
+  const dias = ((await fecha(1)).getTime() - (await fecha(0)).getTime()) / 86_400_000;
+  expect(dias).toBe(15);
 });
 
 test('sin interés, el plan reparte sólo el préstamo', async ({ page }) => {
@@ -125,6 +135,7 @@ async function emitirSerie(
       fullName: `Liquidación ${Date.now()}`,
       address: 'Calle de prueba 1',
       phone: `+52443${String(Date.now()).slice(-7)}`,
+      email: `deudor-${Date.now()}@ejemplo.mx`,
     },
   });
   const { id: debtorId } = (await alta.json()) as { id: string };

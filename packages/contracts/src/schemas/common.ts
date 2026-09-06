@@ -15,10 +15,24 @@ export const civilDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha esperado: AAAA-MM-DD');
 
+/**
+ * Teléfono, tal y como lo escribe una persona.
+ *
+ * Nadie teclea `+524431112233` de corrido: escribe `+52 443 111 2233`, o con
+ * guiones, o entre paréntesis la lada. Rechazarlo con «Teléfono de 7 a 15
+ * dígitos» era mandar a adivinar qué sobraba —los espacios— cuando el número
+ * estaba bien.
+ *
+ * Se limpian los separadores y se valida lo que queda. El `+` se conserva
+ * porque distingue un número internacional de uno local.
+ */
 export const phoneSchema = z
   .string()
   .trim()
-  .regex(/^\+?\d{7,15}$/, 'Teléfono de 7 a 15 dígitos');
+  .transform((valor) => valor.replace(/[\s().-]/g, ''))
+  .refine((valor) => /^\+?\d{7,15}$/.test(valor), {
+    message: 'Escribe el número con lada, por ejemplo +52 443 111 2233',
+  });
 
 export const emailSchema = z.string().trim().toLowerCase().email();
 

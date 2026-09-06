@@ -51,7 +51,13 @@ async function nuevoDeudor(
   const creado = await call('/admin/debtors', {
     method: 'POST',
     idempotent: true,
-    body: { fullName: `${nombre} ${Date.now()}`, address: 'Calle de prueba 1', phone },
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone,
+      // Obligatorio: es por donde viaja la contraseña al dar acceso.
+      email: `deudor-${Date.now()}-${Math.floor(Math.random() * 1e6)}@ejemplo.mx`,
+    },
   });
   return String(creado.body['id']);
 }
@@ -199,13 +205,17 @@ describe('controles de acceso', () => {
      * toda la suite la bloqueaba cinco horas a la quinta ejecución y dejaba las
      * 37 pruebas en gris sin decir por qué.
      */
+    // Toda cuenta de cliente cuelga de una ficha: sin ella no puede consultar
+    // nada, así que `debtorId` es obligatorio (§25.2).
+    const correoVictima = `enumeracion-${Date.now()}@ejemplo.mx`;
     const victima = await call('/admin/users', {
       method: 'POST',
       idempotent: true,
       body: {
-        email: `enumeracion-${Date.now()}@ejemplo.mx`,
+        email: correoVictima,
         fullName: 'Cuenta de prueba de enumeración',
         role: 'CLIENT',
+        debtorId: await nuevoDeudor('Cuenta de enumeración'),
       },
     });
     expect(victima.status).toBe(201);
@@ -340,7 +350,12 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     const otraVez = await call('/admin/debtors', {
       method: 'POST',
       idempotent: true,
-      body: { fullName: 'Deudor Tecleado Otra Vez', address: 'Otra calle 3', phone },
+      body: {
+        fullName: 'Deudor Tecleado Otra Vez',
+        address: 'Otra calle 3',
+        phone,
+        email: `otra-vez-${Date.now()}@ejemplo.mx`,
+      },
     });
     expect(otraVez.status).toBe(409);
     // Y dice de quién es, que es lo que permite ir a buscarlo.

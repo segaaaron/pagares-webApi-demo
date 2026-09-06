@@ -42,15 +42,37 @@ function CredentialNotice({ credential }: { credential: NonNullable<UserActionSt
  * Quien todavía no está en la cartera se da de alta como deudor —o nace con su
  * primer pagaré, que ya le abre la cuenta solo (§25.2)—.
  */
+export interface DebtorOption {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+}
+
 export function CreateUserForm({
   debtor,
+  sinAcceso = [],
   label,
+  abrirDeEntrada = false,
 }: {
-  debtor: { id: string; fullName: string; phone: string; email: string | null };
+  /** Cuando el alta sale de la ficha de un deudor: ya se sabe de quién es. */
+  debtor?: DebtorOption | undefined;
+  /**
+   * Los deudores que todavía no entran a la aplicación.
+   *
+   * Sin `debtor`, hay que elegir a uno de ellos: una cuenta sin ficha no puede
+   * consultar nada, así que la lista sólo trae a quien puede recibirla. Si está
+   * vacía, el diálogo lo dice en vez de enseñar un desplegable sin opciones.
+   */
+  sinAcceso?: readonly DebtorOption[] | undefined;
   label?: string | undefined;
-}) {
+  /** Llegando desde Deudores con la persona en la URL, el diálogo se abre solo. */
+  abrirDeEntrada?: boolean | undefined;
+} = {}) {
   const [state, action, pending] = useBlockingActionState<UserActionState, FormData>(createUserAction, {});
-  const modal = useModal();
+  const modal = useModal(abrirDeEntrada);
+  const [elegido, setElegido] = useState(debtor?.id ?? sinAcceso[0]?.id ?? '');
+  const persona = debtor ?? sinAcceso.find((d) => d.id === elegido) ?? null;
 
   useActionToast(state, 'Cuenta creada. La contraseña temporal está en pantalla.');
 
@@ -64,38 +86,78 @@ export function CreateUserForm({
    */
   return (
     <>
-      <div className="flex justify-end">
-        <button type="button" onClick={modal.show} className="btn btn-primary">
-          <NavIcon.users />
-          {label ?? 'Nueva cuenta'}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={modal.show}
+        className={debtor ? 'btn btn-secondary btn-sm' : 'btn btn-primary'}
+        disabled={!debtor && sinAcceso.length === 0}
+        title={
+          !debtor && sinAcceso.length === 0
+            ? 'Todos los deudores ya tienen cuenta. Da de alta uno nuevo en Deudores.'
+            : undefined
+        }
+      >
+        <NavIcon.users />
+        {label ?? (debtor ? 'Dar acceso' : 'Nueva cuenta')}
+      </button>
 
       <Modal
         open={modal.open}
         onClose={modal.hide}
-        title={`Dar acceso a ${debtor.fullName}`}
+        title={persona ? `Dar acceso a ${persona.fullName}` : 'Dar acceso a un deudor'}
         description="Se genera una contraseña temporal, se le envía por correo y se muestra aquí una vez."
       >
         <form action={action}>
           <div className="space-y-4 px-5 py-5">
-            <input type="hidden" name="debtorId" value={debtor.id} />
+            <input type="hidden" name="debtorId" value={persona?.id ?? ''} />
 
-            <div>
-              <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-ink">
-                Nombre completo
-              </label>
-              <input
-                id="fullName"
-                name="fullName"
-                required
-                minLength={3}
-                autoComplete="off"
-                defaultValue={debtor.fullName}
-                readOnly
-                className="input bg-surface-2 text-muted"
-              />
-            </div>
+            {debtor ? (
+              <div>
+                <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-ink">
+                  Nombre completo
+                </label>
+                <input
+                  id="fullName"
+                  name="fullName"
+                  required
+                  minLength={3}
+                  autoComplete="off"
+                  defaultValue={debtor.fullName}
+                  readOnly
+                  className="input bg-surface-2 text-muted"
+                />
+              </div>
+            ) : (
+              /*
+               * Sin persona decidida, se elige de la lista: una cuenta existe
+               * para que alguien consulte **sus** pagarés, así que sin ficha no
+               * puede consultar nada. Sólo salen los que aún no tienen cuenta.
+               */
+              <div>
+                <label htmlFor="debtorPick" className="mb-1.5 block text-sm font-medium text-ink">
+                  Deudor
+                </label>
+                {/* Sin `name`: lo que viaja es `debtorId`, y el nombre y el
+                    teléfono los pone la ficha en el servidor. */}
+                <select
+                  id="debtorPick"
+                  className="input"
+                  value={elegido}
+                  onChange={(event) => setElegido(event.target.value)}
+                >
+                  {sinAcceso.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.fullName} · {d.phone}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted">
+                  Sólo los que todavía no entran a la aplicación. ¿No está? Dalo de alta en
+                  Deudores.
+                </p>
+                <input type="hidden" name="fullName" value={persona?.fullName ?? ''} />
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-ink">
                 Correo
@@ -108,12 +170,15 @@ export function CreateUserForm({
                 * también en la ficha para que no queden dos.
                 */}
               <input
+                /* Al cambiar de deudor el campo vuelve a nacer con su correo:
+                   un `defaultValue` que cambia no se repinta solo. */
+                key={persona?.id ?? 'sin-deudor'}
                 id="email"
                 name="email"
                 type="email"
                 required
                 placeholder="correo@ejemplo.mx"
-                defaultValue={debtor.email ?? ''}
+                defaultValue={persona?.email ?? ''}
                 className="input"
               />
               <p className="mt-1 text-xs text-muted">
@@ -127,7 +192,7 @@ export function CreateUserForm({
               <input
                 id="phone"
                 name="phone"
-                defaultValue={debtor.phone}
+                value={persona?.phone ?? ''}
                 readOnly
                 className="input bg-surface-2 text-muted"
               />

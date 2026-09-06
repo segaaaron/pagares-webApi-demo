@@ -177,6 +177,7 @@ async function otraFicha(): Promise<string> {
       fullName: `Otro deudor ${Date.now()}`,
       address: 'Calle ajena 2',
       phone: `+52443${String(Date.now()).slice(-7)}`,
+      email: `ajeno-${Date.now()}@ejemplo.mx`,
     },
   });
   return String(creado.body['id']);
@@ -198,11 +199,18 @@ beforeAll(async () => {
   const email = `contrato-${sufijo}@ejemplo.mx`;
   const phone = `+52443${String(Date.now()).slice(-7)}`;
 
+  /*
+   * Primero la ficha y después su cuenta: un acceso sin deudor no puede
+   * consultar nada, así que `debtorId` es obligatorio (§25.2). La misma ficha la
+   * reutilizan todos los pagarés de esta suite.
+   */
+  const debtorId = await fichaDelCliente(phone, email);
+
   const creado = await call('/admin/users', {
     method: 'POST',
     token: adminToken,
     idempotencyKey: randomUUID(),
-    body: { email, fullName: 'Cliente de contrato', role: 'CLIENT' },
+    body: { email, fullName: 'Cliente de contrato', role: 'CLIENT', debtorId },
   });
   expect(creado.status).toBe(201);
 

@@ -1,5 +1,7 @@
 import { listUsers } from '@/features/users/queries';
+import { CreateUserForm, type DebtorOption } from '@/features/users/user-forms';
 import { UserActions } from '@/features/users/user-forms';
+import { api } from '@/shared/api/client';
 import { dateTime } from '@/shared/lib/format';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { ListPagination, paginate } from '@/shared/ui/list-pagination';
@@ -27,6 +29,16 @@ export default async function UsersPage({
     Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v] as [string, string]] : [])),
   );
   const users = await listUsers();
+  /*
+   * Quien todavía no entra a la aplicación: son los únicos que pueden recibir
+   * una cuenta, porque una cuenta sin ficha no puede consultar nada.
+   */
+  const sinAcceso = (await api<(DebtorOption & { hasAccount: boolean })[]>('/admin/debtors'))
+    .filter((d) => !d.hasAccount)
+    .map(({ id, fullName, phone, email }) => ({ id, fullName, phone, email }));
+  // Llegando desde Deudores, la persona viene en la URL y el diálogo se abre solo.
+  const desdeDeudores = params.get('deudor');
+  const preseleccionado = sinAcceso.find((d) => d.id === desdeDeudores);
   const now = Date.now();
   const { page, props } = paginate(users, params);
 
@@ -120,7 +132,13 @@ export default async function UsersPage({
       <PageHeader
         crumbs={[{ label: 'Accesos' }]}
         title="Accesos"
-        description="Cuentas de acceso a la aplicación. No hay registro público, y no se crean aquí: el acceso se da desde la ficha del deudor, porque una cuenta sin deudor no puede consultar nada."
+        description="Cuentas de acceso a la aplicación. No hay registro público: se crean aquí, siempre para un deudor que ya esté dado de alta."
+        actions={
+          <CreateUserForm
+            sinAcceso={sinAcceso}
+            {...(preseleccionado ? { debtor: preseleccionado, abrirDeEntrada: true } : {})}
+          />
+        }
       />
 
 

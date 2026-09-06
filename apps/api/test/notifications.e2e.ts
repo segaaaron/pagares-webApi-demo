@@ -52,6 +52,28 @@ function unique(): string {
 
 let adminToken = '';
 
+/**
+ * Una ficha de deudor, que es de quien cuelga toda cuenta de cliente.
+ *
+ * Un acceso sin ficha no puede consultar nada, así que `debtorId` es obligatorio
+ * al crear la cuenta (§25.2).
+ */
+async function fichaPara(nombre: string, email: string): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+      email,
+    },
+  });
+  return String(creado.body['id']);
+}
+
+
 beforeAll(async () => {
   const login = await call('/auth/login', { method: 'POST', body: ADMIN });
   if (login.status === 429) throw new Error('La API está limitando los accesos (429).');
@@ -175,11 +197,15 @@ describe('§18.1 · reintentar un aviso concreto', () => {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: {
-        email: `avisos-${unique()}@ejemplo.mx`,
-        fullName: 'Cliente de avisos',
-        role: 'CLIENT',
-      },
+      body: await (async () => {
+        const email = `avisos-${unique()}@ejemplo.mx`;
+        return {
+          email,
+          fullName: 'Cliente de avisos',
+          role: 'CLIENT',
+          debtorId: await fichaPara('Cliente de avisos', email),
+        };
+      })(),
     });
     expect(creado.status).toBe(201);
 
@@ -205,7 +231,12 @@ describe('§9.1 · sólo la administración ve y reintenta avisos', () => {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: { email, fullName: 'Cliente sin permiso', role: 'CLIENT' },
+      body: {
+        email,
+        fullName: 'Cliente sin permiso',
+        role: 'CLIENT',
+        debtorId: await fichaPara('Cliente sin permiso', email),
+      },
     });
     const reto = await call('/auth/login', {
       method: 'POST',

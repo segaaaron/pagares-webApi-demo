@@ -84,6 +84,28 @@ function unique(): string {
 let adminToken = '';
 
 /**
+ * Una ficha de deudor, que es de quien cuelga toda cuenta de cliente.
+ *
+ * Un acceso sin ficha no puede consultar nada, así que `debtorId` es obligatorio
+ * al crear la cuenta (§25.2).
+ */
+async function fichaPara(nombre: string, email: string): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+      email,
+    },
+  });
+  return String(creado.body['id']);
+}
+
+
+/**
  * Da de alta una ficha y devuelve su identificador.
  *
  * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
@@ -102,7 +124,13 @@ async function nuevoDeudor(
     method: 'POST',
     token: adminToken,
     idempotencyKey: randomUUID(),
-    body: { fullName: `${nombre} ${Date.now()}`, address: 'Calle de prueba 1', phone },
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone,
+      // Obligatorio: es por donde viaja la contraseña al dar acceso.
+      email: `deudor-${Date.now()}-${Math.floor(Math.random() * 1e6)}@ejemplo.mx`,
+    },
   });
   return String(creado.body['id']);
 }
@@ -273,7 +301,12 @@ describe('§10.4 · un refresh canjeado dos veces mata la familia', () => {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: { email, fullName: 'Cliente refresh', role: 'CLIENT' },
+      body: {
+        email,
+        fullName: 'Cliente refresh',
+        role: 'CLIENT',
+        debtorId: await fichaPara('Cliente refresh', email),
+      },
     });
     expect(created.status).toBe(201);
 
@@ -326,7 +359,12 @@ describe('§10.2 · el bloqueo por intentos fallidos es por cuenta', () => {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: { email, fullName: 'Cliente bloqueo', role: 'CLIENT' },
+      body: {
+        email,
+        fullName: 'Cliente bloqueo',
+        role: 'CLIENT',
+        debtorId: await fichaPara('Cliente bloqueo', email),
+      },
     });
     expect(created.status).toBe(201);
 
@@ -425,7 +463,12 @@ describe('§24.3 · el panel sabe desde dónde entra cada quien', () => {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: { email, fullName: 'Cliente con teléfono', role: 'CLIENT' },
+      body: {
+        email,
+        fullName: 'Cliente con teléfono',
+        role: 'CLIENT',
+        debtorId: await fichaPara('Cliente con teléfono', email),
+      },
     });
     expect(creado.status).toBe(201);
 

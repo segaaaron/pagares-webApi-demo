@@ -36,7 +36,8 @@ export async function createDebtorAction(
         fullName: texto('fullName'),
         address: texto('address'),
         phone: texto('phone'),
-        ...(opcional('email') ? { email: opcional('email') } : {}),
+        // Obligatorio: es por donde viaja la contraseña temporal al dar acceso.
+        email: texto('email'),
         ...(opcional('notes') ? { notes: opcional('notes') } : {}),
         ...(opcional('curp') ? { curp: opcional('curp') } : {}),
       },

@@ -91,6 +91,8 @@ async function nuevoDeudor(nombre = 'Plan'): Promise<string> {
       fullName: `${nombre} ${Date.now()}`,
       address: 'Calle de prueba 1',
       phone: `+52443${String(Date.now()).slice(-7)}`,
+      // Obligatorio: es por donde viaja la contraseña al dar acceso.
+      email: `deudor-${Date.now()}-${Math.floor(Math.random() * 1e6)}@ejemplo.mx`,
     },
   });
   expect(creado.status, 'el deudor se da de alta').toBe(201);

@@ -73,11 +73,13 @@ export function Modal({
 }
 
 /** Pequeño ayudante para no repetir el par estado + apertura en cada pantalla. */
-export function useModal(): {
+export function useModal(abiertoDeEntrada = false): {
   open: boolean;
   show: () => void;
   hide: () => void;
 } {
-  const [open, setOpen] = useState(false);
+  // Abierto de entrada cuando se llega con la acción ya decidida en la URL:
+  // pulsar un botón para que aparezca lo que ya se pidió es un paso de más.
+  const [open, setOpen] = useState(abiertoDeEntrada);
   return { open, show: () => setOpen(true), hide: () => setOpen(false) };
 }

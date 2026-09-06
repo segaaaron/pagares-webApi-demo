@@ -90,10 +90,15 @@ export default async function DebtorsPage({
             Con acceso
           </span>
         ) : (
+          /*
+           * Lleva a Accesos con la persona en la URL: allí se crean las cuentas,
+           * y el diálogo se abre solo con ella ya elegida. Un solo sitio donde
+           * nacen los accesos, y desde aquí se llega en un clic.
+           */
           <Link
-            href={`/clientes/${d.id}`}
+            href={`/usuarios?deudor=${d.id}`}
             className="btn btn-secondary btn-sm"
-            title="Sin cuenta: firmará presencialmente y sus avisos son gestión manual. Dale acceso desde su ficha."
+            title="Sin cuenta: firmará presencialmente y sus avisos son gestión manual"
           >
             Dar acceso
           </Link>

@@ -153,6 +153,7 @@ test.describe('accesibilidad de las rutas críticas', () => {
         fullName: `Accesibilidad ${Date.now()}`,
         address: 'Calle de prueba 1',
         phone: `+52443${String(Date.now()).slice(-7)}`,
+        email: `deudor-${Date.now()}@ejemplo.mx`,
       },
     });
     const { id: debtorId } = (await alta.json()) as { id: string };

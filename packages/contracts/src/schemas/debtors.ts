@@ -8,16 +8,17 @@ import { emailSchema, phoneSchema } from './common.js';
  * quien da de alta a mano y quien sube un archivo capturan lo mismo, así que
  * dos listas distintas sólo servirían para que una se quedara atrás.
  *
- * **Nombre, domicilio y teléfono son obligatorios.** El domicilio va impreso en
- * el pagaré, y el teléfono es el único canal cuando no hay correo. El correo es
- * opcional porque quien no lo tiene firma presencialmente (§25.12).
+ * **Nombre, domicilio, teléfono y correo son obligatorios.** El domicilio va
+ * impreso en el pagaré; el teléfono es el canal de cobranza; y el correo es por
+ * donde viaja la contraseña temporal cuando se le da acceso a la aplicación
+ * (§25.2), así que sin él la cuenta no se le puede entregar.
  */
 export const createDebtorRequestSchema = z
   .object({
     fullName: z.string().trim().min(3).max(160),
     address: z.string().trim().min(3).max(240),
     phone: phoneSchema,
-    email: emailSchema.nullish(),
+    email: emailSchema,
     /** Lo que hay que saber de esta persona y no cabe en un campo. */
     notes: z.string().trim().max(1000).nullish(),
     /**

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { createDebtorAction, type DebtorActionState } from './actions';
 import { Modal, useModal } from '@/shared/ui/modal';
@@ -8,6 +9,26 @@ import { useActionToast } from '@/shared/ui/use-action-toast';
 import { useBlockingActionState } from '@/shared/ui/blocking';
 
 const INPUT = 'input';
+
+/**
+ * El teléfono se escribe solo: `+52` puesto y los dígitos agrupados.
+ *
+ * En México el número es de diez cifras y se lee en tres tramos —lada, y el
+ * número en dos mitades—. Teclear el prefijo y los espacios es trabajo que la
+ * pantalla puede hacer, y era justo donde se colaba el error de formato.
+ *
+ * Sólo se agrupa; lo que se manda lo limpia el contrato igual, así que un
+ * número de otro país tampoco se rompe: se le quitan los espacios y ya.
+ */
+const LADA = '+52';
+
+function telefonoBonito(valor: string): string {
+  const digitos = valor.replace(/\D/g, '').replace(/^52/, '').slice(0, 10);
+  if (digitos.length === 0) return `${LADA} `;
+
+  const tramos = [digitos.slice(0, 3), digitos.slice(3, 6), digitos.slice(6, 10)];
+  return `${LADA} ${tramos.filter(Boolean).join(' ')}`;
+}
 
 function Campo({
   id,
@@ -53,6 +74,7 @@ export function NewDebtorForm({ label }: { label?: string | undefined } = {}) {
     {},
   );
   const modal = useModal();
+  const [telefono, setTelefono] = useState(`${LADA} `);
 
   useActionToast(state, 'Deudor dado de alta.');
 
@@ -124,7 +146,7 @@ export function NewDebtorForm({ label }: { label?: string | undefined } = {}) {
                   <Campo
                     id="phone"
                     label="Teléfono"
-                    hint="Con lada, en formato +52…"
+                    hint="Diez dígitos. El +52 y los espacios se ponen solos."
                     error={state.fieldErrors?.phone}
                   >
                     <input
@@ -132,7 +154,12 @@ export function NewDebtorForm({ label }: { label?: string | undefined } = {}) {
                       name="phone"
                       required
                       inputMode="tel"
-                      placeholder="+524431112233"
+                      value={telefono}
+                      onChange={(event) => setTelefono(telefonoBonito(event.target.value))}
+                      // Borrar hasta el prefijo lo deja como estaba: el +52 no
+                      // se quita por accidente al vaciar el campo.
+                      onFocus={(event) => event.currentTarget.setSelectionRange(999, 999)}
+                      placeholder="+52 443 111 2233"
                       className={`${INPUT} tnum`}
                     />
                   </Campo>
@@ -140,14 +167,14 @@ export function NewDebtorForm({ label }: { label?: string | undefined } = {}) {
                   <Campo
                     id="email"
                     label="Correo"
-                    opcional
-                    hint="Con correo firma desde la aplicación; sin él, presencialmente."
+                    hint="Por aquí le llega su contraseña para entrar a la aplicación."
                     error={state.fieldErrors?.email}
                   >
                     <input
                       id="email"
                       name="email"
                       type="email"
+                      required
                       placeholder="juana@ejemplo.mx"
                       className={INPUT}
                     />

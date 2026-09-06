@@ -65,12 +65,34 @@ interface Client {
 let adminToken = '';
 
 /**
+ * Una ficha de deudor, que es de quien cuelga toda cuenta de cliente.
+ *
+ * Un acceso sin ficha no puede consultar nada, así que `debtorId` es obligatorio
+ * al crear la cuenta (§25.2).
+ */
+async function fichaPara(nombre: string, email: string): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+      email,
+    },
+  });
+  return String(creado.body['id']);
+}
+
+
+/**
  * Da de alta una ficha y devuelve su identificador.
  *
  * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
  * elige.
  */
-async function nuevoDeudor(nombre: string, email?: string): Promise<string> {
+async function nuevoDeudor(nombre: string): Promise<string> {
   const creado = await call('/admin/debtors', {
     method: 'POST',
     token: adminToken,
@@ -79,7 +101,8 @@ async function nuevoDeudor(nombre: string, email?: string): Promise<string> {
       fullName: `${nombre} ${Date.now()}`,
       address: 'Calle de prueba 1',
       phone: `+52443${String(Date.now()).slice(-7)}`,
-      ...(email ? { email } : {}),
+      // Obligatorio: es por donde viaja la contraseña al dar acceso.
+      email: `deudor-${Date.now()}-${Math.floor(Math.random() * 1e6)}@ejemplo.mx`,
     },
   });
   return String(creado.body['id']);
@@ -94,11 +117,18 @@ async function nuevoDeudor(nombre: string, email?: string): Promise<string> {
 async function makeClient(label: string): Promise<Client> {
   const email = `bola-${label}-${Date.now()}@ejemplo.mx`;
 
+  /*
+   * Una ficha y una cuenta, la misma persona. El pagaré se emite contra **esta**
+   * ficha: crear otra con el mismo correo dejaría dos fichas peleándose por la
+   * única cuenta, que es lo que impide el índice de `Debtor.userId`.
+   */
+  const debtorId = await fichaPara(`Cliente ${label}`, email);
+
   const created = await call('/admin/users', {
     method: 'POST',
     token: adminToken,
     idempotencyKey: randomUUID(),
-    body: { email, fullName: `Cliente ${label}`, role: 'CLIENT' },
+    body: { email, fullName: `Cliente ${label}`, role: 'CLIENT', debtorId },
   });
   expect(created.status).toBe(201);
   const temporary = String(created.body['temporaryPassword']);
@@ -132,7 +162,7 @@ async function makeClient(label: string): Promise<Client> {
     token: adminToken,
     idempotencyKey: randomUUID(),
     body: {
-      debtor: { id: await nuevoDeudor(`Cliente ${label}`, email) },
+      debtor: { id: debtorId },
       issuePlace: 'Morelia, Michoacán',
       issueDate: futureDate(-2),
       paymentPlace: 'Morelia, Michoacán',
