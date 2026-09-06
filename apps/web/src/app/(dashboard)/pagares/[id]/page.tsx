@@ -13,8 +13,7 @@ import { Simulator } from '@/features/notes/simulator';
 import { EarlyPayoff } from '@/features/notes/early-payoff';
 import { SendDocument } from '@/features/notes/send-document';
 import { STATUS_PRESENTATION } from '@/entities/note/status';
-import { StatusChip } from '@/shared/ui/status-chip';
-import { dateTime, money, shortDate } from '@/shared/lib/format';
+import { dateTime, shortDate } from '@/shared/lib/format';
 import { todayInBusinessZone } from '@/shared/lib/today';
 import { ApiError } from '@/shared/api/client';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
@@ -363,11 +362,11 @@ export default async function NoteDetailPage({
           */}
         <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           {/*
-            * La serie, cuando la deuda se firmó en varios pagarés. Va lo primero
+            * El calendario, cuando la deuda se paga en cuotas. Va lo primero
             * porque cambia cómo se lee todo lo de abajo: este saldo es el de una
             * cuota, no el de la deuda entera.
             */}
-          {note.series ? <SeriePagares serie={note.series} actual={note.id} /> : null}
+          {note.schedule ? <CalendarioDePagos schedule={note.schedule} /> : null}
 
           <section className="card p-4" aria-label="Resumen">
             <h2 className="mb-3 text-sm font-semibold">Resumen</h2>
@@ -482,10 +481,10 @@ export default async function NoteDetailPage({
               paga el viernes" se hace justo antes de registrar el pago (§24.5). */}
           <Simulator noteId={note.id} today={today} />
 
-          {/* Liquidar la serie de una vez es otra pregunta que la del abono del
+          {/* Liquidarlo de una vez es otra pregunta que la del abono del
               viernes, y con otra respuesta: aquí puede haber interés que no se
               causa (§12). Sólo aparece cuando hay más de un pagaré que saldar. */}
-          {note.series ? <EarlyPayoff noteId={note.id} today={today} /> : null}
+          {note.schedule ? <EarlyPayoff noteId={note.id} today={today} /> : null}
 
           {/* Todo lo descargable en un sitio (§17.1). Lo que aún no existe se
               deshabilita con el motivo, no se esconde: así se sabe que existe
@@ -709,76 +708,104 @@ function Campo({
 }
 
 /**
- * Los pagarés hermanos de una serie (§12).
+ * El calendario de pagos del pagaré (ADR 0022).
  *
- * Un pagaré es de pago único, así que un plan de doce mensualidades son doce
- * títulos. Al abrir uno, la pregunta es cómo va el resto: cuáles se pagaron,
- * cuál vence ahora y cuánto queda del plan.
+ * Un pagaré a plazos es **un** título con su tabla de amortización, no doce
+ * títulos. Al abrirlo, la pregunta es por dónde va: qué cuotas se pagaron, cuál
+ * toca ahora y cuánto queda. Lo cubierto de cada una se deriva del libro de
+ * abonos, no se guarda: dos cifras del mismo dinero acaban contradiciéndose.
  */
-function SeriePagares({
-  serie,
-  actual,
-}: {
-  serie: NonNullable<NoteDetail['series']>;
-  actual: string;
-}) {
-  const pagados = serie.notes.filter((nota) => nota.status === 'PAID').length;
-  const total = serie.notes.reduce((suma, nota) => suma + BigInt(nota.amount.cents), 0n);
-  const pendiente = serie.notes.reduce((suma, nota) => suma + BigInt(nota.balance.cents), 0n);
+function CalendarioDePagos({ schedule }: { schedule: NonNullable<NoteDetail['schedule']> }) {
+  const pagadas = schedule.installments.filter((cuota) => cuota.status === 'PAID').length;
+  const siguiente = schedule.installments.find((cuota) => cuota.status !== 'PAID');
+  const cada = schedule.frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales';
 
   return (
-    <section className="card p-4" aria-label="Serie de pagarés">
+    <section className="card p-4" aria-label="Calendario de pagos">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-ink">
-          Pago {serie.index} de {serie.size}
+          {schedule.size} pagos {cada}
         </h2>
         <p className="tnum text-xs text-muted">
-          {pagados} de {serie.size} pagados
+          {pagadas} de {schedule.size} cubiertos
         </p>
       </div>
       <p className="mt-0.5 text-xs text-muted">
-        Deuda de {money(total.toString())}, documentada en {serie.size} pagarés. Queda{' '}
-        {money(pendiente.toString())}.
+        {schedule.principal.formatted} prestados
+        {BigInt(schedule.interest.cents) > 0n
+          ? ` más ${schedule.interest.formatted} de interés`
+          : ', sin interés'}
+        .
+        {siguiente
+          ? ` Toca la cuota ${siguiente.index}, el ${shortDate(siguiente.dueOn)}.`
+          : ' No queda ninguna por cubrir.'}
       </p>
 
-      <ol className="mt-3 divide-y divide-line border-t border-line">
-        {serie.notes.map((nota) => {
-          const esActual = nota.id === actual;
-          const fila = (
-            <>
-              <span className="tnum w-8 shrink-0 font-mono text-xs text-muted">{nota.index}</span>
-              <span className="tnum w-24 shrink-0 text-xs text-ink-2">{shortDate(nota.dueDate)}</span>
-              <span className="tnum flex-1 text-right text-sm text-ink">
-                {nota.amount.formatted}
-              </span>
-              <span className="w-24 shrink-0 text-right">
-                <StatusChip status={nota.status} />
-              </span>
-            </>
-          );
-
-          return (
-            <li key={nota.id}>
-              {esActual ? (
-                // El que se está viendo no es un enlace a sí mismo: se marca.
-                <div
-                  aria-current="page"
-                  className="flex items-center gap-2 rounded bg-accent-soft/60 px-1 py-2"
-                >
-                  {fila}
-                </div>
-              ) : (
-                <Link
-                  href={`/pagares/${nota.id}`}
-                  className="flex items-center gap-2 rounded px-1 py-2 hover:bg-surface-2"
-                >
-                  {fila}
-                </Link>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {/*
+        * La zona con desplazamiento es alcanzable con el teclado.
+        *
+        * Un contenedor que hace scroll y no recibe foco deja el contenido de
+        * abajo fuera del alcance de quien no usa ratón: se ve, pero no se llega.
+        * Por eso lleva `tabIndex` y nombre propio (regla
+        * `scrollable-region-focusable` de WCAG 2.1.1).
+        */}
+      <div
+        className="mt-3 max-h-72 overflow-y-auto"
+        tabIndex={0}
+        role="group"
+        aria-label="Cuotas del pagaré"
+      >
+        <table className="w-full text-sm">
+          <caption className="sr-only">Cuotas del pagaré con lo cubierto de cada una</caption>
+          <thead className="sticky top-0 bg-surface text-xs text-muted">
+            <tr className="border-y border-line">
+              <th scope="col" className="py-1.5 pr-2 text-left font-medium">
+                #
+              </th>
+              <th scope="col" className="py-1.5 pr-2 text-left font-medium">
+                Vence
+              </th>
+              <th scope="col" className="py-1.5 pr-2 text-right font-medium">
+                Cuota
+              </th>
+              <th scope="col" className="py-1.5 pr-2 text-right font-medium">
+                Abonado
+              </th>
+              <th scope="col" className="py-1.5 text-right font-medium">
+                Le queda
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {schedule.installments.map((cuota) => (
+              <tr
+                key={cuota.index}
+                className={cuota.status === 'PAID' ? 'text-muted' : undefined}
+              >
+                <td className="tnum py-1.5 pr-2 font-mono text-xs">{cuota.index}</td>
+                <td className="tnum py-1.5 pr-2 text-xs">
+                  {shortDate(cuota.dueOn)}
+                  {/* El atraso va junto a su fecha: es lo que la explica. */}
+                  {cuota.daysOverdue > 0 ? (
+                    <span className="ml-1.5 text-crit">+{cuota.daysOverdue} d</span>
+                  ) : null}
+                </td>
+                <td className="tnum py-1.5 pr-2 text-right">{cuota.amount.formatted}</td>
+                <td className="tnum py-1.5 pr-2 text-right text-xs text-muted">
+                  {cuota.paid.formatted}
+                </td>
+                <td className="tnum py-1.5 text-right font-medium">
+                  {cuota.status === 'PAID' ? (
+                    <span className="text-ok">Cubierta</span>
+                  ) : (
+                    cuota.balance.formatted
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

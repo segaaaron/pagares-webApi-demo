@@ -7,3 +7,4 @@ export * from './schemas/payments.js';
 export * from './schemas/auth.js';
 export * from './schemas/reminders.js';
 export * from './schemas/imports.js';
+export * from './schemas/debtors.js';

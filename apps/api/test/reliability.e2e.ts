@@ -83,14 +83,37 @@ function unique(): string {
 
 let adminToken = '';
 
+/**
+ * Da de alta una ficha y devuelve su identificador.
+ *
+ * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
+ * elige.
+ */
+async function nuevoDeudor(
+  nombre: string,
+  /*
+   * Aleatorio y no sólo por reloj: estas pruebas dan de alta cinco fichas a la
+   * vez y `Date.now()` devuelve el mismo milisegundo para todas, así que
+   * chocaban entre ellas contra la regla del teléfono repetido.
+   */
+  phone = `+52443${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: { fullName: `${nombre} ${Date.now()}`, address: 'Calle de prueba 1', phone },
+  });
+  return String(creado.body['id']);
+}
+
 /** Datos mínimos de un pagaré nuevo; el resto lo pone el servidor (§4). */
-function noteBody(label: string, phone: string): Record<string, unknown> {
+function noteBody(debtorId: string): Record<string, unknown> {
   return {
-    debtor: { fullName: `Concurrencia ${label}`, address: 'Calle de prueba 1', phone },
+    debtor: { id: debtorId },
     issuePlace: 'Morelia, Michoacán',
     issueDate: futureDate(-2),
     paymentPlace: 'Morelia, Michoacán',
-    dueDate: futureDate(30),
     creditorName: 'Créditos Morelia S.A. de C.V.',
     amountCents: '1000000',
     interestRate: { value: 2, period: 'MONTHLY' },
@@ -110,14 +133,17 @@ beforeAll(async () => {
 
 describe('§4 · dos altas simultáneas no repiten folio', () => {
   it('cinco emisiones a la vez producen cinco folios distintos', async () => {
-    const label = unique();
+    // Uno por pagaré: al mismo deudor no se le emiten dos sin firmar (ADR 0019).
+    const fichas = await Promise.all(
+      Array.from({ length: 5 }, (_, index) => nuevoDeudor(`Folio ${unique()}-${index}`)),
+    );
     const results = await Promise.all(
-      Array.from({ length: 5 }, (_, index) =>
+      fichas.map((debtorId) =>
         call('/admin/notes', {
           method: 'POST',
           token: adminToken,
           idempotencyKey: randomUUID(),
-          body: noteBody(`${label}-${index}`, `+52443${String(Date.now() + index).slice(-7)}`),
+          body: noteBody(debtorId),
         }),
       ),
     );
@@ -139,16 +165,16 @@ describe('§12 · dos emisiones simultáneas al mismo deudor', () => {
      * un adorno sin el cerrojo: dos altas a la vez leerían las dos que no hay
      * nada pendiente y emitirían las dos.
      */
-    const label = unique();
-    const phone = `+52443${String(Date.now()).slice(-7)}`;
+    // Los dos contra la **misma** ficha: es el caso que el cerrojo protege.
+    const debtorId = await nuevoDeudor('Concurrencia');
 
     const results = await Promise.all(
-      Array.from({ length: 2 }, (_, index) =>
+      Array.from({ length: 2 }, () =>
         call('/admin/notes', {
           method: 'POST',
           token: adminToken,
           idempotencyKey: randomUUID(),
-          body: noteBody(`${label}-${index}`, phone),
+          body: noteBody(debtorId),
         }),
       ),
     );
@@ -169,12 +195,14 @@ describe('§12.2 · dos abonos simultáneos no sobrepasan el saldo', () => {
      * un pagaré normal —que es lo que da de alta al deudor— y luego se importa
      * el segundo contra ese mismo teléfono.
      */
+    // La importación reconoce al deudor por su teléfono (§24.5), así que la
+    // ficha se estrena con uno conocido y el CSV apunta a él.
     const phone = `+52443${String(Date.now()).slice(-7)}`;
     const seed = await call('/admin/notes', {
       method: 'POST',
       token: adminToken,
       idempotencyKey: randomUUID(),
-      body: noteBody(`abonos-${unique()}`, phone),
+      body: noteBody(await nuevoDeudor(`Abonos ${unique()}`, phone)),
     });
     expect(seed.status).toBe(201);
 
@@ -346,13 +374,16 @@ describe('§24.1 · la cadena de la bitácora aguanta la concurrencia', () => {
     expect(antes.status).toBe(200);
 
     const label = unique();
+    const fichas = await Promise.all(
+      Array.from({ length: 10 }, (_, index) => nuevoDeudor(`Cadena ${label}-${index}`)),
+    );
     await Promise.all(
-      Array.from({ length: 10 }, (_, index) =>
+      fichas.map((debtorId) =>
         call('/admin/notes', {
           method: 'POST',
           token: adminToken,
           idempotencyKey: randomUUID(),
-          body: noteBody(`cadena-${label}-${index}`, `+52443${String(Date.now() + index).slice(-7)}`),
+          body: noteBody(debtorId),
         }),
       ),
     );

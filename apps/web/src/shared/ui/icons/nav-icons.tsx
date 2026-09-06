@@ -135,6 +135,20 @@ export const NavIcon = {
       <path d="M6.5 3.5h3l1.5 4-2 1.2a12 12 0 0 0 5.3 5.3l1.2-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2Z" />
     </svg>
   ),
+  /** Un teléfono, para decir desde qué aparato entra alguien. */
+  mobile: () => (
+    <svg {...base} width={15} height={15}>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+      <path d="M11 18.5h2" />
+    </svg>
+  ),
+  /** Una pantalla: quien trabaja desde el panel y no desde la aplicación. */
+  monitor: () => (
+    <svg {...base} width={15} height={15}>
+      <rect x="2.5" y="4" width="19" height="12.5" rx="2" />
+      <path d="M9 20.5h6M12 16.5v4" />
+    </svg>
+  ),
   inbox: () => (
     <svg {...base}>
       <path d="M4 13h4l1.5 3h5l1.5-3h4" />

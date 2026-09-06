@@ -1,9 +1,25 @@
-import { Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseInterceptors,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { businessToday, daysOverdue, formatMxn } from '@pagares/domain-rules';
-import { Roles } from '../../shared/http/auth.guard.js';
+import { createDebtorRequestSchema, type CreateDebtorRequest } from '@pagares/contracts';
+import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
+import { IdempotencyInterceptor } from '../../shared/http/idempotency.interceptor.js';
+import { ZodValidationPipe } from '../../shared/http/zod-validation.pipe.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
 import { withClock } from '../promissory-notes/domain/note-status.js';
+import { CreateDebtorUseCase } from './application/create-debtor.use-case.js';
 
 const OPEN: readonly string[] = ['ISSUED', 'PARTIALLY_PAID', 'RESTRUCTURED'];
 
@@ -18,8 +34,30 @@ const OPEN: readonly string[] = ['ISSUED', 'PARTIALLY_PAID', 'RESTRUCTURED'];
 export class DebtorsController {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly createDebtor: CreateDebtorUseCase,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
+
+  /**
+   * Alta de un deudor.
+   *
+   * Con `Idempotency-Key`: dar dos veces al botón no puede dejar dos fichas de
+   * la misma persona, y el historial partido en dos no se arregla después (§9.1).
+   */
+  @Post()
+  @UseInterceptors(IdempotencyInterceptor)
+  async create(
+    @Body(new ZodValidationPipe(createDebtorRequestSchema)) body: CreateDebtorRequest,
+    @CurrentActor() actor: Actor,
+    @Req() request: Request & { traceId?: string },
+  ) {
+    return this.createDebtor.execute(body, {
+      traceId: request.traceId ?? 'unknown',
+      actorId: actor.id,
+      actorRole: actor.role,
+      ...(request.ip !== undefined ? { ip: request.ip } : {}),
+    });
+  }
 
   /**
    * Directorio de deudores. Con `q` sirve además al buscador de la emisión

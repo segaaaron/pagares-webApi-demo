@@ -65,6 +65,28 @@ interface Client {
 let adminToken = '';
 
 /**
+ * Da de alta una ficha y devuelve su identificador.
+ *
+ * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
+ * elige.
+ */
+async function nuevoDeudor(nombre: string, email?: string): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-7)}`,
+      ...(email ? { email } : {}),
+    },
+  });
+  return String(creado.body['id']);
+}
+
+
+/**
  * Da de alta un cliente, estrena su contraseña y le emite un pagaré firmado con
  * un abono. Pasa por el flujo completo —incluido el cambio obligatorio del
  * primer acceso (§10.3)—, así que además comprueba que ese camino existe.
@@ -110,16 +132,10 @@ async function makeClient(label: string): Promise<Client> {
     token: adminToken,
     idempotencyKey: randomUUID(),
     body: {
-      debtor: {
-        fullName: `Cliente ${label}`,
-        address: 'Calle de prueba 1',
-        phone: `+52443${String(Date.now()).slice(-7)}`,
-        email,
-      },
+      debtor: { id: await nuevoDeudor(`Cliente ${label}`, email) },
       issuePlace: 'Morelia, Michoacán',
       issueDate: futureDate(-2),
       paymentPlace: 'Morelia, Michoacán',
-      dueDate: futureDate(30),
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents: '1000000',
       interestRate: { value: 3, period: 'MONTHLY' },
@@ -279,15 +295,10 @@ describe('API3 · el cliente no puede mandar campos que no le tocan', () => {
       token: adminToken,
       idempotencyKey: randomUUID(),
       body: {
-        debtor: {
-          fullName: 'Cliente mass assignment',
-          address: 'Calle de prueba 1',
-          phone: '+524430000009',
-        },
+        debtor: { id: await nuevoDeudor('Cliente mass assignment') },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         // Nada de esto lo decide el cliente (§4).
@@ -353,18 +364,14 @@ describe('§24.5 · castigo y quita exigen el folio teclado', () => {
 describe('§12.4 · idempotencia', () => {
   it('la misma clave con otro cuerpo devuelve 422', async () => {
     const key = randomUUID();
+    // Ficha nueva por ejecución: al mismo deudor no se le emite otro pagaré
+    // mientras no firme el anterior (ADR 0019).
+    const debtorId = await nuevoDeudor('Cliente idempotencia');
     const cuerpo = (amount: string): unknown => ({
-      debtor: {
-        fullName: 'Cliente idempotencia',
-        address: 'Calle de prueba 3',
-        // Único por ejecución: al mismo deudor no se le emite otro pagaré
-        // mientras no firme el anterior (ADR 0019).
-        phone: `+52443${String(Date.now()).slice(-7)}`,
-      },
+      debtor: { id: debtorId },
       issuePlace: 'Morelia, Michoacán',
       issueDate: futureDate(-1),
       paymentPlace: 'Morelia, Michoacán',
-      dueDate: futureDate(20),
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents: amount,
     });

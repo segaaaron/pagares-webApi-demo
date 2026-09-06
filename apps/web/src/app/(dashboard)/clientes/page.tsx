@@ -6,6 +6,7 @@ import { Money } from '@/shared/ui/money';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { PageHeader } from '@/shared/ui/page-header';
 import { ImportPanel } from '@/features/imports/import-panel';
+import { NewDebtorForm } from '@/features/debtors/debtor-form';
 
 export const metadata = { title: 'Deudores' };
 
@@ -66,20 +67,37 @@ export default async function DebtorsPage({
       key: 'name',
       header: 'Nombre',
       cell: (d) => (
-        <span className="flex items-center gap-2">
-          <Link href={`/clientes/${d.id}`} className="font-medium text-ink hover:underline">
-            {d.fullName}
-          </Link>
-          {!d.hasAccount ? (
-            <span
-              className="chip bg-surface-2 text-muted"
-              title="Sin cuenta: firmará presencialmente y sus avisos son gestión manual"
-            >
-              Sin cuenta
-            </span>
-          ) : null}
-        </span>
+        <Link href={`/clientes/${d.id}`} className="font-medium text-ink hover:underline">
+          {d.fullName}
+        </Link>
       ),
+    },
+    {
+      /*
+       * Si entra a la aplicación o no, en su propia columna.
+       *
+       * Colgado del nombre era una etiqueta más entre otras; aquí se lee de
+       * arriba abajo y se ve de un vistazo a quién falta por dar de alta. Y
+       * quien no la tiene lleva al sitio donde se le da, que es su ficha: un
+       * acceso sin deudor no puede consultar nada, así que no se crea suelto.
+       */
+      key: 'access',
+      header: 'App',
+      width: '9rem',
+      cell: (d) =>
+        d.hasAccount ? (
+          <span className="chip bg-ok-soft text-ok" title="Entra a la aplicación y firma desde ahí">
+            Con acceso
+          </span>
+        ) : (
+          <Link
+            href={`/clientes/${d.id}`}
+            className="btn btn-secondary btn-sm"
+            title="Sin cuenta: firmará presencialmente y sus avisos son gestión manual. Dale acceso desde su ficha."
+          >
+            Dar acceso
+          </Link>
+        ),
     },
     {
       key: 'contact',
@@ -153,15 +171,20 @@ export default async function DebtorsPage({
         title="Deudores"
         description="Quién debe y cuánto. El comportamiento se deriva del historial de pagos, no se captura."
         actions={
-          sinAcceso > 0 ? (
-            <Link
-              href={conFiltro(soloSinAcceso ? null : 'sin')}
-              className={`btn btn-sm ${soloSinAcceso ? 'btn-primary' : 'btn-secondary'}`}
-              title="Deudores que no pueden entrar a la aplicación"
-            >
-              {soloSinAcceso ? 'Ver todos' : `Sin acceso (${sinAcceso})`}
-            </Link>
-          ) : null
+          <>
+            {/* El alta vive aquí y sólo aquí: la emisión ya no crea fichas al
+                vuelo, porque pedía otros campos y acabaron divergiendo. */}
+            <NewDebtorForm />
+            {sinAcceso > 0 ? (
+              <Link
+                href={conFiltro(soloSinAcceso ? null : 'sin')}
+                className={`btn btn-sm ${soloSinAcceso ? 'btn-primary' : 'btn-secondary'}`}
+                title="Deudores que no pueden entrar a la aplicación"
+              >
+                {soloSinAcceso ? 'Ver todos' : `Sin acceso (${sinAcceso})`}
+              </Link>
+            ) : null}
+          </>
         }
       />
 

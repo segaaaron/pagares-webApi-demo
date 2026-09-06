@@ -67,6 +67,20 @@ export class NoteNotFoundError extends BaseDomainError {
 }
 
 /**
+ * Se emite contra una ficha que ya existe: se da de alta en Deudores.
+ *
+ * Es 404 y no 422 porque el identificador se refiere a algo que no está, no a un
+ * campo mal escrito. Y lleva a la acción, que es lo que hace falta al leerlo.
+ */
+export class DebtorNotFoundError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.NOT_FOUND;
+  readonly httpStatus = 404;
+  constructor() {
+    super('Ese deudor no existe. Dalo de alta en Deudores y vuelve a emitir');
+  }
+}
+
+/**
  * No hay cifra que dar: un anulado no se debe y un renovado se debe en el
  * documento nuevo. Contestar con un número aquí sería invitar a cobrar lo que
  * no toca (§13.7).

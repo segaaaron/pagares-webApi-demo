@@ -131,6 +131,57 @@ async function firmarPendientes(token: string): Promise<void> {
 }
 
 let adminToken = '';
+
+/**
+ * La ficha del cliente de estas pruebas, dada de alta una sola vez.
+ *
+ * Emitir ya no crea deudores. Y como todas las pruebas de este archivo hablan
+ * de la **misma** persona —la dueña del token de cliente—, su ficha se estrena
+ * una vez y se reutiliza: darla de alta otra vez sería 409 por teléfono
+ * repetido, que es justo lo que el alta impide.
+ */
+let fichaCliente = '';
+
+async function fichaDelCliente(phone: string, email: string): Promise<string> {
+  if (fichaCliente) return fichaCliente;
+
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+  });
+
+  if (creado.status === 201) {
+    fichaCliente = String(creado.body['id']);
+    return fichaCliente;
+  }
+
+  // Ya existía de una ejecución anterior: se busca por su teléfono.
+  const encontrado = await call(`/admin/debtors?q=${encodeURIComponent(phone)}`, {
+    token: adminToken,
+  });
+  const filas = encontrado.body as unknown as Record<string, unknown>[];
+  fichaCliente = String(filas[0]?.['id']);
+  expect(fichaCliente, 'la ficha del cliente existe').toBeTruthy();
+  return fichaCliente;
+}
+
+/** Una ficha ajena, para los casos de acceso a lo que no es tuyo (§9.1). */
+async function otraFicha(): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `Otro deudor ${Date.now()}`,
+      address: 'Calle ajena 2',
+      phone: `+52443${String(Date.now()).slice(-7)}`,
+    },
+  });
+  return String(creado.body['id']);
+}
+
 let clienteToken = '';
 let noteId = '';
 let paymentId = '';
@@ -175,11 +226,10 @@ beforeAll(async () => {
     token: adminToken,
     idempotencyKey: randomUUID(),
     body: {
-      debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+      debtor: { id: await fichaDelCliente(phone, email) },
       issuePlace: 'Morelia, Michoacán',
       issueDate: futureDate(-2),
       paymentPlace: 'Morelia, Michoacán',
-      dueDate: futureDate(30),
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents: '1000000',
       interestRate: { value: 2, period: 'MONTHLY' },
@@ -453,11 +503,10 @@ describe('§12 · el plan, sólo con el pagaré firmado', () => {
       token: adminToken,
       idempotencyKey: randomUUID(),
       body: {
-        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        debtor: { id: await fichaDelCliente(phone, email) },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-2),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '6000000',
         interestRate: { value: 3, period: 'MONTHLY' },
@@ -478,11 +527,10 @@ describe('§12 · el plan, sólo con el pagaré firmado', () => {
       token: adminToken,
       idempotencyKey: randomUUID(),
       body: {
-        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        debtor: { id: await fichaDelCliente(phone, email) },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-2),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(45),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '3000000',
         interestRate: { value: 3, period: 'MONTHLY' },
@@ -599,15 +647,10 @@ describe('§12 · el plan, sólo con el pagaré firmado', () => {
       token: adminToken,
       idempotencyKey: randomUUID(),
       body: {
-        debtor: {
-          fullName: 'Otro deudor',
-          address: 'Calle ajena 2',
-          phone: `+52443${String(Date.now()).slice(-7)}`,
-        },
+        debtor: { id: await otraFicha() },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-2),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 2, period: 'MONTHLY' },
@@ -653,11 +696,10 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
       token: adminToken,
       idempotencyKey: randomUUID(),
       body: {
-        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        debtor: { id: await fichaDelCliente(phone, email) },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-60),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(-10),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '6000000',
         interestRate: { value: 3, period: 'MONTHLY' },

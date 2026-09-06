@@ -143,21 +143,30 @@ test.describe('accesibilidad de las rutas críticas', () => {
       return d.toISOString().slice(0, 10);
     };
 
+    // La ficha va antes: emitir ya no crea deudores (ADR 0022).
+    const alta = await request.post(`${API}/admin/debtors`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+      data: {
+        fullName: `Accesibilidad ${Date.now()}`,
+        address: 'Calle de prueba 1',
+        phone: `+52443${String(Date.now()).slice(-7)}`,
+      },
+    });
+    const { id: debtorId } = (await alta.json()) as { id: string };
+
     const emitido = await request.post(`${API}/admin/notes`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Idempotency-Key': crypto.randomUUID(),
       },
       data: {
-        debtor: {
-          fullName: `Accesibilidad ${Date.now()}`,
-          address: 'Calle de prueba 1',
-          phone: `+52443${String(Date.now()).slice(-7)}`,
-        },
+        debtor: { id: debtorId },
         issuePlace: 'Morelia, Michoacán',
         issueDate: fecha(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: fecha(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 2, period: 'MONTHLY' },

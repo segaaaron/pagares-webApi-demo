@@ -28,27 +28,26 @@ test('sin plazos no hay plan: un pagaré suelto no necesita tabla', async ({ pag
   await page.getByLabel('Importe (pesos)').fill('60000');
 
   await expect(page.getByRole('region', { name: 'Plan de pagos' })).toHaveCount(0);
-  await expect(page.getByLabel('Interés del préstamo', { exact: true })).toHaveCount(0);
 });
 
-test('con interés sobre saldos insolutos, la tabla dice lo que se va a firmar', async ({ page }) => {
+test('con interés, la tabla dice lo que se va a firmar', async ({ page }) => {
   await abrirEmision(page);
   await page.getByLabel('Importe (pesos)').fill('60000');
+  await page.getByLabel('Interés').fill('3');
   await page.getByLabel('Número de pagos').selectOption('12');
-  await page.getByLabel('Interés del préstamo', { exact: true }).selectOption('INSOLUTOS');
-  await page.getByLabel('Tasa del préstamo').fill('3');
 
   const plan = page.getByRole('region', { name: 'Plan de pagos' });
   await expect(plan).toBeVisible();
 
   /*
-   * $60,000 a 3 % mensual en doce cuotas: $6,027.73 al mes, $12,332.69 de
-   * ganancia. Las cifras van escritas a propósito: si el reparto cambia sin
-   * querer, esta prueba lo dice en vez de aprobar cualquier número.
+   * $60,000 a 3 % mensual en doce cuotas, sobre el monto prestado: $1,800 de
+   * interés en todas y $21,600 de ganancia. Las cifras van escritas a
+   * propósito: si el reparto cambia sin querer, esta prueba lo dice en vez de
+   * aprobar cualquier número.
    */
-  await expect(plan).toContainText('$6,027.73');
-  await expect(plan).toContainText('$12,332.69');
-  await expect(plan).toContainText('$72,332.69');
+  await expect(plan).toContainText('$21,600.00');
+  await expect(plan).toContainText('$81,600.00');
+  await expect(plan).toContainText('$1,800.00');
 
   // Doce cuotas, ni once ni trece.
   await expect(plan.locator('tbody tr')).toHaveCount(12);
@@ -57,24 +56,32 @@ test('con interés sobre saldos insolutos, la tabla dice lo que se va a firmar',
   await expect(plan.locator('tbody tr').last()).toContainText('$0.00');
 });
 
-test('el saldo global avisa de que sale más caro, y no sólo con color', async ({ page }) => {
+test('quincenal cobra cada quince días, y el interés es por quincena', async ({ page }) => {
+  /*
+   * El número que se escribe es el interés **del periodo**: con quincenal
+   * elegido, «3» es 3 % quincenal. Por eso la cuota lleva el mismo interés que
+   * el plan mensual, pero se cobra el doble de veces al año.
+   */
   await abrirEmision(page);
   await page.getByLabel('Importe (pesos)').fill('60000');
+  await page.getByLabel('Interés').fill('3');
   await page.getByLabel('Número de pagos').selectOption('12');
-  await page.getByLabel('Interés del préstamo', { exact: true }).selectOption('GLOBAL');
-  await page.getByLabel('Tasa del préstamo').fill('3');
+  await page.getByLabel('Cada cuánto se paga').selectOption('BIWEEKLY');
 
   const plan = page.getByRole('region', { name: 'Plan de pagos' });
-  // 60,000 × 3 % × 12 = 21,600, calculado siempre sobre el importe original.
-  await expect(plan).toContainText('$21,600.00');
-  // El aviso va con texto, no fiado al color de fondo.
-  await expect(plan).toContainText('saldo global');
-  await expect(plan).toContainText('Banxico');
+  await expect(plan).toContainText('cuotas quincenales');
+  await expect(plan).toContainText('$1,800.00');
+
+  // Quince días exactos entre la primera cuota y la segunda.
+  const filas = plan.locator('tbody tr');
+  await expect(filas.first()).toContainText('20 sep 2026');
+  await expect(filas.nth(1)).toContainText('05 oct 2026');
 });
 
 test('sin interés, el plan reparte sólo el préstamo', async ({ page }) => {
   await abrirEmision(page);
   await page.getByLabel('Importe (pesos)').fill('60000');
+  await page.getByLabel('Interés').fill('0');
   await page.getByLabel('Número de pagos').selectOption('12');
 
   const plan = page.getByRole('region', { name: 'Plan de pagos' });
@@ -104,7 +111,23 @@ async function emitirSerie(
 
   const hoy = new Date();
   const ayer = new Date(hoy.getTime() - 86_400_000).toISOString().slice(0, 10);
-  const vence = new Date(hoy.getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
+
+  /*
+   * La ficha va antes: emitir ya no crea deudores. Se da de alta en Deudores y
+   * el pagaré la elige.
+   */
+  const alta = await request.post(`${API}/admin/debtors`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    data: {
+      fullName: `Liquidación ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-7)}`,
+    },
+  });
+  const { id: debtorId } = (await alta.json()) as { id: string };
 
   const respuesta = await request.post(`${API}/admin/notes`, {
     headers: {
@@ -112,15 +135,10 @@ async function emitirSerie(
       'Idempotency-Key': crypto.randomUUID(),
     },
     data: {
-      debtor: {
-        fullName: `Liquidación ${Date.now()}`,
-        address: 'Calle de prueba 1',
-        phone: `+52443${String(Date.now()).slice(-7)}`,
-      },
+      debtor: { id: debtorId },
       issuePlace: 'Morelia, Michoacán',
       issueDate: ayer,
       paymentPlace: 'Morelia, Michoacán',
-      dueDate: vence,
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents: '6000000',
       interestRate: { value: 3, period: 'MONTHLY' },

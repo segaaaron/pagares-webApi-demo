@@ -76,15 +76,41 @@ interface Calendario {
   };
 }
 
+/**
+ * Da de alta una ficha y devuelve su identificador.
+ *
+ * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
+ * elige. Cada prueba estrena la suya para no toparse con la regla del ADR 0019.
+ */
+async function nuevoDeudor(nombre = 'Plan'): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    token: adminToken,
+    idempotencyKey: randomUUID(),
+    body: {
+      fullName: `${nombre} ${Date.now()}`,
+      address: 'Calle de prueba 1',
+      phone: `+52443${String(Date.now()).slice(-7)}`,
+    },
+  });
+  expect(creado.status, 'el deudor se da de alta').toBe(201);
+  return String(creado.body['id']);
+}
+
 /** Emite y devuelve el pagaré con su calendario. */
 async function emitir(
   installments: number,
   amountCents: string,
-  dueDate = futureDate(30),
-  plan?: { model: 'NONE' | 'INSOLUTOS' | 'GLOBAL'; rate?: { value: number; period: 'MONTHLY' } },
-  /** Para probar cuotas ya vencidas hace falta expedir antes del vencimiento. */
+  /*
+   * El vencimiento ya no se manda: se calcula desde la expedición, la
+   * periodicidad y el número de pagos. Para probar cuotas ya vencidas se expide
+   * hacia atrás y el calendario cae solo donde tiene que caer.
+   */
   issueDate = futureDate(-1),
+  plan?: { model: 'NONE' | 'INSOLUTOS' | 'GLOBAL'; rate?: { value: number; period: 'MONTHLY' } },
   paymentFrequency: 'MONTHLY' | 'BIWEEKLY' = 'MONTHLY',
+  /** Para emitirle un segundo pagaré a la misma persona. */
+  debtorId?: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return call('/admin/notes', {
     method: 'POST',
@@ -92,15 +118,10 @@ async function emitir(
     idempotencyKey: randomUUID(),
     body: {
       ...(plan ? { plan: { model: plan.model, rate: plan.rate ?? null } } : {}),
-      debtor: {
-        fullName: `Plan ${Date.now()}`,
-        address: 'Calle de prueba 1',
-        phone: `+52443${String(Date.now()).slice(-7)}`,
-      },
+      debtor: { id: debtorId ?? (await nuevoDeudor()) },
       issuePlace: 'Morelia, Michoacán',
       issueDate,
       paymentPlace: 'Morelia, Michoacán',
-      dueDate,
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents,
       interestRate: { value: 3, period: 'MONTHLY' },
@@ -167,12 +188,12 @@ describe('§12 · emitir la deuda pagadera en cuotas', () => {
   });
 
   it('las cuotas van mes a mes desde la fecha pactada', async () => {
-    const resultado = await emitir(3, '3000000', '2027-01-31');
+    const resultado = await emitir(3, '3000000', '2025-12-31');
     const cuotas = (resultado.body['schedule'] as Calendario).installments;
 
     // Y el 31 cae al último día del mes que no lo tiene, en vez de desbordarse
     // al mes siguiente.
-    expect(cuotas.map((c) => c.dueOn)).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+    expect(cuotas.map((c) => c.dueOn)).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
   });
 
   it('el título vence con la última cuota, no con la primera', async () => {
@@ -181,36 +202,36 @@ describe('§12 · emitir la deuda pagadera en cuotas', () => {
      * 79 LGTOC vuelve pagadero a la vista lo que lleva vencimientos sucesivos
      * dentro; aquí el calendario está al lado del título, no dentro.
      */
-    const resultado = await emitir(3, '3000000', '2027-01-31');
+    const resultado = await emitir(3, '3000000', '2025-12-31');
     const detalle = await call(`/admin/notes/${String(resultado.body['id'])}`, {
       token: adminToken,
     });
 
-    expect(detalle.body['dueDate']).toBe('2027-03-31');
+    expect(detalle.body['dueDate']).toBe('2026-03-31');
   });
 
   it('quincenal son quince días exactos entre cuota y cuota', async () => {
-    const resultado = await emitir(4, '4000000', '2027-01-25', undefined, futureDate(-1), 'BIWEEKLY');
+    const resultado = await emitir(4, '4000000', '2026-01-25', undefined, 'BIWEEKLY');
     const calendario = resultado.body['schedule'] as Calendario;
 
     expect(calendario.frequency).toBe('BIWEEKLY');
     // Y cruzando el fin de mes sin corregir nada: es lo que permite al deudor
     // contar los días él mismo.
     expect(calendario.installments.map((c) => c.dueOn)).toEqual([
-      '2027-01-25',
-      '2027-02-09',
-      '2027-02-24',
-      '2027-03-11',
+      '2026-02-09',
+      '2026-02-24',
+      '2026-03-11',
+      '2026-03-26',
     ]);
   });
 
   it('quincenal, el título vence con la última quincena', async () => {
-    const resultado = await emitir(4, '4000000', '2027-01-25', undefined, futureDate(-1), 'BIWEEKLY');
+    const resultado = await emitir(4, '4000000', '2026-01-25', undefined, 'BIWEEKLY');
     const detalle = await call(`/admin/notes/${String(resultado.body['id'])}`, {
       token: adminToken,
     });
 
-    expect(detalle.body['dueDate']).toBe('2027-03-11');
+    expect(detalle.body['dueDate']).toBe('2026-03-26');
   });
 
   it('van en orden y numeradas del uno al último', async () => {
@@ -256,7 +277,7 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
      * prestamista desde que entrega el dinero hasta que se lo devuelven. No es
      * el moratorio, que sólo castiga el atraso (§12.3).
      */
-    const resultado = await emitir(12, '6000000', futureDate(30), {
+    const resultado = await emitir(12, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -278,7 +299,7 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
      * El pagaré tiene que decir lo que se debe, no lo que se entregó: con
      * interés pactado, las dos cifras no coinciden (ADR 0022).
      */
-    const resultado = await emitir(12, '6000000', futureDate(30), {
+    const resultado = await emitir(12, '6000000', undefined, {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -293,7 +314,7 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
   });
 
   it('cada cuota desglosa cuánto es interés y cuánto capital', async () => {
-    const resultado = await emitir(4, '5000000', futureDate(30), {
+    const resultado = await emitir(4, '5000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -313,11 +334,11 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
   it('sobre saldo global sale más caro con la misma tasa', async () => {
     // Es el hecho que la pantalla enseña antes de emitir: con la misma tasa
     // nominal, el deudor paga bastante más.
-    const insolutos = await emitir(12, '6000000', futureDate(30), {
+    const insolutos = await emitir(12, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
-    const global = await emitir(12, '6000000', futureDate(30), {
+    const global = await emitir(12, '6000000', undefined, {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -337,16 +358,15 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
      * entero cada quince días: el doble de lo pactado, y nadie lo vería hasta
      * que el deudor sumara (§12).
      */
-    const mensual = await emitir(4, '5000000', futureDate(30), {
+    const mensual = await emitir(4, '5000000', undefined, {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
     const quincenal = await emitir(
       4,
       '5000000',
-      futureDate(30),
+      undefined,
       { model: 'GLOBAL', rate: { value: 3, period: 'MONTHLY' } },
-      futureDate(-1),
       'BIWEEKLY',
     );
 
@@ -369,12 +389,12 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
 
   it('un plan con interés y sin tasa es 422', async () => {
     // Sería un plan sin interés con más pasos, y con una promesa falsa dentro.
-    const resultado = await emitir(12, '6000000', futureDate(30), { model: 'INSOLUTOS' });
+    const resultado = await emitir(12, '6000000', undefined, { model: 'INSOLUTOS' });
     expect(resultado.status).toBe(422);
   });
 
   it('un plan con interés sobre un solo pago es 422', async () => {
-    const resultado = await emitir(1, '6000000', futureDate(30), {
+    const resultado = await emitir(1, '6000000', undefined, {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -390,7 +410,7 @@ describe('§12 · liquidación anticipada', () => {
      * ese tiempo no transcurre. Nadie ha abonado ni ha vencido nada, así que lo
      * que se debe hoy es exactamente lo prestado.
      */
-    const emision = await emitir(12, '6000000', futureDate(30), {
+    const emision = await emitir(12, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -412,7 +432,7 @@ describe('§12 · liquidación anticipada', () => {
   it('sobre saldo global, adelantar no ahorra un peso', async () => {
     // Se pactó sobre el importe original, y eso es lo que se firmó: la pantalla
     // lo dice en vez de insinuar un descuento que no existe.
-    const emision = await emitir(12, '6000000', futureDate(30), {
+    const emision = await emitir(12, '6000000', undefined, {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -428,7 +448,7 @@ describe('§12 · liquidación anticipada', () => {
 
   it('contesta por el calendario entero, no por la cuota que toca', async () => {
     // Liquidar es saldar la deuda, y la deuda es el título completo.
-    const emision = await emitir(6, '6000000', futureDate(30), {
+    const emision = await emitir(6, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -514,7 +534,7 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
 
   /** Emite un pagaré a plazos y lo firma: sin firma no admite abonos (§11.3). */
   async function planFirmado(): Promise<{ id: string; cuotas: Cuota[] }> {
-    const emision = await emitir(12, '6000000', futureDate(30), {
+    const emision = await emitir(12, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
@@ -639,13 +659,10 @@ describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
      * el pagaré a plazos lleva el precio del préstamo dentro. Si la mora fuera
      * igual en los dos, se estaría cobrando interés sobre interés.
      */
-    const conPlanEmision = await emitir(
-      12,
-      '6000000',
-      futureDate(-400),
-      { model: 'GLOBAL', rate: { value: 3, period: 'MONTHLY' } },
-      futureDate(-800),
-    );
+    const conPlanEmision = await emitir(12, '6000000', futureDate(-800), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
     expect(conPlanEmision.status).toBe(201);
     const total = (conPlanEmision.body['schedule'] as Calendario).plan.totalCents;
 
@@ -653,13 +670,19 @@ describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
     const detalleConPlan = await call(`/admin/notes/${String(conPlanEmision.body['id'])}`, {
       token: adminToken,
     });
-    const sueltoEmision = await emitir(
-      1,
-      total,
-      String(detalleConPlan.body['dueDate']),
-      undefined,
-      futureDate(-800),
-    );
+    /*
+     * El suelto tiene que vencer **el mismo día** que la última cuota del plan,
+     * o los días de atraso serían distintos y la comparación no diría nada. El
+     * vencimiento ya no se manda: se expide un mes antes y cae solo.
+     */
+    const [anio, mes, dia] = String(detalleConPlan.body['dueDate']).split('-').map(Number) as [
+      number,
+      number,
+      number,
+    ];
+    const unMesAntes = new Date(Date.UTC(anio, mes - 2, dia)).toISOString().slice(0, 10);
+
+    const sueltoEmision = await emitir(1, total, unMesAntes);
     expect(sueltoEmision.status).toBe(201);
 
     const sinPlan = await call(`/admin/notes/${String(sueltoEmision.body['id'])}`, {
@@ -684,7 +707,7 @@ describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
  */
 describe('§8 · una firma, un pagaré', () => {
   it('firmar el pagaré a plazos es un solo acto', async () => {
-    const emision = await emitir(12, '6000000', futureDate(30), {
+    const emision = await emitir(12, '6000000', undefined, {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });

@@ -13,6 +13,7 @@ import type { DomainEvent } from '@pagares/api-core';
 import {
   buildPaymentPlan,
   businessToday,
+  firstDueDate,
   installmentDates,
   toAnnualRatePct,
 } from '@pagares/domain-rules';
@@ -25,6 +26,7 @@ import { AuditService } from '../../../shared/persistence/audit.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { assertNoteInvariants } from '../domain/note-invariants.js';
+import { DebtorNotFoundError } from '../domain/note.errors.js';
 import { normalizePhone } from './assert-nothing-unsigned.js';
 import { NoteFactory } from './note-factory.js';
 
@@ -121,37 +123,45 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
     const amountCents = plan.totalCents;
 
     /*
-     * `dueDate` es la **primera** cuota; el título vence con la **última**.
+     * Cuándo vence el título **se calcula**, no se pide (§4).
      *
+     * Se presta un día, la primera cuota cae un periodo después y las demás la
+     * siguen; el pagaré vence con la última. Pedir además una fecha límite era
+     * un cuarto dato que podía contradecir a los otros tres: quien escribía el
+     * 20 de diciembre creyendo fijar el plazo obtenía un plan que **empezaba**
+     * ese día y terminaba en febrero.
+     *
+     * Cuándo cae la primera y cómo se avanza viven en `domain-rules`: aquí sólo
+     * se aplican.
+     */
+    const vencimientos = installmentDates(
+      firstDueDate(input.issueDate, input.paymentFrequency),
+      input.installments,
+      input.paymentFrequency,
+    );
+    const dueDate = vencimientos.at(-1) as string;
+
+    /*
      * Un solo vencimiento en la literalidad del documento (ADR 0022): el art.
      * 79 LGTOC vuelve pagadero a la vista lo que lleva vencimientos sucesivos
      * dentro, y aquí el calendario no está dentro del título sino al lado, que
      * es lo que contemplan los arts. 17 y 130 al obligar a recibir abonos.
      */
-    const vencimientos = installmentDates(
-      input.dueDate,
-      input.installments,
-      input.paymentFrequency,
-    );
-    const dueDate = vencimientos.at(-1) as string;
     const enCuotas = input.installments > 1;
 
     assertNoteInvariants({ amountCents, issueDate: input.issueDate, dueDate }, today);
 
-    /*
-     * El teléfono es la identidad del deudor a efectos de la regla del ADR
-     * 0019: es obligatorio, el correo no, y es el mismo criterio con el que la
-     * importación reconoce a quién pertenece cada fila (§24.5).
-     */
-    const telefonoDelDeudor = normalizePhone(input.debtor.phone);
-
     return this.uow.run(async (scope) => {
       const tx = scope.client;
-      /*
-       * Antes de resolver al deudor: el cerrojo va por teléfono, que es la
-       * identidad desde antes de que exista su primera ficha (ADR 0019).
-       */
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
+
+      /*
+       * El teléfono es la identidad del deudor a efectos de la regla del ADR
+       * 0019: es obligatorio, el correo no, y es el mismo criterio con el que la
+       * importación reconoce a quién pertenece cada fila (§24.5). Sale de la
+       * ficha, no de la petición: es el dato bueno.
+       */
+      const telefonoDelDeudor = normalizePhone(debtor.phone);
 
       const note = await this.notes.create(
         tx,
@@ -285,57 +295,40 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
   }
 
   /**
-   * Reutiliza el deudor si ya existe; si no, lo crea con el pagaré.
+   * La ficha del deudor y, si hace falta, su cuenta de acceso.
    *
-   * Y en los dos casos: **si tiene correo y todavía no tiene cuenta, se le
-   * crea aquí mismo** (§25.2). Antes había que ir a Accesos a darlo de alta a
-   * mano, con el riesgo de emitir un pagaré que su dueño no podía ver ni
-   * firmar. Todo en la misma transacción: o hay pagaré y cuenta, o no hay nada.
+   * La ficha **ya existe**: se da de alta en Deudores y aquí se elige. Crearla
+   * al vuelo dejaba dos capturas distintas de la misma persona según por dónde
+   * se entrara, y acabaron divergiendo.
+   *
+   * Lo que sí ocurre aquí es abrirle la cuenta si tiene correo y todavía no la
+   * tiene (§25.2): emitir un pagaré que su dueño no puede ver ni firmar no le
+   * sirve a nadie. En la misma transacción, así que o hay pagaré y cuenta, o no
+   * hay nada.
    */
   private async resolveDebtor(
     tx: TxClient,
     scope: { publish: (event: DomainEvent) => void },
     input: CreateNoteRequest,
     ctx: ExecutionContext,
-  ): Promise<{ id: string; userId: string | null }> {
-    /*
-     * Si el correo ya es de un deudor, se reutiliza ese deudor aunque el
-     * administrador lo haya capturado a mano en vez de buscarlo. Crear otro
-     * partiría su historial en dos y, además, chocaría contra el índice único
-     * de la cuenta enlazada: `Debtor.userId` es 1-a-1 (§25.2).
-     */
-    const byEmail =
-      !input.debtor.id && input.debtor.email
-        ? await tx.debtor.findFirst({ where: { email: input.debtor.email.toLowerCase() } })
-        : null;
+  ): Promise<{ id: string; userId: string | null; phone: string }> {
+    const debtor = await tx.debtor.findUnique({ where: { id: input.debtor.id } });
+    if (!debtor) throw new DebtorNotFoundError();
 
-    const debtor = input.debtor.id
-      ? await tx.debtor.findUniqueOrThrow({ where: { id: input.debtor.id } })
-      : (byEmail ??
-        (await tx.debtor.create({
-          data: {
-            fullName: input.debtor.fullName,
-            address: input.debtor.address,
-            phone: input.debtor.phone,
-            email: input.debtor.email?.toLowerCase() ?? null,
-          },
-        })));
-
-    const email = debtor.email ?? input.debtor.email?.toLowerCase() ?? null;
-    if (debtor.userId !== null || email === null) {
-      return { id: debtor.id, userId: debtor.userId };
+    if (debtor.userId !== null || debtor.email === null) {
+      return { id: debtor.id, userId: debtor.userId, phone: debtor.phone };
     }
 
     const account = await this.accounts.ensureForEmail({
       tx,
       publish: (event) => scope.publish(event as DomainEvent),
-      email,
+      email: debtor.email,
       fullName: debtor.fullName,
       phone: debtor.phone,
       actorId: ctx.actorId ?? undefined,
     });
 
     await tx.debtor.update({ where: { id: debtor.id }, data: { userId: account.userId } });
-    return { id: debtor.id, userId: account.userId };
+    return { id: debtor.id, userId: account.userId, phone: debtor.phone };
   }
 }

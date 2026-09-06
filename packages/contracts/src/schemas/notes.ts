@@ -6,7 +6,6 @@ import {
   civilDateSchema,
   collectionStageSchema,
   currencySchema,
-  emailSchema,
   noteStatusSchema,
   phoneSchema,
   portfolioClassSchema,
@@ -19,20 +18,20 @@ import {
  */
 export const createNoteRequestSchema = z
   .object({
+    /**
+     * A quién se le emite. **Una ficha que ya existe**, y nada más.
+     *
+     * Emitir creaba la ficha al vuelo con los datos que viajaran aquí. Eran
+     * otros campos que los del alta de deudores —sin notas, sin CURP—, así que
+     * la misma persona se capturaba de dos formas distintas según por dónde
+     * entrara. Se da de alta en `POST /admin/debtors` y aquí se elige.
+     */
     debtor: z
-      .object({
-        id: z.string().uuid().optional(),
-        fullName: z.string().trim().min(3).max(160),
-        address: z.string().trim().min(3).max(240),
-        phone: phoneSchema,
-        // Sin correo no hay cuenta ni avisos automáticos: firmará presencialmente (§25.12).
-        email: emailSchema.optional(),
-      })
+      .object({ id: z.string().uuid() })
       .strict(),
     issuePlace: z.string().trim().min(2).max(120),
     issueDate: civilDateSchema,
     paymentPlace: z.string().trim().min(2).max(120),
-    dueDate: civilDateSchema,
     creditorName: z.string().trim().min(3).max(160),
     /**
      * Lo que se presta: el capital, sin el interés ordinario del plan.
@@ -67,9 +66,12 @@ export const createNoteRequestSchema = z
      * contemplan el pago en abonos sobre un mismo documento, y es lo que hacen
      * aquí las financieras: un contrato, un pagaré y su tabla.
      *
-     * Las cuotas se cuentan mes a mes desde `dueDate`, que es la **primera**;
-     * el título vence el día de la última. El servidor las reparte, porque
-     * dejar que el cliente mande las cuotas invita a que no sumen.
+     * Junto con `paymentFrequency` y `issueDate` **decide cuándo vence el
+     * título**: la primera cuota cae un periodo después de expedirlo y las
+     * demás la siguen, así que el vencimiento es la última.
+     *
+     * Por eso no se pide una fecha de vencimiento: sería un cuarto dato que
+     * puede contradecir a los otros tres. Se calcula, como todo lo derivado (§4).
      */
     installments: z.number().int().min(1).max(24).default(1),
     /**
@@ -122,11 +124,6 @@ export const createNoteRequestSchema = z
       .default([]),
   })
   .strict()
-  .refine((v) => v.dueDate > v.issueDate, {
-    // Un vencimiento anterior a la expedición haría el pagaré exigible desde su origen.
-    path: ['dueDate'],
-    message: 'La fecha de pago debe ser posterior a la de expedición',
-  })
   .refine((v) => v.guarantors.length === v.requiresGuarantors, {
     path: ['guarantors'],
     message: 'El número de avales debe coincidir con los declarados',

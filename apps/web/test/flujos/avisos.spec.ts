@@ -60,20 +60,33 @@ test.describe('recordatorios del día', () => {
     const sufijo = `${Date.now()}`;
     const telefono = `+52443${sufijo.slice(-7)}`;
 
+    /*
+     * La ficha va antes: emitir ya no crea deudores. Se da de alta en Deudores
+     * y el pagaré la elige.
+     */
+    const alta = await request.post(`${API}/admin/debtors`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'Idempotency-Key': crypto.randomUUID() },
+      data: {
+        fullName: `Recordatorio ${sufijo}`,
+        address: 'Calle de prueba 1',
+        phone: telefono,
+        email: `recordatorio-${sufijo}@ejemplo.mx`,
+      },
+    });
+    const { id: debtorId } = (await alta.json()) as { id: string };
+
     const emitido = await request.post(`${API}/admin/notes`, {
       headers: { Authorization: `Bearer ${accessToken}`, 'Idempotency-Key': crypto.randomUUID() },
       data: {
-        debtor: {
-          fullName: `Recordatorio ${sufijo}`,
-          address: 'Calle de prueba 1',
-          phone: telefono,
-          email: `recordatorio-${sufijo}@ejemplo.mx`,
-        },
+        debtor: { id: debtorId },
         issuePlace: 'Morelia, Michoacán',
-        issueDate: fecha(-30),
+        /*
+         * Se expide un mes justo antes de hoy: con un solo pago mensual, el
+         * pagaré vence **hoy**, que es lo que dispara la regla `offsetDays: 0`
+         * de la semilla. El vencimiento ya no se manda, se calcula.
+         */
+        issueDate: unMesAntesDeHoy(),
         paymentPlace: 'Morelia, Michoacán',
-        // Vence hoy: la regla de `offsetDays: 0` de la semilla.
-        dueDate: fecha(0),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '500000',
         interestRate: { value: 2, period: 'MONTHLY' },
@@ -122,3 +135,11 @@ test.describe('recordatorios del día', () => {
     await expect(aviso).toBeVisible({ timeout: 15_000 });
   });
 });
+
+/** Un mes de calendario antes de hoy, en fecha civil. */
+function unMesAntesDeHoy(): string {
+  const hoy = new Date();
+  return new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, hoy.getUTCDate()))
+    .toISOString()
+    .slice(0, 10);
+}

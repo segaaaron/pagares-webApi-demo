@@ -190,3 +190,16 @@ export function outstandingOrdinaryInterest(
     return suma + (cuota.interestCents - cubierto);
   }, 0n);
 }
+
+/**
+ * Cuándo cae la primera cuota de un pagaré expedido hoy.
+ *
+ * Un periodo después de expedirlo: se presta el día 5 y se cobra el 20 si es
+ * quincenal, o el 5 del mes siguiente si es mensual. Nadie cobra la primera
+ * cuota el mismo día que entrega el dinero.
+ */
+export function firstDueDate(issueDate: string, frequency: PaymentFrequency = 'MONTHLY'): string {
+  // Dos fechas desde la expedición: la suya y la siguiente. La siguiente es
+  // ésta, y así el salto de periodo se escribe una sola vez, en `installmentDates`.
+  return installmentDates(issueDate, 2, frequency)[1] as string;
+}

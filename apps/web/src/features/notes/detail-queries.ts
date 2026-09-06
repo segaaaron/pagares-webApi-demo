@@ -41,18 +41,24 @@ export interface NoteDetail {
     principal: { cents: string; formatted: string };
     interestPending: { cents: string; formatted: string };
   } | null;
-  /** La serie, cuando la deuda se documentó en varios pagos (§12). */
-  series: {
-    id: string;
-    index: number;
+  /** El calendario de pagos, cuando la deuda se paga en cuotas (ADR 0022). */
+  schedule: {
     size: number;
-    notes: {
-      id: string;
-      folio: string;
+    /** `MONTHLY` o `BIWEEKLY`. */
+    frequency: string;
+    model: string;
+    principal: { cents: string; formatted: string };
+    interest: { cents: string; formatted: string };
+    installments: {
       index: number;
-      status: NoteStatus;
-      dueDate: string;
+      dueOn: string;
+      /** `PAID`, `PARTIAL` o `PENDING`: se deriva de lo abonado. */
+      status: string;
+      daysOverdue: number;
       amount: { cents: string; formatted: string };
+      interest: { cents: string; formatted: string };
+      principal: { cents: string; formatted: string };
+      paid: { cents: string; formatted: string };
       balance: { cents: string; formatted: string };
     }[];
   } | null;

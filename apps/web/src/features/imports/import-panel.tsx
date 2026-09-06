@@ -15,21 +15,21 @@ import { useBlockingActionState } from '@/shared/ui/blocking';
  */
 const COLUMNAS = {
   debtors: [
-    { nombre: 'nombre', ejemplo: 'Juana Ejemplo Ramírez', obligatoria: true },
-    { nombre: 'domicilio', ejemplo: 'Av. Madero 412, Centro', obligatoria: true },
-    { nombre: 'telefono', ejemplo: '+524431112233', obligatoria: true },
-    { nombre: 'correo', ejemplo: 'juana@ejemplo.mx', obligatoria: false },
-    { nombre: 'notas', ejemplo: 'Paga los viernes', obligatoria: false },
+    { etiqueta: 'Nombre completo', nombre: 'nombre', ejemplo: 'Juana Ejemplo Ramírez', obligatoria: true },
+    { etiqueta: 'Domicilio', nombre: 'domicilio', ejemplo: 'Av. Madero 412, Centro', obligatoria: true },
+    { etiqueta: 'Teléfono', nombre: 'telefono', ejemplo: '+524431112233', obligatoria: true },
+    { etiqueta: 'Correo', nombre: 'correo', ejemplo: 'juana@ejemplo.mx', obligatoria: false },
+    { etiqueta: 'Notas', nombre: 'notas', ejemplo: 'Paga los viernes', obligatoria: false },
   ],
   notes: [
-    { nombre: 'telefono_deudor', ejemplo: '+524431112233', obligatoria: true },
-    { nombre: 'importe', ejemplo: '25000.00', obligatoria: true },
-    { nombre: 'fecha_emision', ejemplo: '2026-01-15', obligatoria: true },
-    { nombre: 'vencimiento', ejemplo: '2026-07-15', obligatoria: true },
-    { nombre: 'abonado', ejemplo: '5000.00', obligatoria: false },
-    { nombre: 'tasa', ejemplo: '3', obligatoria: false },
-    { nombre: 'periodo_tasa', ejemplo: 'MONTHLY', obligatoria: false },
-    { nombre: 'folio_original', ejemplo: 'Pagaré 018 del talonario', obligatoria: false },
+    { etiqueta: 'Teléfono del deudor', nombre: 'telefono_deudor', ejemplo: '+524431112233', obligatoria: true },
+    { etiqueta: 'Importe', nombre: 'importe', ejemplo: '25000.00', obligatoria: true },
+    { etiqueta: 'Fecha de expedición', nombre: 'fecha_emision', ejemplo: '2026-01-15', obligatoria: true },
+    { etiqueta: 'Fecha de vencimiento', nombre: 'vencimiento', ejemplo: '2026-07-15', obligatoria: true },
+    { etiqueta: 'Lo que ya abonó', nombre: 'abonado', ejemplo: '5000.00', obligatoria: false },
+    { etiqueta: 'Interés pactado', nombre: 'tasa', ejemplo: '3', obligatoria: false },
+    { etiqueta: 'Cada cuánto es ese interés', nombre: 'periodo_tasa', ejemplo: 'MONTHLY', obligatoria: false },
+    { etiqueta: 'Folio del talonario', nombre: 'folio_original', ejemplo: 'Pagaré 018 del talonario', obligatoria: false },
   ],
 } as const;
 
@@ -98,11 +98,20 @@ export function ImportPanel({ kind }: { kind: 'debtors' | 'notes' }) {
         <summary className="cursor-pointer text-xs font-medium text-ink-2 hover:text-ink">
           Qué columnas lleva el archivo
         </summary>
-        <ul className="mt-2 space-y-1">
+        {/*
+          * Qué significa cada columna primero, y su nombre exacto después.
+          *
+          * `telefono_deudor` es lo que la cabecera del archivo tiene que decir
+          * al pie de la letra, así que no se puede sustituir por algo legible.
+          * Pero puesto solo obligaba a adivinar: ahora manda la etiqueta y el
+          * nombre técnico va al lado, en monoespaciada, como lo que es.
+          */}
+        <ul className="mt-2 space-y-1.5">
           {COLUMNAS[kind].map((columna) => (
             <li key={columna.nombre} className="flex flex-wrap items-baseline gap-x-2 text-xs">
-              <span className="font-mono text-ink">{columna.nombre}</span>
-              {columna.obligatoria ? null : <span className="text-muted">(opcional)</span>}
+              <span className="text-ink">{columna.etiqueta}</span>
+              <span className="font-mono text-[11px] text-muted">{columna.nombre}</span>
+              {columna.obligatoria ? null : <span className="text-[11px] text-muted">(opcional)</span>}
               <span className="ml-auto font-mono text-[11px] text-muted">{columna.ejemplo}</span>
             </li>
           ))}

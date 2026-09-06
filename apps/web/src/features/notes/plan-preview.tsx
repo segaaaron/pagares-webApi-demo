@@ -1,6 +1,12 @@
 'use client';
 
-import { buildPaymentPlan, installmentDates, toAnnualRatePct, type PlanModel } from '@pagares/domain-rules';
+import {
+  buildPaymentPlan,
+  firstDueDate,
+  installmentDates,
+  toAnnualRatePct,
+  type PlanModel,
+} from '@pagares/domain-rules';
 import { money, shortDate } from '@/shared/lib/format';
 
 /**
@@ -19,7 +25,8 @@ export interface PlanPreviewProps {
   model: PlanModel;
   rate: string;
   period: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
-  firstDueDate: string;
+  /** Cuándo se expide. De aquí salen todas las fechas del calendario. */
+  issueDate: string;
 }
 
 export function PlanPreview({
@@ -29,7 +36,7 @@ export function PlanPreview({
   model,
   rate,
   period,
-  firstDueDate,
+  issueDate,
 }: PlanPreviewProps) {
   const centavos = Math.round(Number(amount.replace(/[^\d.]/g, '')) * 100);
   if (!Number.isFinite(centavos) || centavos <= 0 || installments < 2) return null;
@@ -51,7 +58,13 @@ export function PlanPreview({
     return null;
   }
 
-  const fechas = installmentDates(firstDueDate, installments, frequency);
+  /*
+   * La primera cuota cae un periodo después de expedir, no el mismo día: nadie
+   * cobra la primera el día que entrega el dinero. El título vence con la
+   * última, y eso es lo que se enseña abajo.
+   */
+  const fechas = installmentDates(firstDueDate(issueDate, frequency), installments, frequency);
+  const vence = fechas.at(-1) ?? issueDate;
   const conInteres = plan.totalInterestCents > 0n;
 
   return (
@@ -72,12 +85,25 @@ export function PlanPreview({
         <Cifra etiqueta="Te devuelven" valor={money(plan.totalCents.toString())} />
       </dl>
 
-      <div className="max-h-72 overflow-y-auto">
+      {/*
+        * La zona con desplazamiento es alcanzable con el teclado.
+        *
+        * Un contenedor que hace scroll y no recibe foco deja el contenido de
+        * abajo fuera del alcance de quien no usa ratón: se ve, pero no se llega.
+        * Por eso lleva `tabIndex` y nombre propio (regla
+        * `scrollable-region-focusable` de WCAG 2.1.1).
+        */}
+      <div
+        className="max-h-72 overflow-y-auto"
+        tabIndex={0}
+        role="group"
+        aria-label="Calendario de cuotas"
+      >
         <table className="w-full text-sm">
           <caption className="sr-only">
             Calendario de pagos: {installments} cuotas{' '}
             {frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'} desde{' '}
-            {shortDate(firstDueDate)}
+            {shortDate(fechas[0] ?? issueDate)}
           </caption>
           <thead className="sticky top-0 bg-surface-2 text-left">
             <tr className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
@@ -110,7 +136,7 @@ export function PlanPreview({
               <tr key={fila.index}>
                 <td className="tnum px-4 py-1.5 text-xs text-muted">{fila.index}</td>
                 <td className="tnum px-4 py-1.5 text-xs text-ink-2">
-                  {shortDate(fechas[indice] ?? firstDueDate)}
+                  {shortDate(fechas[indice] ?? issueDate)}
                 </td>
                 <td className="tnum px-4 py-1.5 text-right font-medium text-ink">
                   {money(fila.paymentCents.toString())}
@@ -136,9 +162,9 @@ export function PlanPreview({
 
       <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
         Se emitirá <strong className="text-ink">un pagaré</strong> por el total, pagadero en estas{' '}
-        {installments} cuotas {frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'}. El título
-        vence con la última; el interés moratorio de arriba es aparte y sólo corre sobre la cuota
-        que se pague tarde.
+        {installments} cuotas {frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'}. Vence el{' '}
+        <strong className="text-ink">{shortDate(vence)}</strong>, con la última. El interés
+        moratorio es aparte y sólo corre sobre la cuota que se pague tarde.
       </p>
     </section>
   );

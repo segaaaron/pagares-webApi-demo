@@ -37,6 +37,25 @@ function futureDate(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+
+/**
+ * Da de alta una ficha y devuelve su identificador.
+ *
+ * Emitir ya no crea deudores: la ficha se da de alta en Deudores y el pagaré la
+ * elige.
+ */
+async function nuevoDeudor(
+  nombre: string,
+  phone = `+52443${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+): Promise<string> {
+  const creado = await call('/admin/debtors', {
+    method: 'POST',
+    idempotent: true,
+    body: { fullName: `${nombre} ${Date.now()}`, address: 'Calle de prueba 1', phone },
+  });
+  return String(creado.body['id']);
+}
+
 beforeAll(async () => {
   const login = await call('/auth/login', { method: 'POST', body: ADMIN, auth: false });
   if (login.status === 429) {
@@ -64,15 +83,10 @@ describe('ciclo de vida del pagaré', () => {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: {
-          fullName: `Cliente E2E ${Date.now()}`,
-          address: 'Calle de prueba 1',
-          phone: '+524430000001',
-        },
+        debtor: { id: await nuevoDeudor('Cliente E2E') },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         // La tasa viaja como se pacta y el servidor la normaliza a anual
@@ -99,16 +113,38 @@ describe('ciclo de vida del pagaré', () => {
     expect(result.status).toBe(409);
   });
 
-  it('rechaza un vencimiento anterior a la expedición', async () => {
+  it('rechaza una fecha de vencimiento enviada por el cliente', async () => {
+    /*
+     * El vencimiento lo calcula el servidor desde la expedición, la
+     * periodicidad y el número de pagos (§4). Aceptarlo del formulario era un
+     * cuarto dato que podía contradecir a los otros tres.
+     */
     const result = await call('/admin/notes', {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: { fullName: 'Cliente inválido', address: 'x', phone: '+524430000002' },
+        debtor: { id: await nuevoDeudor('Cliente inválido') },
         issuePlace: 'Morelia',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia',
-        dueDate: futureDate(-10),
+        dueDate: futureDate(30),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '100000',
+      },
+    });
+    expect(result.status).toBe(422);
+  });
+
+  it('rechaza expedir con fecha futura', async () => {
+    // Firmar hoy un documento fechado mañana es una inconsistencia que nadie corrige.
+    const result = await call('/admin/notes', {
+      method: 'POST',
+      idempotent: true,
+      body: {
+        debtor: { id: await nuevoDeudor('Cliente futuro') },
+        issuePlace: 'Morelia',
+        issueDate: futureDate(2),
+        paymentPlace: 'Morelia',
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '100000',
       },
@@ -218,11 +254,10 @@ describe('idempotencia', () => {
   it('devuelve el mismo resultado con la misma clave', async () => {
     const key = randomUUID();
     const body = {
-      debtor: { fullName: `Idem ${Date.now()}`, address: 'x', phone: '+524430000003' },
+      debtor: { id: await nuevoDeudor('Idem') },
       issuePlace: 'Morelia',
       issueDate: futureDate(-1),
       paymentPlace: 'Morelia',
-      dueDate: futureDate(30),
       creditorName: 'Créditos Morelia S.A. de C.V.',
       amountCents: '500000',
     };
@@ -258,20 +293,19 @@ describe('idempotencia', () => {
  * saber qué aceptó de verdad.
  */
 describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () => {
-  /** Emite para un deudor identificado por su teléfono. */
+  /** Emite para una ficha ya dada de alta. */
   async function emitirPara(
-    phone: string,
+    debtorId: string,
     extra: Record<string, unknown> = {},
   ): Promise<{ status: number; body: Record<string, unknown> }> {
     return call('/admin/notes', {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: { fullName: 'Deudor de la regla', address: 'Calle de prueba 9', phone },
+        debtor: { id: debtorId },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 3, period: 'MONTHLY' },
@@ -280,15 +314,12 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     });
   }
 
-  const nuevoTelefono = (): string =>
-    `+52443${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 1000)}`;
-
   it('el segundo pagaré es 409, y dice cuál falta por firmar', async () => {
-    const phone = nuevoTelefono();
-    const primero = await emitirPara(phone);
+    const debtorId = await nuevoDeudor('Deudor de la regla');
+    const primero = await emitirPara(debtorId);
     expect(primero.status).toBe(201);
 
-    const segundo = await emitirPara(phone);
+    const segundo = await emitirPara(debtorId);
     expect(segundo.status).toBe(409);
     // El folio pendiente va en el mensaje: quien emite necesita saber a por
     // cuál firma tiene que ir, no un «no se pudo».
@@ -296,37 +327,30 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     expect(String(segundo.body['type'])).toContain('debtor_has_unsigned_note');
   });
 
-  it('la misma persona tecleada de nuevo tampoco cuela', async () => {
+  it('la misma persona no se puede teclear dos veces', async () => {
     /*
-     * Sin identificarla por teléfono, volver a escribir sus datos creaba otra
-     * ficha y la regla se saltaba sola. El teléfono es obligatorio y es la
-     * identidad que ya usaba la importación (§24.5).
+     * Volver a escribir sus datos creaba otra ficha y la regla se saltaba sola:
+     * dos fichas de la misma persona son dos pendientes distintos. Ahora se
+     * corta antes, en el alta: el teléfono es la identidad (§24.5), y con uno
+     * repetido no nace una segunda ficha.
      */
-    const phone = nuevoTelefono();
-    expect((await emitirPara(phone)).status).toBe(201);
+    const phone = `+52443${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 1000)}`;
+    expect((await emitirPara(await nuevoDeudor('Deudor de la regla', phone))).status).toBe(201);
 
-    const otraVez = await call('/admin/notes', {
+    const otraVez = await call('/admin/debtors', {
       method: 'POST',
       idempotent: true,
-      body: {
-        // Otro nombre y otro domicilio, el mismo teléfono con espacios.
-        debtor: { fullName: 'Deudor Tecleado Otra Vez', address: 'Otra calle 3', phone },
-        issuePlace: 'Morelia, Michoacán',
-        issueDate: futureDate(-1),
-        paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
-        creditorName: 'Créditos Morelia S.A. de C.V.',
-        amountCents: '500000',
-        interestRate: { value: 3, period: 'MONTHLY' },
-      },
+      body: { fullName: 'Deudor Tecleado Otra Vez', address: 'Otra calle 3', phone },
     });
     expect(otraVez.status).toBe(409);
+    // Y dice de quién es, que es lo que permite ir a buscarlo.
+    expect(String(otraVez.body['title'])).toContain('Deudor de la regla');
   });
 
   it('un pagaré a plazos es un solo título, y por tanto un solo pendiente', async () => {
     // Con la serie había que hacer una excepción para que la segunda cuota no
     // se topara con la primera. Con un título y su tabla, no hace falta (ADR 0022).
-    const resultado = await emitirPara(nuevoTelefono(), {
+    const resultado = await emitirPara(await nuevoDeudor('Deudor a plazos'), {
       amountCents: '6000000',
       installments: 12,
       plan: { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
@@ -340,8 +364,8 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
 
   it('anulado el pendiente, se vuelve a poder emitir', async () => {
     // Lo anulado no se debe, así que ya no bloquea nada (§13.7).
-    const phone = nuevoTelefono();
-    const primero = await emitirPara(phone);
+    const debtorId = await nuevoDeudor('Deudor del anulado');
+    const primero = await emitirPara(debtorId);
     expect(primero.status).toBe(201);
 
     const anulado = await call(`/admin/notes/${String(primero.body['id'])}/void`, {
@@ -351,7 +375,7 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     });
     expect(anulado.status).toBe(201);
 
-    expect((await emitirPara(phone)).status).toBe(201);
+    expect((await emitirPara(debtorId)).status).toBe(201);
   });
 });
 
@@ -363,19 +387,17 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
  * aquí: si sólo vigilara la emisión, se saltaría renovando.
  */
 describe('§12 · la renovación también respeta la firma pendiente', () => {
-  const nuevoTelefono = (): string =>
-    `+52443${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 1000)}`;
-
-  async function emitirPara(phone: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  async function emitirPara(
+    debtorId: string,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
     return call('/admin/notes', {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: { fullName: 'Deudor de renovación', address: 'Calle de prueba 12', phone },
+        debtor: { id: debtorId },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 3, period: 'MONTHLY' },
@@ -394,8 +416,8 @@ describe('§12 · la renovación también respeta la firma pendiente', () => {
   it('el pagaré que se renueva no cuenta contra sí mismo', async () => {
     // Renovar no suma un título: lo cambia por otro. Si contara, no se podría
     // renovar nada que no estuviera firmado.
-    const phone = nuevoTelefono();
-    const primero = await emitirPara(phone);
+    const debtorId = await nuevoDeudor('Deudor de renovación');
+    const primero = await emitirPara(debtorId);
     expect(primero.status).toBe(201);
 
     const renovado = await renovar(String(primero.body['id']));
@@ -407,8 +429,8 @@ describe('§12 · la renovación también respeta la firma pendiente', () => {
      * El deudor acabaría con dos papeles sin firma por la vía de renovar, que
      * es justo lo que la regla impide por la vía de emitir.
      */
-    const phone = nuevoTelefono();
-    const primero = await emitirPara(phone);
+    const debtorId = await nuevoDeudor('Deudor de renovación');
+    const primero = await emitirPara(debtorId);
     const renovado = await renovar(String(primero.body['id']));
     expect(renovado.status).toBe(201);
 
@@ -418,7 +440,7 @@ describe('§12 · la renovación también respeta la firma pendiente', () => {
 
     // El de arriba pasó porque el pendiente era él mismo. Con un pendiente
     // ajeno, no pasa: se emite otro para el mismo deudor por otra vía.
-    const tercero = await emitirPara(phone);
+    const tercero = await emitirPara(debtorId);
     expect(tercero.status).toBe(409);
     expect(String(tercero.body['type'])).toContain('debtor_has_unsigned_note');
   });
@@ -458,15 +480,10 @@ describe('§17.1 · el pagaré en PDF', () => {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: {
-          fullName: 'Deudor del PDF',
-          address: 'Calle de prueba 20',
-          phone: `+52443${String(Date.now()).slice(-7)}`,
-        },
+        debtor: { id: await nuevoDeudor('Deudor del PDF') },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 3, period: 'MONTHLY' },
@@ -514,15 +531,10 @@ describe('§24.1 · el cuerpo de la firma es estricto', () => {
       method: 'POST',
       idempotent: true,
       body: {
-        debtor: {
-          fullName: 'Deudor que firma',
-          address: 'Calle de prueba 30',
-          phone: `+52443${String(Date.now()).slice(-7)}`,
-        },
+        debtor: { id: await nuevoDeudor('Deudor que firma') },
         issuePlace: 'Morelia, Michoacán',
         issueDate: futureDate(-1),
         paymentPlace: 'Morelia, Michoacán',
-        dueDate: futureDate(30),
         creditorName: 'Créditos Morelia S.A. de C.V.',
         amountCents: '1000000',
         interestRate: { value: 3, period: 'MONTHLY' },

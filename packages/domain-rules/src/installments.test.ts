@@ -6,6 +6,7 @@ import {
   applyToSchedule,
   ordinaryInterestIn,
   periodsPerYear,
+  firstDueDate,
 } from './installments.js';
 
 /**
@@ -223,5 +224,31 @@ describe('periodsPerYear', () => {
   it('doce meses, veinticuatro quincenas', () => {
     expect(periodsPerYear('MONTHLY')).toBe(12);
     expect(periodsPerYear('BIWEEKLY')).toBe(24);
+  });
+});
+
+describe('firstDueDate', () => {
+  it('mensual: un mes después de expedir', () => {
+    expect(firstDueDate('2026-09-05', 'MONTHLY')).toBe('2026-10-05');
+  });
+
+  it('quincenal: quince días después', () => {
+    expect(firstDueDate('2026-09-05', 'BIWEEKLY')).toBe('2026-09-20');
+  });
+
+  it('nunca cae el mismo día que se presta', () => {
+    for (const f of ['MONTHLY', 'BIWEEKLY'] as const) {
+      expect(firstDueDate('2026-09-05', f)).not.toBe('2026-09-05');
+    }
+  });
+
+  it('el 31 cae al último día del mes que no lo tiene', () => {
+    expect(firstDueDate('2026-01-31', 'MONTHLY')).toBe('2026-02-28');
+  });
+
+  it('el plazo máximo cabe: veinticuatro cuotas desde la primera', () => {
+    // Antes se pedían veinticinco fechas de una vez y el rango reventaba.
+    const primera = firstDueDate('2026-09-05', 'BIWEEKLY');
+    expect(installmentDates(primera, MAX_INSTALLMENTS, 'BIWEEKLY')).toHaveLength(24);
   });
 });

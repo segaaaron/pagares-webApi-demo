@@ -68,11 +68,46 @@ export class CreateUserUseCase extends BaseUseCase<CreateUserInput, CreateUserOu
 
     return this.uow.run(async (scope) => {
       const tx = scope.client;
+
+      /*
+       * Cuando la cuenta es de un deudor, sus datos los pone **la ficha** (§4).
+       *
+       * Aceptar el nombre y el teléfono del formulario era poder darle acceso a
+       * la persona equivocada: la cuenta se enlaza a este deudor pase lo que
+       * pase, así que unos datos ajenos le entregan sus pagarés a un tercero. La
+       * pantalla ya no deja teclearlos, pero eso es la pantalla; esto es la regla.
+       *
+       * El correo sí se escribe: es con lo que la persona entra, y cambia —se
+       * le acaba una cuenta, pone la del trabajo—. Lo que no puede pasar es que
+       * queden dos, así que **el que se use aquí se guarda también en la ficha**.
+       */
+      const ficha = input.debtorId
+        ? await tx.debtor.findUnique({
+            where: { id: input.debtorId },
+            select: { id: true, userId: true, fullName: true, phone: true, email: true },
+          })
+        : null;
+
+      if (input.debtorId && !ficha) throw new BadRequestException('El deudor no existe');
+      /**
+       * Una ficha, una cuenta.
+       *
+       * Enlazar a un deudor que ya tiene acceso dejaría la cuenta anterior
+       * huérfana —sin ficha y sin pagarés— y en silencio: dos credenciales
+       * vivas para la misma persona, y ninguna forma de saber cuál es la buena.
+       * Si hay que cambiarla, primero se elimina la que hay.
+       */
+      if (ficha?.userId) {
+        throw new BadRequestException(
+          'Ese deudor ya tiene acceso. Elimina el actual antes de crear otro.',
+        );
+      }
+
       const user = await tx.user.create({
         data: {
           email: input.email,
-          fullName: input.fullName,
-          phone: input.phone ?? null,
+          fullName: ficha?.fullName ?? input.fullName,
+          phone: ficha?.phone ?? input.phone ?? null,
           role: input.role ?? 'CLIENT',
           status: 'PENDING_ACTIVATION',
           passwordHash,
@@ -95,31 +130,20 @@ export class CreateUserUseCase extends BaseUseCase<CreateUserInput, CreateUserOu
         tx,
       );
 
-      if (input.debtorId) {
-        /**
-         * Una ficha, una cuenta.
-         *
-         * Enlazar a un deudor que ya tiene acceso dejaría la cuenta anterior
-         * huérfana —sin ficha y sin pagarés— y en silencio: dos credenciales
-         * vivas para la misma persona, y ninguna forma de saber cuál es la
-         * buena. Si hay que cambiarla, primero se elimina la que hay.
-         */
-        const ficha = await tx.debtor.findUnique({
-          where: { id: input.debtorId },
-          select: { userId: true },
-        });
-        if (!ficha) throw new BadRequestException('El deudor no existe');
-        if (ficha.userId) {
-          throw new BadRequestException(
-            'Ese deudor ya tiene acceso. Elimina el actual antes de crear otro.',
-          );
-        }
-
+      if (ficha) {
         // Reenlaza también los pagarés que quedaron sin dueño al borrar el
         // acceso anterior: son de esta persona, no de la cuenta que se fue.
-        await tx.debtor.update({ where: { id: input.debtorId }, data: { userId: user.id } });
+        await tx.debtor.update({
+          where: { id: ficha.id },
+          data: {
+            userId: user.id,
+            // La ficha se queda con el correo con el que su dueño va a entrar:
+            // dos correos para la misma persona es una llamada de soporte.
+            email: user.email,
+          },
+        });
         await tx.promissoryNote.updateMany({
-          where: { debtorId: input.debtorId, ownerId: null },
+          where: { debtorId: ficha.id, ownerId: null },
           data: { ownerId: user.id },
         });
       }

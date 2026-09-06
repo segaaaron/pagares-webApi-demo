@@ -128,7 +128,12 @@ export function IssueForm({
 
 
 
-  const [vencimiento, setVencimiento] = useState(defaults.defaultDueDate);
+  /*
+   * De la expedición salen todas las fechas: la primera cuota cae un periodo
+   * después y el título vence con la última. Por eso ya no se escribe una fecha
+   * de vencimiento —sería un cuarto dato que puede contradecir a los otros tres—.
+   */
+  const [expedicion, setExpedicion] = useState(defaults.today);
 
   const [importe, setImporte] = useState(plantilla?.amount ?? '');
 
@@ -183,15 +188,16 @@ export function IssueForm({
             )}
           </div>
 
-          <Field id="issueDate" label="Fecha de expedición" error={state.fieldErrors?.issueDate}>
+          <Field
+            id="issueDate"
+            label="Fecha de expedición"
+            error={state.fieldErrors?.issueDate}
+            hint="Desde aquí se cuentan los pagos. El vencimiento lo calcula el sistema."
+          >
             <DateField id="issueDate" name="issueDate" required
-                       defaultValue={defaults.today} max={defaults.today} />
-          </Field>
-          <Field id="dueDate" label="Fecha de vencimiento" error={state.fieldErrors?.dueDate}>
-            <DateField id="dueDate" name="dueDate" required
-                       defaultValue={defaults.defaultDueDate}
-                       onChange={setVencimiento}
-                       min={defaults.today} />
+                       defaultValue={defaults.today}
+                       onChange={setExpedicion}
+                       max={defaults.today} />
           </Field>
           {/*
             * Cuotas: un pagaré por el total con su tabla de amortización, que
@@ -261,7 +267,7 @@ export function IssueForm({
                 rate={rate}
                 period={period}
                 frequency={period}
-                firstDueDate={vencimiento}
+                issueDate={expedicion}
               />
             </div>
           ) : null}
@@ -287,7 +293,6 @@ export function IssueForm({
       >
         <DebtorPicker
           inputClassName={INPUT}
-          errors={state.fieldErrors ?? {}}
           preselected={plantilla?.debtor}
           onChoose={(hit) => {
             if (!hit) {

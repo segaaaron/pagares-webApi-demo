@@ -172,6 +172,14 @@ model Debtor {
   address   String
   phone     String // obligatorio: sin correo, es el único canal
   email     String?
+  /*
+   * CURP: el registro único de personas físicas en México. Opcional a
+   * propósito: identifica mejor que el nombre —dos «Juan Pérez» no comparten
+   * CURP— pero exigirlo dejaría fuera a quien presta sobre la marcha, que es
+   * como se presta aquí. Sin índice único: si dos fichas comparten CURP es la
+   * misma persona duplicada, y eso se resuelve mirándolo, no rechazándolo.
+   */
+  curp      String?
   user      User?    @relation(fields: [userId], references: [id])
   userId    String?  @unique
   notes     String?
@@ -182,6 +190,7 @@ model Debtor {
 
   @@index([fullName])
   @@index([phone])
+  @@index([curp])
 }
 
 // ─────────────────────────────────────────────────────────── pagaré (§11, §14)

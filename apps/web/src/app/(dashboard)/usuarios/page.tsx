@@ -1,10 +1,11 @@
 import { listUsers } from '@/features/users/queries';
-import { CreateUserForm, UserActions } from '@/features/users/user-forms';
+import { UserActions } from '@/features/users/user-forms';
 import { dateTime } from '@/shared/lib/format';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { ListPagination, paginate } from '@/shared/ui/list-pagination';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { PageHeader } from '@/shared/ui/page-header';
+import { NavIcon } from '@/shared/ui/icons/nav-icons';
 
 export const metadata = { title: 'Accesos' };
 
@@ -119,10 +120,9 @@ export default async function UsersPage({
       <PageHeader
         crumbs={[{ label: 'Accesos' }]}
         title="Accesos"
-        description="Cuentas de acceso a la aplicación. No hay registro público: sólo se crean desde aquí."
+        description="Cuentas de acceso a la aplicación. No hay registro público, y no se crean aquí: el acceso se da desde la ficha del deudor, porque una cuenta sin deudor no puede consultar nada."
       />
 
-      <CreateUserForm />
 
       <DataTable
         caption="Cuentas de acceso con su estado y su última entrada"
@@ -152,23 +152,100 @@ export default async function UsersPage({
  * creyendo que era del otro tipo. La plataforma la registra el propio inicio de
  * sesión, así que esto no pregunta nada: enseña lo que ya ocurrió.
  */
+/**
+ * La marca del aparato, deducida de lo que manda cada plataforma.
+ *
+ * Apple manda su identificador interno —`iPhone18,1`—, que es a la vez marca y
+ * modelo. Android manda el fabricante y el modelo, y el modelo suele ser un
+ * código —`SM-G991B`— que no dice nada sin traducir.
+ *
+ * Aquí se reconoce sólo la marca, que es lo que la columna contesta. El modelo
+ * exacto se guarda y se enseña donde de verdad hace falta: en la evidencia de
+ * firma del pagaré y en su PDF, que es donde alguien pregunta desde qué aparato
+ * se firmó.
+ */
+function marcaDelAparato(model: string): string | null {
+  const limpio = model.replace(/\s*\((simulador|simulator)\)\s*/i, '').trim();
+  if (!limpio) return null;
+
+  // Apple: el identificador empieza por la familia.
+  if (/^iPhone/i.test(limpio)) return 'iPhone';
+  if (/^iPad/i.test(limpio)) return 'iPad';
+  if (/^Watch/i.test(limpio)) return 'Apple Watch';
+  if (/^(Mac|arm64|x86_64)/i.test(limpio)) return 'Mac';
+
+  // Android: por el código del modelo cuando el fabricante no viene delante.
+  if (/^SM-|^GT-|^samsung/i.test(limpio)) return 'Samsung';
+  if (/^Pixel|^google/i.test(limpio)) return 'Google';
+  if (/^(Redmi|POCO|Mi\s|M20|2\d{5}|xiaomi)/i.test(limpio)) return 'Xiaomi';
+  if (/^(moto|XT\d)/i.test(limpio)) return 'Motorola';
+  if (/^(CPH|oneplus|realme|oppo)/i.test(limpio)) return 'OnePlus';
+  if (/^(LM-|lg)/i.test(limpio)) return 'LG';
+  if (/^(ANE|ELE|huawei|honor)/i.test(limpio)) return 'Huawei';
+
+  // Lo habitual en Android es «Fabricante Modelo»: la marca es la primera
+  // palabra, y si es un código suelto se enseña tal cual antes que inventar.
+  const primera = limpio.split(/[\s-]/)[0] ?? limpio;
+  return primera.charAt(0).toUpperCase() + primera.slice(1);
+}
+
+/** Cómo se llama la plataforma en la pantalla. */
+const PLATAFORMA: Record<string, string> = {
+  ios: 'iOS',
+  android: 'Android',
+  web: 'Navegador',
+};
+
+/**
+ * Una fila de la columna: icono, de dónde entra y el detalle debajo.
+ *
+ * Todas las filas se ven igual —el administrador y el deudor— porque la columna
+ * contesta lo mismo para los dos. Antes el admin llevaba píldora y el deudor
+ * texto suelto, y dos formas distintas para el mismo dato invitan a leerlas como
+ * si dijeran cosas distintas.
+ */
+function Aparato({
+  icono,
+  principal,
+  detalle,
+  apagado = false,
+  title,
+}: {
+  icono: React.ReactNode;
+  principal: string;
+  detalle?: string | undefined;
+  apagado?: boolean;
+  title?: string | undefined;
+}) {
+  return (
+    <span className="flex min-w-0 items-start gap-1.5" title={title}>
+      <span className={`mt-0.5 shrink-0 ${apagado ? 'text-muted' : 'text-accent'}`}>{icono}</span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className={`truncate text-sm ${apagado ? 'text-muted' : 'text-ink'}`}>
+          {principal}
+        </span>
+        {detalle ? <span className="truncate text-xs text-muted">{detalle}</span> : null}
+      </span>
+    </span>
+  );
+}
+
 function Origen({ user }: { user: UserRow }) {
   if (user.role === 'ADMIN') {
-    return <span className="chip bg-surface-2 text-muted">Panel</span>;
+    return <Aparato icono={<NavIcon.monitor />} principal="Panel" apagado title="Trabaja desde el panel de administración" />;
   }
 
   /*
    * De la última sesión, no del registro de tokens de push.
    *
    * Ese registro sólo tiene filas cuando hay APNs configurado, así que la
-   * columna decía «sin estrenar» de deudores que entraban todos los días. Y
-   * cuando la app manda el modelo, se enseña el aparato en vez de la
-   * plataforma: para soporte, «iPhone17,1 · iOS 26.5» ahorra media conversación
-   * y «ios» no dice nada.
+   * columna decía «sin estrenar» de deudores que entraban todos los días.
    */
   const ultimo = user.lastDevice;
   if (ultimo) {
-    const aparato = [ultimo.model, ultimo.osVersion].filter(Boolean).join(' · ');
+    const esSimulador = /simulador|simulator/i.test(ultimo.model ?? '');
+    const marca = ultimo.model ? marcaDelAparato(ultimo.model) : null;
+
     /*
      * Sin plataforma no se dice «Navegador»: se dice que no consta.
      *
@@ -178,29 +255,21 @@ function Origen({ user }: { user: UserRow }) {
      * lo contrario—, y ese es el peor error posible en una tabla que existe
      * para saber desde dónde entra cada quien (§24.3).
      */
-    const desde =
-      aparato ||
-      (ultimo.platform === 'ios'
-        ? 'iOS'
-        : ultimo.platform === 'web'
-          ? 'Navegador'
-          : 'No informado');
+    const plataforma = ultimo.platform ? (PLATAFORMA[ultimo.platform] ?? ultimo.platform) : null;
 
     return (
-      <span
-        className={`chip ${
-          ultimo.platform ? 'bg-accent-soft text-accent-ink' : 'bg-surface-2 text-muted'
-        }`}
-        title={
-          ultimo.platform
-            ? `Última entrada: ${dateTime(ultimo.at)}${
-                ultimo.appVersion ? ` · app ${ultimo.appVersion}` : ''
-              }`
-            : `Última entrada: ${dateTime(ultimo.at)} · la aplicación no informó del aparato`
+      <Aparato
+        icono={ultimo.platform === 'web' ? <NavIcon.monitor /> : <NavIcon.mobile />}
+        principal={[plataforma, marca].filter(Boolean).join(' · ') || 'No informado'}
+        detalle={
+          [ultimo.osVersion, esSimulador ? 'simulador' : null].filter(Boolean).join(' · ') ||
+          undefined
         }
-      >
-        {desde}
-      </span>
+        apagado={!plataforma}
+        title={`Última entrada: ${dateTime(ultimo.at)}${
+          ultimo.appVersion ? ` · app ${ultimo.appVersion}` : ''
+        }`}
+      />
     );
   }
 

@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createNoteRequestSchema } from './notes.js';
 
 const valid = {
-  debtor: { fullName: 'Juan Pérez', address: 'Av. Madero 100', phone: '+524431234567' },
+  debtor: { id: '3f1c0f9e-6f0a-4a1e-9b3c-2a5d8e7f1c40' },
   issuePlace: 'Morelia',
   issueDate: '2026-09-01',
   paymentPlace: 'Morelia',
-  dueDate: '2026-10-01',
   creditorName: 'Empresa Demo S.A.',
   amountCents: '2500000',
 };
@@ -16,13 +15,14 @@ describe('emisión de pagaré', () => {
     expect(createNoteRequestSchema.safeParse(valid).success).toBe(true);
   });
 
-  it('rechaza un vencimiento anterior a la expedición', () => {
-    const r = createNoteRequestSchema.safeParse({ ...valid, dueDate: '2026-08-01' });
-    expect(r.success).toBe(false);
-  });
-
-  it('rechaza un vencimiento igual a la expedición', () => {
-    const r = createNoteRequestSchema.safeParse({ ...valid, dueDate: valid.issueDate });
+  it('rechaza una fecha de vencimiento enviada por el cliente', () => {
+    /*
+     * El vencimiento se **calcula**: la primera cuota cae un periodo después de
+     * expedir y el título vence con la última. Aceptarlo del formulario era un
+     * cuarto dato que podía contradecir a los otros tres, y quien escribía una
+     * fecha límite obtenía un plan que empezaba ese día.
+     */
+    const r = createNoteRequestSchema.safeParse({ ...valid, dueDate: '2026-10-01' });
     expect(r.success).toBe(false);
   });
 
@@ -82,17 +82,23 @@ describe('emisión de pagaré', () => {
     expect(r.success).toBe(false);
   });
 
-  it('permite emitir sin correo del deudor', () => {
-    // Firmará presencialmente: no todo deudor tiene correo.
-    expect(createNoteRequestSchema.safeParse(valid).success).toBe(true);
+  it('exige un deudor que ya exista, no sus datos', () => {
+    /*
+     * Emitir creaba la ficha al vuelo con otros campos que los del alta de
+     * deudores, así que la misma persona se capturaba de dos formas según por
+     * dónde entrara. Se da de alta en Deudores y aquí se elige.
+     */
+    const r = createNoteRequestSchema.safeParse({
+      ...valid,
+      debtor: { id: valid.debtor.id, fullName: 'Juan Pérez', phone: '+524431234567' },
+    });
+    expect(r.success).toBe(false);
   });
 
-  it('normaliza el correo a minúsculas', () => {
-    const r = createNoteRequestSchema.parse({
-      ...valid,
-      debtor: { ...valid.debtor, email: 'Juan.Perez@EJEMPLO.MX' },
-    });
-    expect(r.debtor.email).toBe('juan.perez@ejemplo.mx');
+  it('rechaza un deudor que no es un identificador', () => {
+    expect(createNoteRequestSchema.safeParse({ ...valid, debtor: { id: 'juan' } }).success).toBe(
+      false,
+    );
   });
 });
 

@@ -79,7 +79,6 @@ export async function issueNoteAction(_prev: IssueState, formData: FormData): Pr
         issuePlace: String(formData.get('issuePlace') ?? '').trim(),
         issueDate: String(formData.get('issueDate') ?? ''),
         paymentPlace: String(formData.get('paymentPlace') ?? '').trim(),
-        dueDate: String(formData.get('dueDate') ?? ''),
         creditorName: String(formData.get('creditorName') ?? '').trim(),
         amountCents: BigInt(Math.round(Number(pesos) * 100)).toString(),
         // Vacío significa "sin intereses pactados" (null), que no es lo mismo
