@@ -6,6 +6,14 @@ import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-log
 import { AccountLockedError, RefreshReusedError } from '../domain/auth.errors.js';
 import { TokenService, ACCESS_TTL_SECONDS } from '../infrastructure/token.service.js';
 
+/**
+ * Cuánto dura la tanda de peticiones de una misma carga de pantalla.
+ *
+ * Diez segundos: de sobra para que el navegador termine de pedir la página y
+ * sus datos, y muy poco para un replay, que llega minutos u horas después.
+ */
+const RACE_WINDOW_MS = 10_000;
+
 export interface RefreshInput {
   refreshToken: string;
 }
@@ -47,8 +55,41 @@ export class RefreshSessionUseCase extends BaseUseCase<RefreshInput, RefreshOutp
 
     if (!stored) throw new RefreshReusedError();
 
+    /*
+     * Una carrera no es un robo (§10.4).
+     *
+     * El refresco vive en el middleware del panel y corre delante de **cada**
+     * petición. El navegador pide la página, su carga de datos y las precargas a
+     * la vez, así que varias llegan aquí con el mismo token todavía sin rotar:
+     * la primera lo canjea y las demás presentan uno ya canjeado. Tratarlas como
+     * reutilización mataba la familia entera y echaba al usuario a mitad de
+     * trabajo, que es lo que estaba pasando en producción.
+     *
+     * Se distingue por el reloj: si el sucesor acaba de nacer y sigue vivo, es
+     * la misma tanda de peticiones y se le da continuidad rotando desde él. Un
+     * replay de verdad llega tarde —el atacante roba el token, no compite con el
+     * navegador en el mismo segundo— y se sigue cortando igual.
+     */
+    const carrera =
+      stored.revokedAt === null && stored.replacedById !== null
+        ? await this.prisma.refreshToken.findFirst({
+            where: {
+              id: stored.replacedById,
+              revokedAt: null,
+              createdAt: { gt: new Date(now.getTime() - RACE_WINDOW_MS) },
+              // Un solo salto. Si el sucesor ya rotó a su vez, esto no es una
+              // tanda de peticiones simultáneas: es alguien volviendo con un
+              // token viejo, y eso sí es reutilización.
+              replacedById: null,
+            },
+            include: { user: true },
+          })
+        : null;
+
+    const vigente = carrera ?? stored;
+
     // Reutilización: el token ya se había canjeado o revocado.
-    if (stored.revokedAt !== null || stored.replacedById !== null) {
+    if (carrera === null && (stored.revokedAt !== null || stored.replacedById !== null)) {
       // Revocar la familia, anotarlo y avisar al usuario son un solo hecho: si
       // se parten, puede quedar la familia muerta y nadie enterado (§3.3, §16).
       await this.prisma.$transaction(async (tx) => {
@@ -78,47 +119,47 @@ export class RefreshSessionUseCase extends BaseUseCase<RefreshInput, RefreshOutp
       throw new RefreshReusedError();
     }
 
-    if (stored.expiresAt < now) throw new RefreshReusedError();
-    if (stored.user.status !== 'ACTIVE') throw new RefreshReusedError();
-    if (stored.user.lockedUntil && stored.user.lockedUntil > now) {
+    if (vigente.expiresAt < now) throw new RefreshReusedError();
+    if (vigente.user.status !== 'ACTIVE') throw new RefreshReusedError();
+    if (vigente.user.lockedUntil && vigente.user.lockedUntil > now) {
       throw new AccountLockedError(
-        Math.ceil((stored.user.lockedUntil.getTime() - now.getTime()) / 1000),
+        Math.ceil((vigente.user.lockedUntil.getTime() - now.getTime()) / 1000),
       );
     }
 
     const next = this.tokens.generateRefreshToken();
     const created = await this.prisma.refreshToken.create({
       data: {
-        userId: stored.userId,
-        familyId: stored.familyId, // misma familia: así se detecta la reutilización
-        deviceId: stored.deviceId,
+        userId: vigente.userId,
+        familyId: vigente.familyId, // misma familia: así se detecta la reutilización
+        deviceId: vigente.deviceId,
         // El dispositivo viaja con la sesión: sin arrastrarlo, la primera
         // rotación —cada quince minutos— lo perdería y el panel volvería a no
         // saber desde dónde entra nadie.
-        platform: stored.platform,
-        deviceModel: stored.deviceModel,
-        osVersion: stored.osVersion,
-        appVersion: stored.appVersion,
+        platform: vigente.platform,
+        deviceModel: vigente.deviceModel,
+        osVersion: vigente.osVersion,
+        appVersion: vigente.appVersion,
         tokenHash: next.hash,
         expiresAt: this.tokens.refreshExpiry(now),
       },
     });
     await this.prisma.refreshToken.update({
-      where: { id: stored.id },
+      where: { id: vigente.id },
       data: { replacedById: created.id },
     });
 
     return {
       accessToken: await this.tokens.issueAccess({
-        sub: stored.userId,
-        role: stored.user.role,
-        pwdVersion: stored.user.pwdVersion,
+        sub: vigente.userId,
+        role: vigente.user.role,
+        pwdVersion: vigente.user.pwdVersion,
         // La sesión es la familia: rotar el refresh no la convierte en otra.
-        sessionId: stored.familyId,
+        sessionId: vigente.familyId,
       }),
       refreshToken: next.token,
       expiresIn: ACCESS_TTL_SECONDS,
-      role: stored.user.role,
+      role: vigente.user.role,
     };
   }
 }

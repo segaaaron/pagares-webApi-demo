@@ -291,7 +291,7 @@ describe('§12.2 · dos abonos simultáneos no sobrepasan el saldo', () => {
   });
 });
 
-describe('§10.4 · un refresh canjeado dos veces mata la familia', () => {
+describe('§10.4 · la carrera se tolera y la reutilización mata la familia', () => {
   let cookie = '';
   let rotated = '';
 
@@ -337,18 +337,39 @@ describe('§10.4 · un refresh canjeado dos veces mata la familia', () => {
     expect(rotated).not.toBe(cookie);
   });
 
-  it('reutilizar el refresh viejo es 401', async () => {
-    const reused = await call('/auth/refresh', { method: 'POST', cookie });
-    expect(reused.status).toBe(401);
-    expect(problem(reused)).toBe('refresh_reused');
+  it('el mismo token dos veces seguidas es una carrera, no un robo', async () => {
+    /*
+     * El panel refresca delante de cada petición, y el navegador pide la página
+     * y sus datos a la vez: varias llegan con el token todavía sin rotar. Antes
+     * eso mataba la familia y echaba al usuario a mitad de trabajo.
+     *
+     * Se tolera **un solo salto** y durante unos segundos: la sesión sigue viva
+     * y quien llegó tarde recibe un token que sirve.
+     */
+    const carrera = await call('/auth/refresh', { method: 'POST', cookie });
+    expect(carrera.status).toBe(200);
+    expect(refreshCookie(carrera.headers)).not.toBe(rotated);
+
+    // Y el bueno sigue sirviendo: no se ha revocado nada.
+    const bueno = await call('/auth/refresh', { method: 'POST', cookie: rotated });
+    expect(bueno.status).toBe(200);
+    rotated = refreshCookie(bueno.headers);
   });
 
-  it('y arrastra al refresh bueno: la familia entera queda revocada', async () => {
-    // Ésta es la regla que importa. Detectar la reutilización y dejar viva la
-    // sesión del ladrón no serviría de nada: se revoca la familia completa.
-    const after = await call('/auth/refresh', { method: 'POST', cookie: rotated });
-    expect(after.status).toBe(401);
-    expect(problem(after)).toBe('refresh_reused');
+  it('un token de hace dos rotaciones sí es reutilización', async () => {
+    /*
+     * Aquí ya no hay carrera posible: entre el token presentado y el actual hay
+     * más de un salto, así que alguien vuelve con uno viejo. Es la regla que
+     * importa —detectarlo y dejar viva la sesión del ladrón no serviría de
+     * nada—, así que se revoca la familia entera.
+     */
+    const viejo = await call('/auth/refresh', { method: 'POST', cookie });
+    expect(viejo.status).toBe(401);
+    expect(problem(viejo)).toBe('refresh_reused');
+
+    const bueno = await call('/auth/refresh', { method: 'POST', cookie: rotated });
+    expect(bueno.status).toBe(401);
+    expect(problem(bueno)).toBe('refresh_reused');
   });
 });
 

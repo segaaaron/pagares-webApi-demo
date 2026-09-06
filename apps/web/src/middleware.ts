@@ -51,11 +51,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
    * que no contesta dejaría la aplicación entera esperando. Si no llega a
    * tiempo se trata como refresh fallido, que ya sabe volver al acceso.
    */
-  const renewed = await fetchConLimite(
-    `${API_URL}/api/v1/auth/refresh`,
-    { method: 'POST', headers: { Cookie: `pagares_refresh=${refresh}` }, cache: 'no-store' },
-    PLAZO.sesion,
-  ).catch(() => null);
+  const renewed = await refrescarUnaVez(refresh);
 
   if (!renewed?.ok) {
     // Refresh inválido o revocado: se limpia la sesión y se vuelve al acceso.
@@ -153,3 +149,39 @@ export const config = {
   // La consulta pública `/p/...` queda fuera: no tiene sesión que renovar.
   matcher: ['/((?!_next/static|_next/image|favicon.ico|p/).*)'],
 };
+
+/**
+ * Un refresco por token, aunque lleguen diez peticiones a la vez.
+ *
+ * Esto corre delante de **cada** petición, y el navegador pide la página, sus
+ * datos y las precargas en paralelo. Sin esto, todas llegaban a la API con el
+ * mismo token sin rotar: la primera lo canjeaba y las demás presentaban uno ya
+ * usado, la API lo leía como reutilización y echaba al usuario a mitad de
+ * trabajo. Aquí se comparte la misma llamada y todas reciben su resultado.
+ *
+ * El mapa vive en el módulo, así que sólo cubre a este proceso. Es donde está
+ * la causa —un navegador contra un servidor—, y la API además tolera la carrera
+ * por si algún día hay varias réplicas.
+ */
+const enVuelo = new Map<string, Promise<Response | null>>();
+
+function refrescarUnaVez(refresh: string): Promise<Response | null> {
+  const yaVa = enVuelo.get(refresh);
+  if (yaVa) return yaVa;
+
+  const llamada = fetchConLimite(
+    `${API_URL}/api/v1/auth/refresh`,
+    { method: 'POST', headers: { Cookie: `pagares_refresh=${refresh}` }, cache: 'no-store' },
+    PLAZO.sesion,
+  )
+    .catch(() => null)
+    // Se comparte la respuesta: cada quien la lee por su cuenta, así que se
+    // clona. Un `Response` sólo se puede consumir una vez.
+    .then((respuesta) => respuesta);
+
+  enVuelo.set(refresh, llamada);
+  // Se suelta en cuanto termina: el token ya rotó y el siguiente será otro.
+  void llamada.finally(() => enVuelo.delete(refresh));
+
+  return llamada.then((respuesta) => (respuesta ? respuesta.clone() : null));
+}
