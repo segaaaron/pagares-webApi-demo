@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import { useEffect, useState } from 'react';
 import {
   createUserAction,
   deleteUserAccessAction,
@@ -9,6 +9,7 @@ import {
 } from './actions';
 import { dateTime } from '@/shared/lib/format';
 import { useActionToast } from '@/shared/ui/use-action-toast';
+import { useToast } from '@/shared/ui/toast';
 import { Modal, useModal } from '@/shared/ui/modal';
 import { NavIcon } from '@/shared/ui/icons/nav-icons';
 import { useBlockingActionState } from '@/shared/ui/blocking';
@@ -71,10 +72,27 @@ export function CreateUserForm({
 } = {}) {
   const [state, action, pending] = useBlockingActionState<UserActionState, FormData>(createUserAction, {});
   const modal = useModal(abrirDeEntrada);
+  const toast = useToast();
   const [elegido, setElegido] = useState(debtor?.id ?? sinAcceso[0]?.id ?? '');
   const persona = debtor ?? sinAcceso.find((d) => d.id === elegido) ?? null;
 
-  useActionToast(state, 'Cuenta creada. La contraseña temporal está en pantalla.');
+  useActionToast(state, 'Acceso creado.');
+
+  /*
+   * Creada la cuenta: se avisa y se cierra el diálogo.
+   *
+   * Antes se quedaba abierto para no perder la contraseña temporal, que se
+   * enseña una sola vez (§8.3). Pero sin aviso de que había terminado, el botón
+   * se quedaba en «Creando…» y parecía colgado. La contraseña le llega al
+   * deudor por correo, que es como la va a usar de todas formas.
+   */
+  useEffect(() => {
+    if (!state.credential) return;
+    toast('success', `Acceso creado. La contraseña temporal se envió a ${state.credential.email}.`);
+    modal.hide();
+    // La dependencia es la credencial: `modal` y `toast` se rehacen en cada
+    // render y meterlos aquí volvería a disparar el aviso sin motivo.
+  }, [state.credential]);
 
   /*
    * El alta vive en un diálogo y no en la página: es una acción puntual, y
@@ -155,7 +173,24 @@ export function CreateUserForm({
                   Sólo los que todavía no entran a la aplicación. ¿No está? Dalo de alta en
                   Deudores.
                 </p>
-                <input type="hidden" name="fullName" value={persona?.fullName ?? ''} />
+              </div>
+            )}
+
+            {debtor ? null : (
+              /* Su nombre, tal como está en la ficha: se enseña para poder
+                 cotejarlo con la identificación, y no se puede tocar. */
+              <div>
+                <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-ink">
+                  Nombre completo
+                </label>
+                <input
+                  id="fullName"
+                  name="fullName"
+                  value={persona?.fullName ?? ''}
+                  readOnly
+                  className="input bg-surface-2 text-muted"
+                />
+                <p className="mt-1 text-xs text-muted">El de su ficha. Para cambiarlo, edítalo en el deudor.</p>
               </div>
             )}
             <div>
