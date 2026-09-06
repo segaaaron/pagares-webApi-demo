@@ -36,17 +36,23 @@ export interface IssueNoteOutput {
   amountInWords: string;
   publicUrl: string;
   /**
-   * La serie completa cuando la deuda se documentó en varios pagos.
+   * El calendario del pagaré cuando la deuda se paga en cuotas (ADR 0022).
    *
-   * El primero encabeza la respuesta —es el que se abre y el que se manda a
-   * firmar—, y aquí van todos para que la pantalla pueda enseñar el calendario
-   * recién creado sin volver a preguntar.
+   * Va en la respuesta para que la pantalla enseñe la tabla recién creada sin
+   * volver a preguntar. Es nulo cuando se paga de una sola vez.
    */
-  series: {
-    id: string;
+  schedule: {
     size: number;
-    notes: { id: string; folio: string; index: number; dueDate: string; amountCents: string }[];
-    /** Lo pactado: cuánto se presta, cuánto se gana y cuánto se cobra. */
+    /** Cada cuánto se paga: `MONTHLY` o `BIWEEKLY`. */
+    frequency: string;
+    installments: {
+      index: number;
+      dueOn: string;
+      amountCents: string;
+      interestCents: string;
+      principalCents: string;
+    }[];
+    /** Lo pactado: cuánto se presta, cuánto se gana y cuánto dice el título. */
     plan: {
       model: string;
       principalCents: string;
@@ -80,46 +86,64 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
   protected async handle(input: CreateNoteRequest, ctx: ExecutionContext): Promise<IssueNoteOutput> {
     const now = this.clock.now();
     const today = businessToday(now);
-    const amountCents = BigInt(input.amountCents);
-
-    assertNoteInvariants({ amountCents, issueDate: input.issueDate, dueDate: input.dueDate }, today);
+    /* Lo que se presta. Lo que el título acaba diciendo lo decide el plan. */
+    const principalCents = BigInt(input.amountCents);
 
     const settings = await this.prisma.organizationSettings.findUnique({ where: { id: 'singleton' } });
     const prescriptionYears = settings?.prescriptionYears ?? 3;
 
     /*
-     * Un pagaré es de pago único, así que documentar doce mensualidades es
-     * emitir doce títulos con el mismo criterio: el importe repartido sin perder
-     * un centavo y los vencimientos mes a mes desde el pactado (§12).
+     * El plan decide qué dice el título y qué dice su tabla. Sin interés
+     * ordinario es el reparto del capital de siempre; con él, cada cuota lleva
+     * además el precio del préstamo —lo que gana quien presta— calculado sobre
+     * saldos insolutos o sobre el importe original, según lo pactado (§12).
      *
-     * Las dos reglas viven en `domain-rules` y aquí sólo se aplican: repartir
-     * dinero es exactamente el tipo de cuenta que no puede estar en un caso de
-     * uso, donde nadie la prueba.
-     */
-    /*
-     * El plan decide cuánto dice cada pagaré. Sin interés ordinario es el
-     * reparto del capital de siempre; con él, cada cuota lleva además el precio
-     * del préstamo —lo que gana quien presta— calculado sobre saldos insolutos
-     * o sobre el importe original, según lo pactado (§12).
+     * Repartir dinero vive en `domain-rules` y aquí sólo se aplica: es
+     * exactamente el tipo de cuenta que no puede estar en un caso de uso, donde
+     * nadie la mira.
      */
     const plan = buildPaymentPlan({
-      principalCents: amountCents,
+      principalCents,
       annualRatePct:
         input.plan.model === 'NONE' || input.plan.rate === null
           ? null
           : toAnnualRatePct(input.plan.rate.value, input.plan.rate.period),
       installments: input.installments,
       model: input.plan.model,
+      frequency: input.paymentFrequency,
     });
+
+    /*
+     * Lo que el título exige es capital más interés ordinario (ADR 0022). Sin
+     * plan coincide con lo prestado; con él no, y el pagaré tiene que decir lo
+     * que se debe, no lo que se entregó.
+     */
+    const amountCents = plan.totalCents;
+
+    /*
+     * `dueDate` es la **primera** cuota; el título vence con la **última**.
+     *
+     * Un solo vencimiento en la literalidad del documento (ADR 0022): el art.
+     * 79 LGTOC vuelve pagadero a la vista lo que lleva vencimientos sucesivos
+     * dentro, y aquí el calendario no está dentro del título sino al lado, que
+     * es lo que contemplan los arts. 17 y 130 al obligar a recibir abonos.
+     */
+    const vencimientos = installmentDates(
+      input.dueDate,
+      input.installments,
+      input.paymentFrequency,
+    );
+    const dueDate = vencimientos.at(-1) as string;
+    const enCuotas = input.installments > 1;
+
+    assertNoteInvariants({ amountCents, issueDate: input.issueDate, dueDate }, today);
+
     /*
      * El teléfono es la identidad del deudor a efectos de la regla del ADR
      * 0019: es obligatorio, el correo no, y es el mismo criterio con el que la
      * importación reconoce a quién pertenece cada fila (§24.5).
      */
     const telefonoDelDeudor = normalizePhone(input.debtor.phone);
-    const vencimientos = installmentDates(input.dueDate, input.installments);
-    const enSerie = input.installments > 1;
-    const seriesId = enSerie ? randomUUID() : null;
 
     return this.uow.run(async (scope) => {
       const tx = scope.client;
@@ -129,78 +153,65 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
        */
       const debtor = await this.resolveDebtor(tx, scope, input, ctx);
 
-      const creados: {
-        id: string;
-        folio: string;
-        index: number;
-        dueDate: string;
-        amountCents: string;
-        publicToken: string;
-        status: string;
-        amountInWords: string;
-      }[] = [];
-
-      for (const [posicion, cuota] of plan.rows.entries()) {
-        const importe = cuota.paymentCents;
-        const vencimiento = vencimientos[posicion] as string;
-        const note = await this.notes.create(
-          tx,
-          {
-            debtorId: debtor.id,
-            ownerId: debtor.userId,
-            debtorPhone: telefonoDelDeudor,
-            issuePlace: input.issuePlace,
-            issueDate: input.issueDate,
-            paymentPlace: input.paymentPlace,
-            dueDate: vencimiento,
-            creditorName: input.creditorName,
-            amountCents: importe,
-            currency: input.currency,
-            // El papel dice lo pactado; la aritmética usa la anual (§12.3).
-            interestRateAnnualPct:
-              input.interestRate === null
-                ? null
-                : toAnnualRatePct(input.interestRate.value, input.interestRate.period),
-            interestPeriod: input.interestRate?.period ?? 'ANNUAL',
-            // La forma del título se congela al emitir: cambiar la preferencia
-            // mañana no puede cambiar lo que dice un documento ya firmado.
-            negotiable: !(settings?.issueNonNegotiable ?? false),
-            observations: input.observations ?? null,
-            requiresGuarantors: input.requiresGuarantors,
-            guarantors: input.guarantors.map((g) => ({
-              position: g.position,
-              fullName: g.fullName,
-              address: g.address,
-              phone: g.phone,
-            })),
-            ...(seriesId
-              ? { series: { id: seriesId, index: posicion + 1, size: input.installments } }
-              : {}),
-            // De qué está hecha la cuota, tal como se pactó (§12).
-            plan: {
-              model: input.plan.model,
-              interestCents: cuota.interestCents,
-              principalCents: cuota.principalCents,
-            },
-            createdBy: ctx.actorId ?? 'system',
+      const note = await this.notes.create(
+        tx,
+        {
+          debtorId: debtor.id,
+          ownerId: debtor.userId,
+          debtorPhone: telefonoDelDeudor,
+          issuePlace: input.issuePlace,
+          issueDate: input.issueDate,
+          paymentPlace: input.paymentPlace,
+          dueDate,
+          creditorName: input.creditorName,
+          amountCents,
+          currency: input.currency,
+          paymentFrequency: input.paymentFrequency,
+          // El papel dice lo pactado; la aritmética usa la anual (§12.3).
+          interestRateAnnualPct:
+            input.interestRate === null
+              ? null
+              : toAnnualRatePct(input.interestRate.value, input.interestRate.period),
+          interestPeriod: input.interestRate?.period ?? 'ANNUAL',
+          // La forma del título se congela al emitir: cambiar la preferencia
+          // mañana no puede cambiar lo que dice un documento ya firmado.
+          negotiable: !(settings?.issueNonNegotiable ?? false),
+          observations: input.observations ?? null,
+          requiresGuarantors: input.requiresGuarantors,
+          guarantors: input.guarantors.map((g) => ({
+            position: g.position,
+            fullName: g.fullName,
+            address: g.address,
+            phone: g.phone,
+          })),
+          // De qué está hecho el importe del título, tal como se pactó (§12).
+          plan: {
+            model: input.plan.model,
+            interestCents: plan.totalInterestCents,
+            principalCents: plan.principalCents,
           },
-          'issue',
-          { folioPrefix: settings?.noteFolioPrefix ?? 'PAG', prescriptionYears },
-        );
-
-        creados.push({
-          id: note.id,
-          folio: note.folio,
-          index: posicion + 1,
-          dueDate: vencimiento,
-          amountCents: importe.toString(),
-          publicToken: note.publicToken,
-          status: note.status,
-          amountInWords: note.amountInWords,
-        });
-      }
-
-      const primero = creados[0] as (typeof creados)[number];
+          /*
+           * La tabla de amortización sólo existe cuando hay más de una cuota:
+           * un pagaré de pago único ya la lleva escrita en su propio importe y
+           * su propia fecha, y guardar una fila para decir lo mismo sería una
+           * segunda verdad esperando a desincronizarse.
+           */
+          ...(enCuotas
+            ? {
+                schedule: plan.rows.map((cuota, posicion) => ({
+                  index: cuota.index,
+                  dueOn: vencimientos[posicion] as string,
+                  amountCents: cuota.paymentCents,
+                  interestCents: cuota.interestCents,
+                  principalCents: cuota.principalCents,
+                })),
+              }
+            : {}),
+          createdBy: ctx.actorId ?? 'system',
+        },
+        'issue',
+        { folioPrefix: settings?.noteFolioPrefix ?? 'PAG', prescriptionYears },
+      );
 
       await this.audit.record(
         {
@@ -208,36 +219,32 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
           actorRole: ctx.actorRole,
           action: 'note.issue',
           targetType: 'PromissoryNote',
-          targetId: primero.id,
+          targetId: note.id,
           metadata: {
-            folio: primero.folio,
+            folio: note.folio,
             amountCents: amountCents.toString(),
-            ...(seriesId ? { seriesId, installments: input.installments } : {}),
+            principalCents: plan.principalCents.toString(),
+            ...(enCuotas ? { installments: input.installments } : {}),
           },
           ...(ctx.ip !== undefined ? { ip: ctx.ip } : {}),
         },
         tx,
       );
 
-      /*
-       * Un solo aviso para toda la serie. Doce correos por una misma operación
-       * son doce oportunidades de que el deudor deje de leerlos; el mensaje
-       * dice cuántos pagarés hay que firmar y enlaza al primero.
-       */
       scope.publish({
         eventId: randomUUID(),
         eventType: 'NoteIssued',
         occurredAt: now,
         payload: {
-          noteId: primero.id,
-          folio: primero.folio,
+          noteId: note.id,
+          folio: note.folio,
           debtorId: debtor.id,
           ownerId: debtor.userId,
-          ...(seriesId ? { seriesId, installments: input.installments } : {}),
+          ...(enCuotas ? { installments: input.installments } : {}),
           /*
-           * Lo pactado viaja con el aviso cuando la serie lleva interés (§12):
-           * sin esto el correo decía «12 pagarés» y el importe del primero, y
-           * el deudor tenía que multiplicar para saber a cuánto se compromete.
+           * Lo pactado viaja con el aviso cuando el plan lleva interés (§12):
+           * sin esto el correo decía el importe y el deudor tenía que
+           * multiplicar para saber a cuánto se compromete.
            */
           ...(plan.totalInterestCents > 0n
             ? {
@@ -249,21 +256,21 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
       });
 
       return {
-        id: primero.id,
-        folio: primero.folio,
-        status: primero.status,
-        amountInWords: primero.amountInWords,
-        publicUrl: `/p/${primero.publicToken}`,
-        series: seriesId
+        id: note.id,
+        folio: note.folio,
+        status: note.status,
+        amountInWords: note.amountInWords,
+        publicUrl: `/p/${note.publicToken}`,
+        schedule: enCuotas
           ? {
-              id: seriesId,
               size: input.installments,
-              notes: creados.map(({ id, folio, index, dueDate, amountCents: importe }) => ({
-                id,
-                folio,
-                index,
-                dueDate,
-                amountCents: importe,
+              frequency: input.paymentFrequency,
+              installments: plan.rows.map((cuota, posicion) => ({
+                index: cuota.index,
+                dueOn: vencimientos[posicion] as string,
+                amountCents: cuota.paymentCents.toString(),
+                interestCents: cuota.interestCents.toString(),
+                principalCents: cuota.principalCents.toString(),
               })),
               plan: {
                 model: plan.model,

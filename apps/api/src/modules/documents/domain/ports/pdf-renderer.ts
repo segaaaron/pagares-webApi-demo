@@ -19,21 +19,34 @@ export interface NoteDocumentModel {
   /** Moratorio, como se pactó: «3% mensual». */
   interestRateLabel: string;
   /**
-   * El interés **ordinario** cuando el pagaré es cuota de un plan (§12).
+   * El plan de pagos pactado, cuando lo hay (§12, ADR 0022).
    *
    * No es un adorno: las tasas pactadas —ordinaria y moratoria— tienen que
    * constar en el título para poder exigirse. Sin esto, el documento sólo
    * hablaba del moratorio y el precio del préstamo viajaba escondido dentro
    * del importe.
+   *
+   * La tabla se imprime con el título, como hace cualquier financiera con su
+   * tabla de amortización. No son vencimientos del pagaré —vence una sola vez,
+   * el día de la última cuota— sino el calendario contra el que se abona, que
+   * es lo que contemplan los arts. 17 y 130 LGTOC.
    */
   plan: {
-    /** «Pago 3 de 12». */
+    /** «12 pagos mensuales», o «Pago único». */
     positionLabel: string;
     rateLabel: string;
     /** Cómo se calcula el interés: sobre saldos insolutos o sobre el original. */
     modelLabel: string;
     interestFormatted: string;
     principalFormatted: string;
+    /** La tabla de amortización. Vacía cuando se paga de una sola vez. */
+    schedule: {
+      index: number;
+      dueOnFormatted: string;
+      amountFormatted: string;
+      interestFormatted: string;
+      principalFormatted: string;
+    }[];
   } | null;
   /** Qué es hoy el documento: sirve para marcarlo si aún no obliga a nadie. */
   status: string;

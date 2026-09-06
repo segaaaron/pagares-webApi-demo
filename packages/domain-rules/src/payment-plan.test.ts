@@ -320,3 +320,42 @@ describe('interés ordinario que queda por cubrir', () => {
     ).toBe(0n);
   });
 });
+
+describe('la periodicidad decide el divisor de la tasa', () => {
+  const base = { principalCents: 5_000_000n, annualRatePct: 36, model: 'INSOLUTOS' as const };
+
+  it('quincenal cobra la mitad de interés por cuota que mensual', () => {
+    /*
+     * 36 % anual son 3 % al mes y 1.5 % a la quincena. Sin el divisor correcto,
+     * un plan quincenal cobraría el interés de un mes entero cada quince días:
+     * el doble de lo pactado, y nadie lo vería hasta que el deudor sumara.
+     */
+    const mensual = buildPaymentPlan({ ...base, installments: 4, frequency: 'MONTHLY' });
+    const quincenal = buildPaymentPlan({ ...base, installments: 4, frequency: 'BIWEEKLY' });
+
+    expect(mensual.rows[0]?.interestCents).toBe(150_000n);
+    expect(quincenal.rows[0]?.interestCents).toBe(75_000n);
+    expect(quincenal.totalInterestCents).toBeLessThan(mensual.totalInterestCents);
+  });
+
+  it('sobre saldo global, la quincena también vale la mitad', () => {
+    const mensual = buildPaymentPlan({ ...base, model: 'GLOBAL', installments: 4, frequency: 'MONTHLY' });
+    const quincenal = buildPaymentPlan({ ...base, model: 'GLOBAL', installments: 4, frequency: 'BIWEEKLY' });
+
+    expect(mensual.totalInterestCents).toBe(600_000n);
+    expect(quincenal.totalInterestCents).toBe(300_000n);
+  });
+
+  it('sin decir nada, mensual', () => {
+    const sinDecir = buildPaymentPlan({ ...base, installments: 4 });
+    const mensual = buildPaymentPlan({ ...base, installments: 4, frequency: 'MONTHLY' });
+    expect(sinDecir.totalInterestCents).toBe(mensual.totalInterestCents);
+  });
+
+  it('las cuotas siguen sumando el total, sea cual sea la periodicidad', () => {
+    const plan = buildPaymentPlan({ ...base, installments: 6, frequency: 'BIWEEKLY' });
+    const suma = plan.rows.reduce((t, r) => t + r.paymentCents, 0n);
+    expect(suma).toBe(plan.totalCents);
+    expect(plan.rows.at(-1)?.balanceCents).toBe(0n);
+  });
+});

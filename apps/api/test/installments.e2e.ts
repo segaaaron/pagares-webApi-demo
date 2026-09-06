@@ -2,12 +2,13 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 
 /**
- * Serie de pagarés: una mensualidad, un pagaré (§12).
+ * Un pagaré con su tabla de amortización (§12, ADR 0022).
  *
- * Un pagaré es un título de pago único, así que documentar doce mensualidades es
- * firmar doce títulos numerados. Lo que estas pruebas protegen es lo que se
- * rompe callado: que las cuotas sumen exactamente la deuda, que cada una tenga
- * su propio folio y que los vencimientos caigan mes a mes.
+ * Un préstamo que se devuelve en cuotas es **un** título por el total y su
+ * calendario, que es lo que contemplan los arts. 17 y 130 LGTOC al obligar al
+ * acreedor a recibir abonos. Lo que estas pruebas protegen es lo que se rompe
+ * callado: que las cuotas sumen exactamente lo que dice el título, que el
+ * vencimiento del pagaré sea el de la última y que emitir siga dando un folio.
  *
  * Requiere la API levantada y sembrada (`pnpm db:seed`).
  */
@@ -55,15 +56,27 @@ function futureDate(days: number): string {
 
 let adminToken = '';
 
-interface SerieNota {
-  id: string;
-  folio: string;
+interface Cuota {
   index: number;
-  dueDate: string;
+  dueOn: string;
   amountCents: string;
+  interestCents: string;
+  principalCents: string;
 }
 
-/** Emite y devuelve la serie completa. */
+interface Calendario {
+  size: number;
+  frequency: string;
+  installments: Cuota[];
+  plan: {
+    model: string;
+    principalCents: string;
+    totalInterestCents: string;
+    totalCents: string;
+  };
+}
+
+/** Emite y devuelve el pagaré con su calendario. */
 async function emitir(
   installments: number,
   amountCents: string,
@@ -71,6 +84,7 @@ async function emitir(
   plan?: { model: 'NONE' | 'INSOLUTOS' | 'GLOBAL'; rate?: { value: number; period: 'MONTHLY' } },
   /** Para probar cuotas ya vencidas hace falta expedir antes del vencimiento. */
   issueDate = futureDate(-1),
+  paymentFrequency: 'MONTHLY' | 'BIWEEKLY' = 'MONTHLY',
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return call('/admin/notes', {
     method: 'POST',
@@ -79,7 +93,7 @@ async function emitir(
     body: {
       ...(plan ? { plan: { model: plan.model, rate: plan.rate ?? null } } : {}),
       debtor: {
-        fullName: `Serie ${Date.now()}`,
+        fullName: `Plan ${Date.now()}`,
         address: 'Calle de prueba 1',
         phone: `+52443${String(Date.now()).slice(-7)}`,
       },
@@ -91,6 +105,7 @@ async function emitir(
       amountCents,
       interestRate: { value: 3, period: 'MONTHLY' },
       installments,
+      paymentFrequency,
     },
   });
 }
@@ -102,83 +117,107 @@ beforeAll(async () => {
   adminToken = String(login.body['accessToken']);
 });
 
-describe('§12 · emitir la deuda en varios pagos', () => {
-  it('un pago sigue siendo un pagaré suelto, sin serie', async () => {
+describe('§12 · emitir la deuda pagadera en cuotas', () => {
+  it('un pago sigue siendo un pagaré sin calendario', async () => {
     // El caso normal no cambia: quien no pide plazos emite uno y ya.
     const resultado = await emitir(1, '1000000');
 
     expect(resultado.status).toBe(201);
-    expect(resultado.body['series']).toBeNull();
+    expect(resultado.body['schedule']).toBeNull();
     expect(resultado.body['folio']).toMatch(/^PAG-\d{4}-\d{6}$/);
   });
 
-  it('doce pagos son doce pagarés, cada uno con su folio', async () => {
+  it('doce pagos son UN pagaré con doce cuotas', async () => {
+    /*
+     * La regla del ADR 0022, y la que se rompería sin darse cuenta: doce
+     * mensualidades no son doce títulos. El deudor pide un pagaré y recibe un
+     * pagaré.
+     */
     const resultado = await emitir(12, '6000000');
     expect(resultado.status).toBe(201);
+    expect(resultado.body['folio']).toMatch(/^PAG-\d{4}-\d{6}$/);
 
-    const serie = resultado.body['series'] as { id: string; size: number; notes: SerieNota[] };
-    expect(serie.size).toBe(12);
-    expect(serie.notes).toHaveLength(12);
-
-    // Un folio por título: cada pagaré se reclama por separado, y dos con el
-    // mismo número serían indistinguibles en un juicio.
-    const folios = serie.notes.map((nota) => nota.folio);
-    expect(new Set(folios).size).toBe(12);
-    for (const folio of folios) expect(folio).toMatch(/^PAG-\d{4}-\d{6}$/);
+    const calendario = resultado.body['schedule'] as Calendario;
+    expect(calendario.size).toBe(12);
+    expect(calendario.installments).toHaveLength(12);
   });
 
-  it('las cuotas suman exactamente la deuda', async () => {
+  it('las cuotas suman exactamente lo que dice el título', async () => {
     /*
-     * La regla que no se puede romper. $60,000 entre 7 no da exacto, y si el
-     * reparto pierde o inventa un centavo, el deudor acaba debiendo algo que
-     * nadie sabe explicar.
+     * $60,000 entre 7 no da exacto, y si el reparto pierde o inventa un
+     * centavo el deudor acaba debiendo algo que nadie sabe explicar.
      */
     const resultado = await emitir(7, '6000000');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+    const calendario = resultado.body['schedule'] as Calendario;
 
-    const suma = serie.notes.reduce((total, nota) => total + BigInt(nota.amountCents), 0n);
+    const suma = calendario.installments.reduce((total, c) => total + BigInt(c.amountCents), 0n);
     expect(suma).toBe(6_000_000n);
+    expect(suma).toBe(BigInt(calendario.plan.totalCents));
   });
 
   it('el sobrante va en la primera cuota, no en la última', async () => {
     const resultado = await emitir(7, '6000000');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+    const cuotas = (resultado.body['schedule'] as Calendario).installments;
 
-    const primera = BigInt(serie.notes[0]?.amountCents ?? '0');
-    const resto = serie.notes.slice(1).map((nota) => BigInt(nota.amountCents));
+    const primera = BigInt(cuotas[0]?.amountCents ?? '0');
+    const resto = cuotas.slice(1).map((c) => BigInt(c.amountCents));
     // Las demás son todas iguales; la primera carga con la diferencia.
     expect(new Set(resto.map(String)).size).toBe(1);
     expect(primera).toBeGreaterThanOrEqual(resto[0] as bigint);
   });
 
-  it('los vencimientos van mes a mes desde el pactado', async () => {
+  it('las cuotas van mes a mes desde la fecha pactada', async () => {
     const resultado = await emitir(3, '3000000', '2027-01-31');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+    const cuotas = (resultado.body['schedule'] as Calendario).installments;
 
     // Y el 31 cae al último día del mes que no lo tiene, en vez de desbordarse
     // al mes siguiente.
-    expect(serie.notes.map((nota) => nota.dueDate)).toEqual([
-      '2027-01-31',
-      '2027-02-28',
-      '2027-03-31',
+    expect(cuotas.map((c) => c.dueOn)).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+  });
+
+  it('el título vence con la última cuota, no con la primera', async () => {
+    /*
+     * Un solo vencimiento en la literalidad del documento (ADR 0022). El art.
+     * 79 LGTOC vuelve pagadero a la vista lo que lleva vencimientos sucesivos
+     * dentro; aquí el calendario está al lado del título, no dentro.
+     */
+    const resultado = await emitir(3, '3000000', '2027-01-31');
+    const detalle = await call(`/admin/notes/${String(resultado.body['id'])}`, {
+      token: adminToken,
+    });
+
+    expect(detalle.body['dueDate']).toBe('2027-03-31');
+  });
+
+  it('quincenal son quince días exactos entre cuota y cuota', async () => {
+    const resultado = await emitir(4, '4000000', '2027-01-25', undefined, futureDate(-1), 'BIWEEKLY');
+    const calendario = resultado.body['schedule'] as Calendario;
+
+    expect(calendario.frequency).toBe('BIWEEKLY');
+    // Y cruzando el fin de mes sin corregir nada: es lo que permite al deudor
+    // contar los días él mismo.
+    expect(calendario.installments.map((c) => c.dueOn)).toEqual([
+      '2027-01-25',
+      '2027-02-09',
+      '2027-02-24',
+      '2027-03-11',
     ]);
   });
 
-  it('van en orden y numerados del uno al último', async () => {
-    const resultado = await emitir(4, '2000000');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+  it('quincenal, el título vence con la última quincena', async () => {
+    const resultado = await emitir(4, '4000000', '2027-01-25', undefined, futureDate(-1), 'BIWEEKLY');
+    const detalle = await call(`/admin/notes/${String(resultado.body['id'])}`, {
+      token: adminToken,
+    });
 
-    expect(serie.notes.map((nota) => nota.index)).toEqual([1, 2, 3, 4]);
+    expect(detalle.body['dueDate']).toBe('2027-03-11');
   });
 
-  it('la respuesta encabeza con el primer pagaré de la serie', async () => {
-    // Es el que se abre y el que se manda a firmar: si respondiera con otro, la
-    // pantalla siguiente enseñaría el pagaré equivocado.
-    const resultado = await emitir(5, '2500000');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+  it('van en orden y numeradas del uno al último', async () => {
+    const resultado = await emitir(4, '2000000');
+    const cuotas = (resultado.body['schedule'] as Calendario).installments;
 
-    expect(resultado.body['id']).toBe(serie.notes[0]?.id);
-    expect(resultado.body['folio']).toBe(serie.notes[0]?.folio);
+    expect(cuotas.map((c) => c.index)).toEqual([1, 2, 3, 4]);
   });
 
   it('un importe que no da ni un centavo por cuota es 422', async () => {
@@ -186,22 +225,27 @@ describe('§12 · emitir la deuda en varios pagos', () => {
     expect(resultado.status).toBe(422);
   });
 
-  it('más de veinticuatro pagos es 422', async () => {
+  it('más de veinticuatro cuotas es 422', async () => {
     const resultado = await emitir(25, '6000000');
     expect(resultado.status).toBe(422);
   });
 
-  it('cada pagaré de la serie se abre por su cuenta', async () => {
-    const resultado = await emitir(3, '900000');
-    const serie = resultado.body['series'] as { notes: SerieNota[] };
+  it('el detalle enseña el calendario con lo que lleva cubierto cada cuota', async () => {
+    const emision = await emitir(3, '900000');
+    const detalle = await call(`/admin/notes/${String(emision.body['id'])}`, { token: adminToken });
 
-    for (const nota of serie.notes) {
-      const detalle = await call(`/admin/notes/${nota.id}`, { token: adminToken });
-      expect(detalle.status).toBe(200);
-      expect(detalle.body['folio']).toBe(nota.folio);
-      // Cada uno con su propio importe, no con el total de la deuda.
-      expect((detalle.body['amount'] as Record<string, string>)['cents']).toBe(nota.amountCents);
-    }
+    expect(detalle.status).toBe(200);
+    const calendario = detalle.body['schedule'] as {
+      size: number;
+      installments: { index: number; status: string; balance: { cents: string } }[];
+    };
+    expect(calendario.size).toBe(3);
+    // Sin abonos, las tres pendientes y debiéndose enteras.
+    expect(calendario.installments.map((c) => c.status)).toEqual([
+      'PENDING',
+      'PENDING',
+      'PENDING',
+    ]);
   });
 });
 
@@ -218,22 +262,52 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
     });
     expect(resultado.status).toBe(201);
 
-    const serie = resultado.body['series'] as {
-      notes: SerieNota[];
-      plan: { model: string; principalCents: string; totalInterestCents: string; totalCents: string };
-    };
+    const calendario = resultado.body['schedule'] as Calendario;
 
-    expect(serie.plan.model).toBe('INSOLUTOS');
-    expect(serie.plan.principalCents).toBe('6000000');
+    expect(calendario.plan.model).toBe('INSOLUTOS');
+    expect(calendario.plan.principalCents).toBe('6000000');
     // 60,000 a 3 % mensual en 12 cuotas: la ganancia ronda los 12,300.
-    expect(BigInt(serie.plan.totalInterestCents)).toBeGreaterThan(1_200_000n);
-    expect(BigInt(serie.plan.totalCents)).toBe(
-      BigInt(serie.plan.principalCents) + BigInt(serie.plan.totalInterestCents),
+    expect(BigInt(calendario.plan.totalInterestCents)).toBeGreaterThan(1_200_000n);
+    expect(BigInt(calendario.plan.totalCents)).toBe(
+      BigInt(calendario.plan.principalCents) + BigInt(calendario.plan.totalInterestCents),
     );
+  });
 
-    // Y cada pagaré vale su cuota, no su parte del capital.
-    const suma = serie.notes.reduce((total, nota) => total + BigInt(nota.amountCents), 0n);
-    expect(suma).toBe(BigInt(serie.plan.totalCents));
+  it('lo que dice el título es capital más interés, no sólo lo prestado', async () => {
+    /*
+     * El pagaré tiene que decir lo que se debe, no lo que se entregó: con
+     * interés pactado, las dos cifras no coinciden (ADR 0022).
+     */
+    const resultado = await emitir(12, '6000000', futureDate(30), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const calendario = resultado.body['schedule'] as Calendario;
+    const detalle = await call(`/admin/notes/${String(resultado.body['id'])}`, {
+      token: adminToken,
+    });
+
+    // 60,000 de capital más 21,600 de interés pactado.
+    expect((detalle.body['amount'] as Record<string, string>)['cents']).toBe('8160000');
+    expect(calendario.plan.totalCents).toBe('8160000');
+  });
+
+  it('cada cuota desglosa cuánto es interés y cuánto capital', async () => {
+    const resultado = await emitir(4, '5000000', futureDate(30), {
+      model: 'INSOLUTOS',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const calendario = resultado.body['schedule'] as Calendario;
+
+    for (const cuota of calendario.installments) {
+      expect(BigInt(cuota.interestCents) + BigInt(cuota.principalCents)).toBe(
+        BigInt(cuota.amountCents),
+      );
+    }
+    // Sobre saldos insolutos el interés baja cuota a cuota: se cobra sobre lo
+    // que aún se debe, y cada mes se debe menos.
+    const intereses = calendario.installments.map((c) => BigInt(c.interestCents));
+    expect(intereses[0]).toBeGreaterThan(intereses[3] as bigint);
   });
 
   it('sobre saldo global sale más caro con la misma tasa', async () => {
@@ -249,22 +323,47 @@ describe('§12 · el plan de pagos y lo que gana quien presta', () => {
     });
 
     const ganancia = (r: typeof insolutos): bigint =>
-      BigInt((r.body['series'] as { plan: { totalInterestCents: string } }).plan.totalInterestCents);
+      BigInt((r.body['schedule'] as Calendario).plan.totalInterestCents);
 
     expect(ganancia(global)).toBeGreaterThan(ganancia(insolutos));
     // 60,000 × 3 % × 12 = 21,600, calculado siempre sobre el importe original.
     expect(ganancia(global)).toBe(2_160_000n);
   });
 
-  it('sin plan, las cuotas siguen repartiendo sólo el préstamo', async () => {
-    const resultado = await emitir(6, '6000000');
-    const serie = resultado.body['series'] as {
-      notes: SerieNota[];
-      plan: { totalInterestCents: string };
-    };
+  it('la quincena cobra la mitad de interés que el mes', async () => {
+    /*
+     * 36 % anual son 3 % al mes y 1.5 % a la quincena. Sin dividir la tasa por
+     * los periodos del año, un plan quincenal cobraría el interés de un mes
+     * entero cada quince días: el doble de lo pactado, y nadie lo vería hasta
+     * que el deudor sumara (§12).
+     */
+    const mensual = await emitir(4, '5000000', futureDate(30), {
+      model: 'GLOBAL',
+      rate: { value: 3, period: 'MONTHLY' },
+    });
+    const quincenal = await emitir(
+      4,
+      '5000000',
+      futureDate(30),
+      { model: 'GLOBAL', rate: { value: 3, period: 'MONTHLY' } },
+      futureDate(-1),
+      'BIWEEKLY',
+    );
 
-    expect(serie.plan.totalInterestCents).toBe('0');
-    const suma = serie.notes.reduce((total, nota) => total + BigInt(nota.amountCents), 0n);
+    const ganancia = (r: typeof mensual): bigint =>
+      BigInt((r.body['schedule'] as Calendario).plan.totalInterestCents);
+
+    // 50,000 × 3 % × 4 = 6,000 al mes; la mitad a la quincena.
+    expect(ganancia(mensual)).toBe(600_000n);
+    expect(ganancia(quincenal)).toBe(300_000n);
+  });
+
+  it('sin plan, las cuotas reparten sólo el préstamo', async () => {
+    const resultado = await emitir(6, '6000000');
+    const calendario = resultado.body['schedule'] as Calendario;
+
+    expect(calendario.plan.totalInterestCents).toBe('0');
+    const suma = calendario.installments.reduce((t, c) => t + BigInt(c.amountCents), 0n);
     expect(suma).toBe(6_000_000n);
   });
 
@@ -295,16 +394,19 @@ describe('§12 · liquidación anticipada', () => {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
-    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
 
-    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`, { token: adminToken });
+    const resultado = await call(`/admin/notes/${String(emision.body['id'])}/early-payoff`, {
+      token: adminToken,
+    });
 
     expect(resultado.status).toBe(200);
     expect(resultado.body['planModel']).toBe('INSOLUTOS');
     expect(resultado.body['pendingCount']).toBe(12);
     expect((resultado.body['principal'] as Record<string, string>)['cents']).toBe('6000000');
     expect((resultado.body['total'] as Record<string, string>)['cents']).toBe('6000000');
-    expect(BigInt((resultado.body['saved'] as Record<string, string>)['cents'] ?? '0')).toBeGreaterThan(0n);
+    expect(
+      BigInt((resultado.body['saved'] as Record<string, string>)['cents'] ?? '0'),
+    ).toBeGreaterThan(0n);
   });
 
   it('sobre saldo global, adelantar no ahorra un peso', async () => {
@@ -314,37 +416,49 @@ describe('§12 · liquidación anticipada', () => {
       model: 'GLOBAL',
       rate: { value: 3, period: 'MONTHLY' },
     });
-    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
 
-    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`, { token: adminToken });
+    const resultado = await call(`/admin/notes/${String(emision.body['id'])}/early-payoff`, {
+      token: adminToken,
+    });
 
     expect((resultado.body['saved'] as Record<string, string>)['cents']).toBe('0');
     // 60,000 de capital más 21,600 de interés pactado.
     expect((resultado.body['total'] as Record<string, string>)['cents']).toBe('8160000');
   });
 
-  it('la cifra es la de la serie entera, no la del pagaré abierto', async () => {
-    // Liquidar es saldar la deuda; preguntarlo desde la quinta cuota no puede
-    // contestar sólo por la quinta.
+  it('contesta por el calendario entero, no por la cuota que toca', async () => {
+    // Liquidar es saldar la deuda, y la deuda es el título completo.
     const emision = await emitir(6, '6000000', futureDate(30), {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
-    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
-    const quinta = notas[4] as SerieNota;
 
-    const resultado = await call(`/admin/notes/${quinta.id}/early-payoff`, { token: adminToken });
+    const resultado = await call(`/admin/notes/${String(emision.body['id'])}/early-payoff`, {
+      token: adminToken,
+    });
 
     expect(resultado.body['pendingCount']).toBe(6);
     expect((resultado.body['principal'] as Record<string, string>)['cents']).toBe('6000000');
   });
 
+  it('un pagaré de pago único también se liquida', async () => {
+    // No tiene tabla, pero el título entero es su única cuota (ADR 0022).
+    const emision = await emitir(1, '1000000');
+
+    const resultado = await call(`/admin/notes/${String(emision.body['id'])}/early-payoff`, {
+      token: adminToken,
+    });
+
+    expect(resultado.status).toBe(200);
+    expect(resultado.body['pendingCount']).toBe(1);
+    expect((resultado.body['total'] as Record<string, string>)['cents']).toBe('1000000');
+  });
+
   it('liquidar en el pasado es 422', async () => {
     const emision = await emitir(3, '900000');
-    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
 
     const resultado = await call(
-      `/admin/notes/${primera.id}/early-payoff?date=${futureDate(-5)}`,
+      `/admin/notes/${String(emision.body['id'])}/early-payoff?date=${futureDate(-5)}`,
       { token: adminToken },
     );
     expect(resultado.status).toBe(422);
@@ -352,9 +466,8 @@ describe('§12 · liquidación anticipada', () => {
 
   it('sin sesión no se contesta', async () => {
     const emision = await emitir(3, '900000');
-    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
 
-    const resultado = await call(`/admin/notes/${primera.id}/early-payoff`);
+    const resultado = await call(`/admin/notes/${String(emision.body['id'])}/early-payoff`);
     expect(resultado.status).toBe(401);
   });
 });
@@ -387,7 +500,6 @@ async function trazoUnico(): Promise<Buffer> {
 }
 
 describe('§12.3 · el abono distingue el precio del préstamo de la sanción', () => {
-  /** Firma un pagaré por la vía del administrador para poder abonarle. */
   async function abonar(
     noteId: string,
     amountCents: string,
@@ -400,40 +512,37 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
     });
   }
 
-  /** Emite una serie con plan e importa su primera cuota ya firmada. */
-  async function serieFirmada(): Promise<{ id: string; amountCents: string }> {
+  /** Emite un pagaré a plazos y lo firma: sin firma no admite abonos (§11.3). */
+  async function planFirmado(): Promise<{ id: string; cuotas: Cuota[] }> {
     const emision = await emitir(12, '6000000', futureDate(30), {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
     expect(emision.status).toBe(201);
-    const primera = (emision.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+    const id = String(emision.body['id']);
 
-    // Un pagaré sin firmar no admite abonos (§11.3), así que se firma por la
-    // vía del panel, que es la que existe sin aplicación de por medio.
     const trazo = await trazoUnico();
-
     const form = new FormData();
     form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
     form.append(
       'payload',
       JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
     );
-    const firmado = await fetch(`${API}/notes/${primera.id}/signature`, {
+    const firmado = await fetch(`${API}/notes/${id}/signature`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}` },
       body: form,
     });
-    expect(firmado.status, 'la primera cuota queda firmada').toBe(201);
+    expect(firmado.status, 'el pagaré queda firmado').toBe(201);
 
-    return { id: primera.id, amountCents: primera.amountCents };
+    return { id, cuotas: (emision.body['schedule'] as Calendario).installments };
   }
 
-  it('lo primero que cubre un abono es el precio del préstamo', async () => {
+  it('lo primero que cubre un abono es el interés de la cuota en curso', async () => {
     // $60,000 al 3 % mensual: la primera cuota lleva $1,800 de interés
     // ordinario, y hasta ahí llega el abono antes de tocar el capital.
-    const cuota = await serieFirmada();
-    const abono = await abonar(cuota.id, '200000');
+    const plan = await planFirmado();
+    const abono = await abonar(plan.id, '200000');
 
     expect(abono.status).toBe(201);
     expect(abono.body['appliedToOrdinaryInterestCents']).toBe('180000');
@@ -441,10 +550,24 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
     expect(abono.body['appliedToPrincipalCents']).toBe('20000');
   });
 
+  it('no cobra por adelantado el interés de las cuotas que faltan', async () => {
+    /*
+     * Lo que se rompería con el interés total del plan como pendiente: el
+     * primer abono se llevaría el de las doce cuotas y el recibo le diría al
+     * deudor que no ha bajado un peso de su deuda (ADR 0022).
+     */
+    const plan = await planFirmado();
+    const abono = await abonar(plan.id, '200000');
+
+    const interesDeLaPrimera = BigInt(plan.cuotas[0]?.interestCents ?? '0');
+    expect(BigInt(String(abono.body['appliedToOrdinaryInterestCents']))).toBe(interesDeLaPrimera);
+    expect(BigInt(String(abono.body['appliedToPrincipalCents']))).toBeGreaterThan(0n);
+  });
+
   it('los tres conceptos suman exactamente el abono', async () => {
     // Si sobrara o faltara un centavo, el saldo dejaría de cuadrar con el libro.
-    const cuota = await serieFirmada();
-    const abono = await abonar(cuota.id, '350000');
+    const plan = await planFirmado();
+    const abono = await abonar(plan.id, '350000');
 
     const suma =
       BigInt(String(abono.body['appliedToOrdinaryInterestCents'])) +
@@ -454,35 +577,50 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
   });
 
   it('el interés ya cubierto no se vuelve a cobrar', async () => {
-    const cuota = await serieFirmada();
-    await abonar(cuota.id, '200000');
-    const segundo = await abonar(cuota.id, '200000');
+    const plan = await planFirmado();
+    await abonar(plan.id, '200000');
+    const segundo = await abonar(plan.id, '200000');
 
-    // El precio del préstamo se pagó con el primer abono: el segundo es capital.
+    // El interés de la primera cuota se pagó con el primer abono, y el segundo
+    // no alcanza a entrar en la segunda: todo capital.
     expect(segundo.body['appliedToOrdinaryInterestCents']).toBe('0');
     expect(segundo.body['appliedToPrincipalCents']).toBe('200000');
   });
 
-  it('el detalle enseña de qué está hecha la cuota', async () => {
-    const cuota = await serieFirmada();
-    const detalle = await call(`/admin/notes/${cuota.id}`, { token: adminToken });
+  it('un abono que cruza a la cuota siguiente cobra también su interés', async () => {
+    const plan = await planFirmado();
+    const primera = BigInt(plan.cuotas[0]?.amountCents ?? '0');
+    const abono = await abonar(plan.id, String(primera + 100_000n));
 
-    const desglose = detalle.body['breakdown'] as Record<string, Record<string, string>>;
-    expect(desglose['model']).toBe('INSOLUTOS');
-    expect(desglose['interest']?.['cents']).toBe('180000');
-    // Interés más capital es la cuota entera: es lo que el deudor firma.
-    expect(
-      BigInt(desglose['interest']?.['cents'] ?? '0') +
-        BigInt(desglose['principal']?.['cents'] ?? '0'),
-    ).toBe(BigInt(cuota.amountCents));
+    const interesDeLasDos =
+      BigInt(plan.cuotas[0]?.interestCents ?? '0') + BigInt(plan.cuotas[1]?.interestCents ?? '0');
+    // La segunda entra sólo hasta donde llega el abono, y ahí manda el interés.
+    expect(BigInt(String(abono.body['appliedToOrdinaryInterestCents']))).toBeGreaterThan(
+      BigInt(plan.cuotas[0]?.interestCents ?? '0'),
+    );
+    expect(BigInt(String(abono.body['appliedToOrdinaryInterestCents']))).toBeLessThanOrEqual(
+      interesDeLasDos,
+    );
   });
 
-  it('un pagaré suelto no tiene desglose que enseñar', async () => {
-    // No lleva interés dentro: su importe es capital y nada más.
+  it('el calendario enseña la cuota saldada y la que va a medias', async () => {
+    const plan = await planFirmado();
+    const primera = BigInt(plan.cuotas[0]?.amountCents ?? '0');
+    await abonar(plan.id, String(primera + 100_000n));
+
+    const detalle = await call(`/admin/notes/${plan.id}`, { token: adminToken });
+    const cuotas = (detalle.body['schedule'] as { installments: { status: string }[] }).installments;
+
+    expect(cuotas[0]?.status).toBe('PAID');
+    expect(cuotas[1]?.status).toBe('PARTIAL');
+    expect(cuotas[2]?.status).toBe('PENDING');
+  });
+
+  it('un pagaré de pago único no tiene calendario que enseñar', async () => {
     const suelto = await emitir(1, '1000000');
     const detalle = await call(`/admin/notes/${String(suelto.body['id'])}`, { token: adminToken });
 
-    expect(detalle.body['breakdown']).toBeNull();
+    expect(detalle.body['schedule']).toBeNull();
   });
 });
 
@@ -495,53 +633,82 @@ describe('§12.3 · el abono distingue el precio del préstamo de la sanción', 
  * entera es justamente eso.
  */
 describe('§12.3 · la mora no corre sobre el interés de la cuota', () => {
-  it('una cuota vencida devenga menos que un pagaré suelto del mismo importe', async () => {
+  it('un pagaré a plazos vencido devenga menos que uno suelto del mismo importe', async () => {
     /*
      * Los dos deben lo mismo y llevan la misma tasa; lo único que cambia es que
-     * la cuota lleva el precio del préstamo dentro. Si la mora fuera igual en
-     * los dos, se estaría cobrando interés sobre interés.
+     * el pagaré a plazos lleva el precio del préstamo dentro. Si la mora fuera
+     * igual en los dos, se estaría cobrando interés sobre interés.
      */
-    const serie = await emitir(
+    const conPlanEmision = await emitir(
       12,
       '6000000',
-      futureDate(-20),
-      { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
-      futureDate(-50),
+      futureDate(-400),
+      { model: 'GLOBAL', rate: { value: 3, period: 'MONTHLY' } },
+      futureDate(-800),
     );
-    expect(serie.status).toBe(201);
-    const cuota = (serie.body['series'] as { notes: SerieNota[] }).notes[0] as SerieNota;
+    expect(conPlanEmision.status).toBe(201);
+    const total = (conPlanEmision.body['schedule'] as Calendario).plan.totalCents;
 
-    const suelto = await emitir(1, cuota.amountCents, futureDate(-20), undefined, futureDate(-50));
-    expect(suelto.status).toBe(201);
+    // El suelto vale lo mismo que el título a plazos y vence el mismo día.
+    const detalleConPlan = await call(`/admin/notes/${String(conPlanEmision.body['id'])}`, {
+      token: adminToken,
+    });
+    const sueltoEmision = await emitir(
+      1,
+      total,
+      String(detalleConPlan.body['dueDate']),
+      undefined,
+      futureDate(-800),
+    );
+    expect(sueltoEmision.status).toBe(201);
 
-    const [conPlan, sinPlan] = await Promise.all([
-      call(`/admin/notes/${cuota.id}`, { token: adminToken }),
-      call(`/admin/notes/${String(suelto.body['id'])}`, { token: adminToken }),
-    ]);
+    const sinPlan = await call(`/admin/notes/${String(sueltoEmision.body['id'])}`, {
+      token: adminToken,
+    });
 
-    const mora = (r: typeof conPlan): bigint =>
+    const mora = (r: typeof sinPlan): bigint =>
       BigInt((r.body['accruedInterest'] as Record<string, string>)['cents'] ?? '0');
 
     expect(mora(sinPlan)).toBeGreaterThan(0n);
-    expect(mora(conPlan)).toBeGreaterThan(0n);
-    expect(mora(conPlan)).toBeLessThan(mora(sinPlan));
+    expect(mora(detalleConPlan)).toBeGreaterThan(0n);
+    expect(mora(detalleConPlan)).toBeLessThan(mora(sinPlan));
   });
 });
 
 /**
- * La misma firma no vale para dos pagarés (ADR 0021).
+ * La firma es por pagaré (ADR 0021), y ahora es **una** (ADR 0022).
  *
- * Cada título se firma por separado y con su propio trazo. Dos documentos con
- * la misma imagen al byte no son dos firmas: son una copiada, y convertiría
- * doce actos de voluntad en uno solo replicado por el servidor.
+ * El coste que traía la serie —doce cuotas eran doce firmas y doce trazos
+ * distintos— desapareció con el pagaré único. Lo que sigue en pie es que la
+ * misma imagen no vale para dos títulos distintos.
  */
 describe('§8 · una firma, un pagaré', () => {
-  it('reenviar el mismo trazo a otra cuota es 409', async () => {
-    const emision = await emitir(3, '900000', futureDate(30), {
+  it('firmar el pagaré a plazos es un solo acto', async () => {
+    const emision = await emitir(12, '6000000', futureDate(30), {
       model: 'INSOLUTOS',
       rate: { value: 3, period: 'MONTHLY' },
     });
-    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
+    const id = String(emision.body['id']);
+
+    const trazo = await trazoUnico();
+    const form = new FormData();
+    form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
+    form.append(
+      'payload',
+      JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
+    );
+    const firmado = await fetch(`${API}/notes/${id}/signature`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: form,
+    });
+
+    expect(firmado.status).toBe(201);
+  });
+
+  it('reenviar el mismo trazo a otro pagaré es 409', async () => {
+    const primero = await emitir(2, '900000');
+    const segundo = await emitir(1, '900000');
     const trazo = await trazoUnico();
 
     const firmar = async (noteId: string): Promise<Response> => {
@@ -558,40 +725,15 @@ describe('§8 · una firma, un pagaré', () => {
       });
     };
 
-    const primera = await firmar(String(notas[0]?.id));
-    expect(primera.status).toBe(201);
+    expect((await firmar(String(primero.body['id']))).status).toBe(201);
 
     // Nadie dibuja dos veces exactamente lo mismo: si el hash coincide, es que
     // se reenvió el trazo anterior.
-    const segunda = await firmar(String(notas[1]?.id));
-    expect(segunda.status).toBe(409);
-    const problema = (await segunda.json()) as Record<string, unknown>;
+    const repetida = await firmar(String(segundo.body['id']));
+    expect(repetida.status).toBe(409);
+    const problema = (await repetida.json()) as Record<string, unknown>;
     expect(String(problema['type'])).toContain('signature_reused');
     // El folio donde ya se usó va en el mensaje: es lo que permite entenderlo.
-    expect(String(problema['title'])).toContain(String(notas[0]?.folio));
-  });
-
-  it('con su propio trazo, cada cuota se firma sin problema', async () => {
-    const emision = await emitir(2, '900000', futureDate(30), {
-      model: 'INSOLUTOS',
-      rate: { value: 3, period: 'MONTHLY' },
-    });
-    const notas = (emision.body['series'] as { notes: SerieNota[] }).notes;
-
-    for (const nota of notas) {
-      const form = new FormData();
-      const trazo = await trazoUnico();
-      form.append('signature', new Blob([new Uint8Array(trazo)], { type: 'image/png' }), 'firma.png');
-      form.append(
-        'payload',
-        JSON.stringify({ capturedAt: new Date().toISOString(), strokeCount: 3, mode: 'IN_PERSON' }),
-      );
-      const r = await fetch(`${API}/notes/${nota.id}/signature`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${adminToken}` },
-        body: form,
-      });
-      expect(r.status, `firma de la cuota ${nota.index}`).toBe(201);
-    }
+    expect(String(problema['title'])).toContain(String(primero.body['folio']));
   });
 });

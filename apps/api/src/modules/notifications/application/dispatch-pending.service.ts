@@ -1,18 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+/*
+ * Las plantillas del ciclo del pagaré —abono, liquidado, anulado, prórroga,
+ * convenio y comprobante de firma— siguen en `@pagares/emails` con sus pruebas,
+ * pero ya no se importan aquí: desde el ADR 0023 no se mandan. Volver a
+ * encender una es importarla y añadir su caso.
+ */
 import {
   adminResetPassword,
-  extensionRegistered,
-  noteSettled,
-  noteSigned,
   noteToSign,
-  noteVoided,
   otpCode,
   passwordChanged,
-  paymentRegistered,
   renderReminder,
   securityAlert,
-  settlementBroken,
-  settlementCreated,
   welcomeCredentials,
   type DocumentCardData,
 } from '@pagares/emails';
@@ -20,7 +19,6 @@ import { daysOverdue, formatMxn } from '@pagares/domain-rules';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { MAILER, type Mailer } from '../domain/ports/mailer.js';
-import { NOTE_DOCUMENTS, type NoteDocuments } from '../../../shared/domain/note-documents.port.js';
 import { PUSH_CHANNEL, type NotificationChannel } from '../domain/ports/notification-channel.js';
 import { ENV } from '../../../config/config.module.js';
 import { withClock } from '../../promissory-notes/domain/note-status.js';
@@ -28,11 +26,13 @@ import type { Env } from '../../../config/env.schema.js';
 // El tope de intentos vive en el dominio: el panel lo necesita para enseñar lo
 // que se atascó, y dos copias del número se desincronizan.
 import { MAX_ATTEMPTS } from '../domain/outbox-state.js';
+import { inAppTitle, routeFor } from '../domain/notification-routing.js';
 
 
 
 /** Los avisos que además viajan como push (§24.3). */
-const PUSHABLE = new Set(['issued', 'reminder', 'payment', 'settled']);
+const PUSHABLE = new Set(['issued', 'reminder']);
+
 
 /**
  * Del tipo interno de aviso al identificador del catálogo de §16.
@@ -43,13 +43,6 @@ const PUSHABLE = new Set(['issued', 'reminder', 'payment', 'settled']);
  */
 const TEMPLATE_BY_KIND: Record<string, string> = {
   issued: 'note-to-sign',
-  signed: 'note-signed-receipt',
-  payment: 'payment-registered',
-  settled: 'note-settled',
-  voided: 'note-voided',
-  extended: 'extension-registered',
-  settlement: 'settlement-created',
-  'settlement-broken': 'settlement-broken',
 };
 
 /**
@@ -67,7 +60,6 @@ export class DispatchPendingService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MAILER) private readonly mailer: Mailer,
-    @Inject(NOTE_DOCUMENTS) private readonly documents: NoteDocuments,
     @Inject(PUSH_CHANNEL) private readonly push: NotificationChannel,
     @Inject(ENV) private readonly env: Env,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -126,64 +118,51 @@ export class DispatchPendingService {
       .catch(() => undefined);
   }
 
+  /**
+   * A dónde va cada evento lo decide `routeFor`, no este archivo (ADR 0023).
+   *
+   * Antes era un `switch` de veinte casos: una política que sólo se podía
+   * comprobar leyéndola entera y creyéndosela. Ahora es una tabla con nombre y
+   * con pruebas que la recorren, y aquí sólo queda el reparto.
+   */
   private async handle(eventType: string, payload: Record<string, unknown>): Promise<void> {
-    switch (eventType) {
-      case 'UserCreated':
-        await this.sendWelcome(payload);
+    const route = routeFor(eventType);
+
+    switch (route.channel) {
+      case 'ACCOUNT_EMAIL':
+        await this.sendAccountEmail(route.kind, eventType, payload);
         return;
-      case 'PasswordReset':
-        await this.sendAdminReset(payload);
+      case 'NOTE_EMAIL':
+        await this.sendNoteEmail(payload, route.kind);
         return;
-      case 'AccountLocked':
-      case 'RefreshReused':
-        await this.sendSecurityAlert(eventType, payload);
+      case 'IN_APP':
+        await this.notifyInApp(payload, route.kind);
         return;
-      case 'OtpIssued':
-        await this.sendOtp(payload);
-        return;
-      case 'PasswordChanged':
-        await this.sendPasswordChanged(payload);
-        return;
-      case 'NoteIssued':
-        await this.sendNoteEmail(payload, 'issued');
-        return;
-      case 'NoteReminderRequested':
-        await this.sendNoteEmail(payload, 'reminder');
-        return;
-      case 'NoteSigned':
-        await this.sendNoteEmail(payload, 'signed');
-        return;
-      case 'NoteSettled':
-        await this.sendNoteEmail(payload, 'settled');
-        return;
-      case 'NoteVoided':
-        await this.sendNoteEmail(payload, 'voided');
-        return;
-      case 'NoteExtended':
-        await this.sendNoteEmail(payload, 'extended');
-        return;
-      case 'PaymentRegistered':
-        await this.sendNoteEmail(payload, 'payment');
-        return;
-      case 'SettlementCreated':
-        await this.sendNoteEmail(payload, 'settlement');
-        return;
-      case 'SettlementBroken':
-        await this.sendNoteEmail(payload, 'settlement-broken');
-        return;
-      default:
-        // Un evento sin destinatario de correo no es un error.
+      case 'SILENT':
         return;
     }
   }
 
-  /**
-   * Correos ligados a un pagaré. Todos comparten la tarjeta-documento, así que se
-   * arma una vez y cada plantilla decide qué decir alrededor.
-   *
-   * Un pagaré sin cuenta de cliente no tiene destinatario: se marca como enviado
-   * para no reintentar en balde, y la gestión queda en la bandeja de Hoy (§25.12).
-   */
+  /** Los correos de cuenta: credenciales, contraseña y seguridad. */
+  private async sendAccountEmail(
+    kind: 'welcome' | 'admin-reset' | 'otp' | 'password-changed' | 'security',
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    switch (kind) {
+      case 'welcome':
+        return this.sendWelcome(payload);
+      case 'admin-reset':
+        return this.sendAdminReset(payload);
+      case 'otp':
+        return this.sendOtp(payload);
+      case 'password-changed':
+        return this.sendPasswordChanged(payload);
+      case 'security':
+        return this.sendSecurityAlert(eventType, payload);
+    }
+  }
+
   private async sendNoteEmail(payload: Record<string, unknown>, kind: string): Promise<void> {
     const noteId = String(payload['noteId']);
     const note = await this.prisma.promissoryNote.findUnique({
@@ -238,6 +217,11 @@ export class DispatchPendingService {
           .join(' · ')
       : undefined;
 
+    /*
+     * Sólo quedan dos correos sobre un pagaré (ADR 0023): el que pide firmarlo
+     * y el recordatorio que el administrador manda a propósito. Todo lo demás
+     * se avisa en la aplicación.
+     */
     const mail =
       kind === 'reminder'
         ? // La plantilla la eligió la regla del tramo (§13.1); aquí sólo se pinta.
@@ -246,75 +230,29 @@ export class DispatchPendingService {
             offsetDays: Number(payload['offsetDays'] ?? 0),
             ...(paymentInstructions !== undefined ? { paymentInstructions } : {}),
           })
-        : kind === 'issued'
-        ? noteToSign({
+        : noteToSign({
             ...common,
             hasAccount: note.ownerId !== null,
-            // Una deuda a plazos manda un solo aviso por toda la serie (§12).
+            // Una deuda a plazos manda un solo aviso, y dice en cuántas cuotas.
             ...(payload['installments'] ? { installments: Number(payload['installments']) } : {}),
-            // Y dice a cuánto se compromete: cuota, precio del préstamo y total.
+            // Y a cuánto se compromete: el total y el precio del préstamo.
             ...(payload['planInterestCents']
               ? {
                   plan: {
                     totalFormatted: formatMxn(BigInt(String(payload['planTotalCents'] ?? '0'))),
-                    interestFormatted: formatMxn(BigInt(String(payload['planInterestCents']))),
+                    interestFormatted: formatMxn(
+                      BigInt(String(payload['planInterestCents'] ?? '0')),
+                    ),
                   },
                 }
               : {}),
-          })
-        : kind === 'signed'
-          ? noteSigned({ ...common, signedAtFormatted: this.formatDate(note.acceptedAt ?? this.clock.now()) })
-          : kind === 'settled'
-            ? noteSettled(common)
-            : kind === 'voided'
-              ? noteVoided({ ...common, reason: note.voidReason ?? 'Sin motivo registrado' })
-              : kind === 'extended'
-                ? extensionRegistered({
-                    ...common,
-                    previousDueFormatted: this.formatDate(new Date(String(payload['previousDue']))),
-                    newDueFormatted: this.formatDate(new Date(String(payload['newDue']))),
-                    reason: 'Acuerdo con el cliente',
-                  })
-                : kind === 'settlement'
-                  ? settlementCreated({
-                      ...common,
-                      agreedFormatted: formatMxn(BigInt(String(payload['agreedCents'] ?? '0'))),
-                      forgivenFormatted: formatMxn(BigInt(String(payload['forgivenCents'] ?? '0'))),
-                      dueOnFormatted: this.formatDate(new Date(String(payload['dueOn']))),
-                      terms: null,
-                    })
-                  : kind === 'settlement-broken'
-                    ? settlementBroken(common)
-                    : paymentRegistered({
-                        ...common,
-                        amountPaidFormatted: formatMxn(BigInt(String(payload['amountCents'] ?? '0'))),
-                        paidOnFormatted: this.formatDate(this.clock.now()),
-                        methodLabel: 'Registrado por el administrador',
-                        isSettled: balance <= 0n,
-                      });
-
-    /*
-     * Los correos 6, 15 y 17 (§16) llevan el documento adjunto. Se adjunta aquí y
-     * no en cada plantilla porque el PDF se genera al momento (§17.1) y un fallo
-     * al dibujarlo no debe impedir el aviso: se manda sin adjunto y queda el
-     * error en el log, que es más útil que un pagaré firmado del que nadie se
-     * enteró.
-     */
-    const attachments = await this.attachmentsFor(kind, note.id, payload).catch((error: unknown) => {
-      this.logger.warn({
-        noteId: note.id,
-        kind,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    });
+          });
 
     const sent = await this.mailer.send({
       to,
       subject: mail.subject,
       html: mail.html,
       text: mail.text,
-      ...(attachments.length > 0 ? { attachments } : {}),
       meta: {
         templateId:
           kind === 'reminder'
@@ -335,11 +273,35 @@ export class DispatchPendingService {
     }
 
     // El push dice **lo mismo** que el correo, y sólo para los avisos que el
-    // deudor necesita ahora: por firmar, vencimiento, abono y liquidación
-    // (§24.3). Un canal con contenido propio acaba contradiciendo al otro.
+    // deudor necesita ahora: por firmar y vencimiento (§24.3). Un canal con
+    // contenido propio acaba contradiciendo al otro.
     if (PUSHABLE.has(kind) && note.ownerId) {
       await this.mirrorPush(note.ownerId, mail.subject, this.plainFirstLine(mail.text), note.id);
     }
+  }
+
+  /**
+   * Avisa en la aplicación y en ningún otro sitio (ADR 0023).
+   *
+   * Sin correo, sin adjunto y sin registro de entrega: no hay nada que entregar.
+   * El texto es una línea porque es lo que cabe en una notificación, y lo que
+   * hay detrás lo cuenta la pantalla del pagaré, que además está al día.
+   */
+  private async notifyInApp(payload: Record<string, unknown>, kind: string): Promise<void> {
+    const noteId = String(payload['noteId'] ?? '');
+    if (!noteId) return;
+
+    const note = await this.prisma.promissoryNote.findUnique({
+      where: { id: noteId },
+      select: { id: true, folio: true, ownerId: true },
+    });
+    // Sin cuenta enlazada no hay a quién avisar: es gestión manual (§25.12).
+    if (!note?.ownerId) return;
+
+    const titulo = inAppTitle(kind, note.folio);
+    if (!titulo) return;
+
+    await this.mirrorPush(note.ownerId, titulo, 'Ábrelo para ver el detalle.', note.id);
   }
 
   /**
@@ -380,19 +342,6 @@ export class DispatchPendingService {
   }
 
   /** Qué PDF acompaña a cada aviso (§17.1). */
-  private async attachmentsFor(
-    kind: string,
-    noteId: string,
-    payload: Record<string, unknown>,
-  ): Promise<{ filename: string; content: Buffer }[]> {
-    if (kind === 'signed') return [await this.documents.note(noteId)];
-    if (kind === 'settled') return [await this.documents.release(noteId)];
-    if (kind === 'payment' && payload['paymentId']) {
-      return [await this.documents.receipt(String(payload['paymentId']))];
-    }
-    return [];
-  }
-
   private formatDate(value: Date): string {
     return new Intl.DateTimeFormat('es-MX', {
       day: '2-digit',

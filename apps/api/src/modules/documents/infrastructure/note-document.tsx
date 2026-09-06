@@ -72,6 +72,18 @@ const s = StyleSheet.create({
   },
   abonoTotal: { borderBottomWidth: 0, marginTop: 2 },
 
+  cuota: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.4,
+    borderBottomColor: REGLA,
+    paddingVertical: 3,
+    fontSize: 8.5,
+  },
+  cuotaCabecera: { fontFamily: 'Helvetica-Bold', borderBottomWidth: 0.8 },
+  cuotaNum: { width: '8%' },
+  cuotaFecha: { width: '32%' },
+  cuotaCifra: { width: '20%', textAlign: 'right', fontFamily: 'Courier' },
+
   verificacion: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   qr: { width: 52, height: 52 },
 });
@@ -147,16 +159,43 @@ export function NoteDocument({ model }: { model: NoteDocumentModel }) {
           <>
             <Text style={base.seccion}>PLAN DE PAGOS PACTADO</Text>
             <View style={base.fila}>
-              <Campo label="Esta cuota" value={model.plan.positionLabel} />
+              <Campo label="Forma de pago" value={model.plan.positionLabel} />
               <Campo label="Interés del préstamo" value={model.plan.rateLabel} />
             </View>
             <View style={base.fila}>
               <Campo label="Cálculo del interés" value={model.plan.modelLabel} />
               <Campo
-                label="De esta cuota"
+                label="De lo que dice este título"
                 value={`${model.plan.interestFormatted} de interés · ${model.plan.principalFormatted} de capital`}
               />
             </View>
+            {/*
+              * La tabla de amortización, impresa con el título como hace
+              * cualquier financiera (ADR 0022). No son vencimientos del pagaré
+              * —vence una sola vez, con la última cuota— sino el calendario
+              * contra el que se abona, que es lo que contemplan los arts. 17 y
+              * 130 LGTOC al obligar al tenedor a recibir pagos parciales.
+              */}
+            {model.plan.schedule.length > 1 ? (
+              <View>
+                <View style={[s.cuota, s.cuotaCabecera]}>
+                  <Text style={s.cuotaNum}>#</Text>
+                  <Text style={s.cuotaFecha}>Vence</Text>
+                  <Text style={s.cuotaCifra}>Capital</Text>
+                  <Text style={s.cuotaCifra}>Interés</Text>
+                  <Text style={s.cuotaCifra}>Pago</Text>
+                </View>
+                {model.plan.schedule.map((cuota) => (
+                  <View key={cuota.index} style={s.cuota}>
+                    <Text style={s.cuotaNum}>{cuota.index}</Text>
+                    <Text style={s.cuotaFecha}>{cuota.dueOnFormatted}</Text>
+                    <Text style={s.cuotaCifra}>{cuota.principalFormatted}</Text>
+                    <Text style={s.cuotaCifra}>{cuota.interestFormatted}</Text>
+                    <Text style={s.cuotaCifra}>{cuota.amountFormatted}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </>
         ) : null}
 

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import {
   accrueInterest,
+  applyToSchedule,
   businessToday,
   daysBetween,
   formatMxn,
@@ -72,13 +73,13 @@ const LONG_DATE = new Intl.DateTimeFormat('es-MX', {
 });
 
 /**
- * Liquidación anticipada de la serie (§12): "si paga todo hoy, ¿cuánto es?".
+ * Liquidación anticipada (§12, ADR 0022): "si paga todo hoy, ¿cuánto es?".
  *
  * La respuesta depende de cómo se pactó el interés ordinario, y por eso no hay
  * una sola: sobre **saldos insolutos** el interés es el precio del tiempo y el
  * que no transcurre no se cobra; sobre **saldo global** se pactó de una vez
  * sobre el importe original y adelantar no lo baja. La regla vive en
- * `domain-rules`; aquí sólo se reúnen las cuotas y se le pregunta.
+ * `domain-rules`; aquí sólo se reúne el calendario y se le pregunta.
  *
  * El **moratorio** se suma aparte porque no es lo mismo: sanciona los días de
  * atraso ya corridos, y ésos no se devuelven pagando hoy.
@@ -103,6 +104,7 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
   ): Promise<EarlyPayoffSimulation> {
     const note = await this.prisma.promissoryNote.findFirst({
       where: { id: input.noteId, ...(input.ownerId ? { ownerId: input.ownerId } : {}) },
+      include: { installments: { orderBy: { index: 'asc' } } },
     });
     if (!note) throw new NoteNotFoundError();
 
@@ -111,20 +113,17 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
     if (daysBetween(today, onDate) < 0) throw new SimulationDateInPastError();
 
     /*
-     * Un pagaré suelto se liquida solo; uno de una serie arrastra a sus
-     * hermanos, porque liquidar es saldar la deuda, no una cuota (§12).
+     * Liquidar es saldar la deuda entera, no una cuota: se pregunta por el
+     * pagaré y se contesta por todo su calendario (ADR 0022).
+     *
+     * Un anulado no se debe y un renovado se debe en el documento nuevo
+     * (§13.7); y mientras el título no esté firmado, al deudor no se le enseña
+     * como suyo lo que todavía puede rechazar (ADR 0018).
      */
-    const hermanos = note.seriesId
-      ? await this.prisma.promissoryNote.findMany({
-          where: { seriesId: note.seriesId, ...(input.ownerId ? { ownerId: input.ownerId } : {}) },
-          orderBy: { seriesIndex: 'asc' },
-        })
-      : [note];
-
-    // Un anulado no se debe y un renovado se debe en el documento nuevo (§13.7).
-    const vivos = hermanos
-      .filter((n) => n.status !== 'VOID' && n.status !== 'RENEWED')
-      .filter((n) => !input.signedOnly || isSigned(n.status as NoteStatus));
+    const vivo =
+      note.status !== 'VOID' &&
+      note.status !== 'RENEWED' &&
+      (!input.signedOnly || isSigned(note.status as NoteStatus));
 
     const settings = await this.prisma.organizationSettings.findUnique({
       where: { id: 'singleton' },
@@ -132,52 +131,86 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
     const basis = (settings?.interestBasis ?? 360) as 360 | 365;
 
     /*
-     * Cuánto del interés ordinario de cada cuota se ha cubierto ya. Se lee del
-     * libro de abonos y no se deduce del importe pagado: desde el ADR 0020 el
-     * reparto queda escrito en cada abono, y usar el dato real es lo que impide
-     * que esta cifra y la del recibo se contradigan.
+     * Cuánto del interés ordinario se ha cubierto ya. Se lee del libro de
+     * abonos y no se deduce del importe pagado: desde el ADR 0020 el reparto
+     * queda escrito en cada abono, y usar el dato real es lo que impide que
+     * esta cifra y la del recibo se contradigan.
      */
-    const abonos = await this.prisma.payment.groupBy({
-      by: ['noteId'],
-      where: { noteId: { in: vivos.map((n) => n.id) } },
+    const abonado = await this.prisma.payment.aggregate({
+      where: { noteId: note.id },
       _sum: { appliedToOrdinaryInterestCents: true },
     });
-    const ordinarioAbonado = new Map(
-      abonos.map((fila) => [fila.noteId, fila._sum.appliedToOrdinaryInterestCents ?? 0n]),
-    );
+    const ordinarioAbonado = abonado._sum.appliedToOrdinaryInterestCents ?? 0n;
 
-    const pending: PendingInstallment[] = vivos.map((n) => ({
-      index: n.seriesIndex ?? 1,
-      dueDate: n.dueDate.toISOString().slice(0, 10),
-      amountCents: n.amountCents,
-      paidCents: n.paidCents,
-      interestCents: n.planInterestCents ?? 0n,
-      interestPaidCents: ordinarioAbonado.get(n.id) ?? 0n,
-    }));
+    /*
+     * Las cuotas que quedan. Lo abonado se reparte en cascada sobre la tabla, y
+     * el interés ordinario ya cobrado se imputa igual: primero a lo más viejo,
+     * que es el orden con el que el deudor entiende su deuda.
+     */
+    const cuotas = vivo
+      ? applyToSchedule(
+          note.installments.length > 0
+            ? note.installments.map((cuota) => ({
+                index: cuota.index,
+                dueOn: cuota.dueOn.toISOString().slice(0, 10),
+                amountCents: cuota.amountCents,
+                interestCents: cuota.interestCents,
+                principalCents: cuota.principalCents,
+              }))
+            : /* Pago único: el título entero es su única cuota. */
+              [
+                {
+                  index: 1,
+                  dueOn: note.dueDate.toISOString().slice(0, 10),
+                  amountCents: note.amountCents,
+                  interestCents: note.planInterestCents ?? 0n,
+                  principalCents: note.planPrincipalCents ?? note.amountCents,
+                },
+              ],
+          note.paidCents,
+        )
+      : [];
+
+    let ordinarioPorImputar = ordinarioAbonado;
+    const pending: PendingInstallment[] = cuotas.map((cuota) => {
+      const cubierto =
+        ordinarioPorImputar >= cuota.interestCents ? cuota.interestCents : ordinarioPorImputar;
+      ordinarioPorImputar -= cubierto;
+      return {
+        index: cuota.index,
+        dueDate: cuota.dueOn,
+        amountCents: cuota.amountCents,
+        paidCents: cuota.paidCents,
+        interestCents: cuota.interestCents,
+        interestPaidCents: cubierto,
+      };
+    });
 
     const planModel = (note.planModel ?? 'NONE') as PlanModel;
     const liquidacion = settleEarly({ model: planModel, onDate, pending });
 
-    // El moratorio se calcula pagaré por pagaré: cada uno venció su día y lleva
-    // sus propios días de atraso.
+    /*
+     * El moratorio corre cuota por cuota: cada una tenía su día y arrastra sus
+     * propios días de atraso. Y no corre sobre el interés ordinario de la cuota
+     * (ADR 0020), que sería interés sobre interés.
+     */
     let lateInterest = 0n;
-    for (const n of vivos) {
-      const resta = n.amountCents - n.paidCents;
+    for (const cuota of pending) {
+      const resta = cuota.amountCents - cuota.paidCents;
       if (resta <= 0n) continue;
-      const atraso = Math.max(0, daysBetween(n.dueDate.toISOString().slice(0, 10), onDate));
+      const atraso = Math.max(0, daysBetween(cuota.dueDate, onDate));
       if (atraso === 0) continue;
-      // La mora no corre sobre el interés ordinario de la cuota (ADR 0020).
       lateInterest += accrueInterest({
         balanceCents: lateInterestBase({
           balanceCents: resta,
           ordinaryInterestPendingCents: pendingOrdinaryInterest({
-            planInterestCents: n.planInterestCents ?? 0n,
-            appliedCents: ordinarioAbonado.get(n.id) ?? 0n,
+            planInterestCents: cuota.interestCents,
+            appliedCents: cuota.interestPaidCents ?? 0n,
             balanceCents: resta,
           }),
           overPrincipalOnly: settings?.lateInterestOverPrincipalOnly ?? true,
         }),
-        annualRatePct: n.interestRateAnnualPct === null ? null : Number(n.interestRateAnnualPct),
+        annualRatePct: note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
         daysOverdue: atraso,
         basis,
       });
@@ -187,7 +220,7 @@ export class SimulateEarlyPayoffUseCase extends BaseUseCase<
     // Seguir el calendario cuesta todo lo que queda de las cuotas, interés
     // futuro incluido: es contra esa cifra que se mide el ahorro.
     const scheduleTotal =
-      vivos.reduce((suma, n) => suma + (n.amountCents > n.paidCents ? n.amountCents - n.paidCents : 0n), 0n) +
+      pending.reduce((suma, c) => suma + (c.amountCents > c.paidCents ? c.amountCents - c.paidCents : 0n), 0n) +
       lateInterest;
 
     return {

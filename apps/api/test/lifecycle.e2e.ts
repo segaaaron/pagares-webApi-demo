@@ -323,9 +323,9 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     expect(otraVez.status).toBe(409);
   });
 
-  it('una serie entera sí se emite: es un solo acto', async () => {
-    // Las doce cuotas nacen juntas y se firman juntas. Si la regla contara
-    // contra sí misma, no habría planes de pago (§12).
+  it('un pagaré a plazos es un solo título, y por tanto un solo pendiente', async () => {
+    // Con la serie había que hacer una excepción para que la segunda cuota no
+    // se topara con la primera. Con un título y su tabla, no hace falta (ADR 0022).
     const resultado = await emitirPara(nuevoTelefono(), {
       amountCents: '6000000',
       installments: 12,
@@ -333,7 +333,9 @@ describe('§12 · no se emite otro pagaré a quien no firmó el anterior', () =>
     });
 
     expect(resultado.status).toBe(201);
-    expect((resultado.body['series'] as { notes: unknown[] }).notes).toHaveLength(12);
+    expect(
+      (resultado.body['schedule'] as { installments: unknown[] }).installments,
+    ).toHaveLength(12);
   });
 
   it('anulado el pendiente, se vuelve a poder emitir', async () => {

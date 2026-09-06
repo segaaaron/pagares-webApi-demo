@@ -10,11 +10,20 @@ import { PDF_RENDERER, type PdfRenderer } from '../domain/ports/pdf-renderer.js'
 import { ENV } from '../../../config/config.module.js';
 import type { Env } from '../../../config/env.schema.js';
 
+/*
+ * Las fechas civiles se guardan a medianoche **UTC** (`@db.Date`), así que se
+ * formatean en UTC. Con la zona de México, medianoche UTC cae el día anterior a
+ * las 18:00 y el documento imprimía un día menos: un pagaré que vence el 9 decía
+ * que vencía el 8, y de esa fecha cuelgan la mora y la prescripción (§12.3, regla 6).
+ *
+ * Los instantes —cuándo se firmó, cuándo se envió— sí van en hora local: son
+ * momentos, no días del calendario.
+ */
 const DATE = new Intl.DateTimeFormat('es-MX', {
   day: '2-digit',
   month: 'long',
   year: 'numeric',
-  timeZone: 'America/Mexico_City',
+  timeZone: 'UTC',
 });
 
 const DATE_TIME = new Intl.DateTimeFormat('es-MX', {
@@ -45,6 +54,9 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
         payments: { orderBy: { paidOn: 'asc' } },
         // El aval va en el documento con su firma: sin ella no queda obligado.
         guarantors: { include: { signature: true }, orderBy: { position: 'asc' } },
+        // La tabla de amortización se imprime con el título: un pagaré que dice
+        // pagarse en cuotas sin decir cuáles no dice nada (ADR 0022).
+        installments: { orderBy: { index: 'asc' } },
       },
     });
     if (!note) throw new NotFoundException('El pagaré no existe');
@@ -78,10 +90,24 @@ export class RenderNotePdfUseCase extends BaseUseCase<{ id: string }, Buffer> {
       plan:
         note.planModel && note.planModel !== 'NONE'
           ? {
+              /*
+               * Cómo se paga el título, dicho en el propio documento (ADR 0022).
+               * No son vencimientos del pagaré —vence una vez, el día de la
+               * última cuota— sino el calendario contra el que se abona.
+               */
               positionLabel:
-                note.seriesIndex && note.seriesSize
-                  ? `Pago ${note.seriesIndex} de ${note.seriesSize}`
+                note.installments.length > 1
+                  ? `${note.installments.length} pagos ${
+                      note.paymentFrequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'
+                    }`
                   : 'Pago único',
+              schedule: note.installments.map((cuota) => ({
+                index: cuota.index,
+                dueOnFormatted: DATE.format(cuota.dueOn),
+                amountFormatted: formatMxn(cuota.amountCents),
+                interestFormatted: formatMxn(cuota.interestCents),
+                principalFormatted: formatMxn(cuota.principalCents),
+              })),
               rateLabel: describeRate(
                 note.interestRateAnnualPct === null ? null : Number(note.interestRateAnnualPct),
                 note.interestPeriod,

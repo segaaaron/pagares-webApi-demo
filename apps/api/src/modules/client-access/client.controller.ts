@@ -18,14 +18,14 @@ import {
   formatMxn,
   lateInterestBase,
   money,
-  pendingOrdinaryInterest,
+  outstandingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { CLOCK, type Clock } from '@pagares/api-core';
 import { CurrentActor, Roles, type Actor } from '../../shared/http/auth.guard.js';
 import { PrismaService } from '../../shared/persistence/prisma.service.js';
 import { OBJECT_STORAGE, type ObjectStorage } from '../media/domain/ports/object-storage.js';
 import { NOTE_DOCUMENTS, type NoteDocuments } from '../../shared/domain/note-documents.port.js';
-import { withClock, isSigned, type NoteStatus } from '../promissory-notes/domain/note-status.js';
+import { withClock } from '../promissory-notes/domain/note-status.js';
 import { planOf, type PlanMember, type PlanView } from './plan-view.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.schema.js';
@@ -365,28 +365,14 @@ export class ClientController {
         paidCents: true,
         dueDate: true,
         creditorName: true,
-        // Sin esto, doce pagarés de un mismo plan se ven como doce deudas
-        // distintas y el deudor cree que debe doce veces (§12).
-        seriesId: true,
-        seriesIndex: true,
-        seriesSize: true,
         planModel: true,
+        planPrincipalCents: true,
+        planInterestCents: true,
+        // El calendario del pagaré: sin él, una deuda a plazos se ve como un
+        // solo importe enorme con una sola fecha (ADR 0022).
+        installments: { orderBy: { index: 'asc' as const } },
       },
     });
-
-    /*
-     * El plan se arma aquí, con los pagarés que ya vienen: sumarlo en el
-     * cliente sería reimplementar en dos aplicaciones una cuenta de dinero, y
-     * la primera vez que una cambiara enseñarían cifras distintas.
-     */
-    const planes = new Map<string, PlanView | null>();
-    for (const fila of rows) {
-      if (!fila.seriesId || planes.has(fila.seriesId)) continue;
-      planes.set(
-        fila.seriesId,
-        planOf(rows.filter((otra) => otra.seriesId === fila.seriesId) as PlanMember[]),
-      );
-    }
 
     return rows.map((r) => {
       const dueDate = r.dueDate.toISOString().slice(0, 10);
@@ -402,19 +388,14 @@ export class ClientController {
         balance: money(balance),
         dueDate,
         daysOverdue: overdue,
-        /** «Pago 3 de 12», o nulo cuando el pagaré va suelto. */
-        installment:
-          r.seriesId && r.seriesIndex && r.seriesSize
-            ? { seriesId: r.seriesId, index: r.seriesIndex, size: r.seriesSize }
-            : null,
         /*
-         * El plan sólo viaja con la cuota firmada. Una serie a medio firmar se
-         * ve partida a propósito: lo firmado es el plan que el deudor aceptó, y
-         * lo pendiente son folios sueltos cuya única acción es firmarlos (§12).
+         * El plan sólo viaja con el pagaré firmado: mientras no lo esté, lo que
+         * hay es una petición y su única acción es firmarla (ADR 0018).
+         *
+         * Se arma aquí y no en el cliente: sumar dinero en dos aplicaciones es
+         * garantizar que un día enseñen cifras distintas.
          */
-        plan: presentPlan(
-          r.seriesId && isSigned(r.status as NoteStatus) ? (planes.get(r.seriesId) ?? null) : null,
-        ),
+        plan: presentPlan(planOf(r as PlanMember)),
       };
     });
   }
@@ -432,6 +413,7 @@ export class ClientController {
         // Quién más quedó obligado. Va en el documento que el deudor firma, así
         // que ocultárselo era pedirle que firmara sin verlo entero (§25.15).
         guarantors: { orderBy: { position: 'asc' } },
+        installments: { orderBy: { index: 'asc' } },
       },
     });
     if (!note) throw new NotFoundException();
@@ -446,13 +428,17 @@ export class ClientController {
      * El deudor firma un pagaré de $6,027.73: tiene derecho a saber que $1,800
      * son el precio del préstamo y no capital.
      */
-    const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
     /*
      * El acuse de entrega del pagaré firmado (§24.1).
      *
      * Que conste a qué correo salió, cuándo y si se entregó es lo que hace cara
      * una objeción: un documento recibido y no objetado durante meses pesa,
      * porque el peritaje sólo aparece cuando alguien niega haber firmado.
+     *
+     * **Desde el ADR 0023 no se genera solo**: el comprobante de firma dejó de
+     * salir automáticamente, así que la entrega existe cuando el administrador
+     * manda el documento a propósito —`POST /admin/notes/:id/send`, que escribe
+     * este mismo `templateId`— o en los pagarés firmados antes del cambio.
      */
     const entrega = note.signature
       ? await this.prisma.emailDelivery.findFirst({
@@ -462,29 +448,31 @@ export class ClientController {
         })
       : null;
 
-    const ordinarioPendiente = pendingOrdinaryInterest({
-      planInterestCents: ordinarioDeLaCuota,
-      appliedCents: note.payments.reduce(
-        (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
-        0n,
-      ),
-      balanceCents: balance,
-    });
+    /*
+     * El calendario del pagaré. Un pagaré de pago único no tiene tabla: el
+     * título entero es su única cuota, y así se le trata para que el reparto sea
+     * uno solo y no dos casos que un día se contradigan (ADR 0022).
+     */
+    const calendario =
+      note.installments.length > 0
+        ? note.installments.map((cuota) => ({
+            index: cuota.index,
+            dueOn: cuota.dueOn.toISOString().slice(0, 10),
+            amountCents: cuota.amountCents,
+            interestCents: cuota.interestCents,
+            principalCents: cuota.principalCents,
+          }))
+        : [
+            {
+              index: 1,
+              dueOn: dueDate,
+              amountCents: note.amountCents,
+              interestCents: note.planInterestCents ?? 0n,
+              principalCents: note.amountCents - (note.planInterestCents ?? 0n),
+            },
+          ];
 
-    const hermanos = note.seriesId
-      ? await this.prisma.promissoryNote.findMany({
-          where: { seriesId: note.seriesId, ownerId: actor.id },
-          orderBy: { seriesIndex: 'asc' },
-          select: {
-            status: true,
-            amountCents: true,
-            paidCents: true,
-            seriesId: true,
-            seriesSize: true,
-            planModel: true,
-          },
-        })
-      : [];
+    const ordinarioPendiente = outstandingOrdinaryInterest(calendario, note.paidCents);
 
     return {
       id: note.id,
@@ -552,22 +540,10 @@ export class ClientController {
        */
       verifyUrl: `${this.env.WEB_URL}/p/${note.publicToken}`,
       /**
-       * El plan al que pertenece este pagaré (§12).
-       *
-       * Una deuda a plazos son varios pagarés firmados el mismo día. Sin decirlo,
-       * la aplicación enseña doce documentos sueltos y el deudor entiende que
-       * debe doce veces lo que debe una.
+       * Las cifras del plan, calculadas aquí y sólo si el título está firmado
+       * (§12, ADR 0018). Sin firmar no hay plan: hay una petición.
        */
-      installment:
-        note.seriesId && note.seriesIndex && note.seriesSize
-          ? { seriesId: note.seriesId, index: note.seriesIndex, size: note.seriesSize }
-          : null,
-      /**
-       * Las cifras del plan, calculadas aquí y **sólo sobre lo firmado** (§12).
-       * Un pagaré todavía sin firmar no enseña plan: es un folio suelto cuya
-       * única acción es firmarlo.
-       */
-      plan: isSigned(note.status as NoteStatus) ? presentPlan(planOf(hermanos as PlanMember[])) : null,
+      plan: presentPlan(planOf(note as PlanMember)),
       /*
        * Del aval, sólo quién es. No se manda estado de firma porque el sistema
        * no puede capturarla: prometerla en la aplicación era enseñar un paso
@@ -655,13 +631,16 @@ export class ClientController {
 function presentPlan(plan: PlanView | null) {
   if (!plan) return null;
   return {
-    seriesId: plan.seriesId,
     size: plan.size,
-    signedCount: plan.signedCount,
     paidCount: plan.paidCount,
     model: plan.model,
     total: money(plan.totalCents),
+    principal: money(plan.principalCents),
+    interest: money(plan.interestCents),
     paid: money(plan.paidCents),
     pending: money(plan.pendingCents),
+    /** Qué toca ahora y por cuánto: es la única pregunta que abre la pantalla. */
+    nextDueOn: plan.nextDueOn,
+    nextAmount: plan.nextAmountCents === null ? null : money(plan.nextAmountCents),
   };
 }

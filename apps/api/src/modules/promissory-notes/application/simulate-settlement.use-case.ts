@@ -7,7 +7,7 @@ import {
   describeRateWithAnnual,
   formatMxn,
   lateInterestBase,
-  pendingOrdinaryInterest,
+  outstandingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -76,6 +76,7 @@ export class SimulateSettlementUseCase extends BaseUseCase<
       include: {
         settlements: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' }, take: 1 },
         payments: { select: { appliedToOrdinaryInterestCents: true } },
+        installments: { orderBy: { index: 'asc' } },
       },
     });
     if (!note) throw new NoteNotFoundError();
@@ -99,14 +100,31 @@ export class SimulateSettlementUseCase extends BaseUseCase<
      * (ADR 0020): sería interés sobre interés. La misma regla que aplica el
      * abono, para que la cifra simulada y la cobrada no se contradigan.
      */
-    const ordinarioPendiente = pendingOrdinaryInterest({
-      planInterestCents: note.planInterestCents ?? 0n,
-      appliedCents: note.payments.reduce(
-        (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
-        0n,
-      ),
-      balanceCents: principal,
-    });
+    /*
+     * El calendario del pagaré. Un pagaré de pago único no tiene tabla: el
+     * título entero es su única cuota, y así se le trata para que el reparto sea
+     * uno solo y no dos casos que un día se contradigan (ADR 0022).
+     */
+    const calendario =
+      note.installments.length > 0
+        ? note.installments.map((cuota) => ({
+            index: cuota.index,
+            dueOn: cuota.dueOn.toISOString().slice(0, 10),
+            amountCents: cuota.amountCents,
+            interestCents: cuota.interestCents,
+            principalCents: cuota.principalCents,
+          }))
+        : [
+            {
+              index: 1,
+              dueOn: dueDate,
+              amountCents: note.amountCents,
+              interestCents: note.planInterestCents ?? 0n,
+              principalCents: note.amountCents - (note.planInterestCents ?? 0n),
+            },
+          ];
+
+    const ordinarioPendiente = outstandingOrdinaryInterest(calendario, note.paidCents);
 
     const interest = accrueInterest({
       balanceCents: lateInterestBase({

@@ -2,6 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseUseCase, CLOCK, type Clock, type ExecutionContext } from '@pagares/api-core';
 import {
   accrueInterest,
+  applyToSchedule,
   classifyAging,
   classifyPortfolio,
   daysOverdue,
@@ -9,7 +10,7 @@ import {
   describeRateWithAnnual,
   formatMxn,
   lateInterestBase,
-  pendingOrdinaryInterest,
+  outstandingOrdinaryInterest,
 } from '@pagares/domain-rules';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -59,7 +60,7 @@ export interface NoteDetail {
   interestRateOperationalLabel: string;
   /** Si circula por endoso o lleva la cláusula "no a la orden" (art. 25 LGTOC). */
   negotiable: boolean;
-  interestPeriod: 'MONTHLY' | 'ANNUAL';
+  interestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   amountInWords: string;
   observations: string | null;
 
@@ -77,22 +78,28 @@ export interface NoteDetail {
     phone: string;
   }[];
   /**
-   * La serie a la que pertenece, cuando la deuda se documentó en varios pagos.
+   * El calendario de pagos, cuando la deuda se paga en cuotas (ADR 0022).
    *
-   * Van los hermanos con su estado y su saldo porque la pregunta al abrir uno
-   * es siempre la misma: cómo va el resto del plan (§12).
+   * Va con lo cubierto de cada cuota porque la pregunta al abrir el pagaré es
+   * siempre la misma: por dónde va el plan y qué toca ahora.
    */
-  series: {
-    id: string;
-    index: number;
+  schedule: {
     size: number;
-    notes: {
-      id: string;
-      folio: string;
+    /** Cada cuánto se paga: `MONTHLY` o `BIWEEKLY`. */
+    frequency: string;
+    /** El plan tal como se pactó: cuánto se prestó y cuánto es el precio. */
+    model: string;
+    principal: { cents: string; formatted: string };
+    interest: { cents: string; formatted: string };
+    installments: {
       index: number;
+      dueOn: string;
       status: string;
-      dueDate: string;
+      daysOverdue: number;
       amount: { cents: string; formatted: string };
+      interest: { cents: string; formatted: string };
+      principal: { cents: string; formatted: string };
+      paid: { cents: string; formatted: string };
       balance: { cents: string; formatted: string };
     }[];
   } | null;
@@ -173,6 +180,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         legalCase: true,
         activities: { orderBy: { createdAt: 'desc' }, take: 20 },
         guarantors: { orderBy: { position: 'asc' } },
+        installments: { orderBy: { index: 'asc' } },
       },
     });
     if (!note) throw new NotFoundException('El pagaré no existe');
@@ -181,69 +189,93 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
     const dueDate = note.dueDate.toISOString().slice(0, 10);
 
     /*
-     * Los hermanos de la serie. La pregunta al abrir uno de doce es siempre
-     * cómo va el resto del plan, y sin esto había que volver a la cartera y
-     * buscarlos por el nombre del deudor.
+     * El calendario con lo cubierto de cada cuota (ADR 0022).
+     *
+     * Lo pagado se reparte al leer y no se guarda por cuota: la verdad de
+     * cuánto se ha abonado es el libro de abonos, y una segunda cifra en cada
+     * fila acabaría contradiciéndola. La cascada la hace `domain-rules`.
      */
-    const hermanos = note.seriesId
-      ? await (async () => {
-          const filas = await this.prisma.promissoryNote.findMany({
-            where: { seriesId: note.seriesId },
-            orderBy: { seriesIndex: 'asc' },
-            select: {
-              id: true,
-              folio: true,
-              seriesIndex: true,
-              status: true,
-              dueDate: true,
-              amountCents: true,
-              paidCents: true,
+    const schedule =
+      note.installments.length > 0
+        ? {
+            size: note.installments.length,
+            frequency: note.paymentFrequency,
+            model: note.planModel ?? 'NONE',
+            principal: {
+              cents: (note.planPrincipalCents ?? note.amountCents).toString(),
+              formatted: formatMxn(note.planPrincipalCents ?? note.amountCents),
             },
-          });
+            interest: {
+              cents: (note.planInterestCents ?? 0n).toString(),
+              formatted: formatMxn(note.planInterestCents ?? 0n),
+            },
+            installments: applyToSchedule(
+              note.installments.map((cuota) => ({
+                index: cuota.index,
+                dueOn: cuota.dueOn.toISOString().slice(0, 10),
+                amountCents: cuota.amountCents,
+                interestCents: cuota.interestCents,
+                principalCents: cuota.principalCents,
+              })),
+              note.paidCents,
+            ).map((cuota) => ({
+              index: cuota.index,
+              dueOn: cuota.dueOn,
+              status: cuota.status,
+              // Una cuota saldada no lleva atraso aunque su fecha ya pasara.
+              daysOverdue:
+                cuota.status === 'PAID' ? 0 : Math.max(0, daysOverdue(cuota.dueOn, now)),
+              amount: { cents: cuota.amountCents.toString(), formatted: formatMxn(cuota.amountCents) },
+              interest: {
+                cents: cuota.interestCents.toString(),
+                formatted: formatMxn(cuota.interestCents),
+              },
+              principal: {
+                cents: cuota.principalCents.toString(),
+                formatted: formatMxn(cuota.principalCents),
+              },
+              paid: { cents: cuota.paidCents.toString(), formatted: formatMxn(cuota.paidCents) },
+              balance: {
+                cents: cuota.balanceCents.toString(),
+                formatted: formatMxn(cuota.balanceCents),
+              },
+            })),
+          }
+        : null;
 
-          return {
-            // Dentro de la rama, `seriesId` ya no puede ser nulo.
-            id: note.seriesId as string,
-            index: note.seriesIndex ?? 1,
-            size: note.seriesSize ?? filas.length,
-            notes: filas.map((fila) => {
-              const saldo = fila.amountCents - fila.paidCents;
-              const atraso = daysOverdue(fila.dueDate.toISOString().slice(0, 10), now);
-              return {
-                id: fila.id,
-                folio: fila.folio,
-                index: fila.seriesIndex ?? 0,
-                // Con reloj, como en el listado: un pagaré vencido no espera a
-                // que alguien le cambie el estado a mano (§11.2).
-                status: withClock(fila.status as NoteStatus, atraso),
-                dueDate: fila.dueDate.toISOString().slice(0, 10),
-                amount: {
-                  cents: fila.amountCents.toString(),
-                  formatted: formatMxn(fila.amountCents),
-                },
-                balance: { cents: saldo.toString(), formatted: formatMxn(saldo) },
-              };
-            }),
-          };
-        })()
-      : null;
     const overdue = daysOverdue(dueDate, now);
     const balance = note.amountCents - note.paidCents;
 
     /*
-     * El interés ordinario de la cuota y lo que queda de él. La mora no corre
-     * sobre esa parte (ADR 0020): sería interés sobre interés.
+     * El calendario del pagaré. Un pagaré de pago único no tiene tabla: el
+     * título entero es su única cuota, y así se le trata para que el reparto sea
+     * uno solo y no dos casos que un día se contradigan (ADR 0022).
+     */
+    const calendario =
+      note.installments.length > 0
+        ? note.installments.map((cuota) => ({
+            index: cuota.index,
+            dueOn: cuota.dueOn.toISOString().slice(0, 10),
+            amountCents: cuota.amountCents,
+            interestCents: cuota.interestCents,
+            principalCents: cuota.principalCents,
+          }))
+        : [
+            {
+              index: 1,
+              dueOn: dueDate,
+              amountCents: note.amountCents,
+              interestCents: note.planInterestCents ?? 0n,
+              principalCents: note.amountCents - (note.planInterestCents ?? 0n),
+            },
+          ];
+
+    /*
+     * El interés ordinario que el calendario todavía no ha cobrado. La mora no
+     * corre sobre esa parte (ADR 0020): sería interés sobre interés.
      */
     const ordinarioDeLaCuota = note.planInterestCents ?? 0n;
-    const ordinarioAbonado = note.payments.reduce(
-      (suma, abono) => suma + abono.appliedToOrdinaryInterestCents,
-      0n,
-    );
-    const ordinarioPendiente = pendingOrdinaryInterest({
-      planInterestCents: ordinarioDeLaCuota,
-      appliedCents: ordinarioAbonado,
-      balanceCents: balance,
-    });
+    const ordinarioPendiente = outstandingOrdinaryInterest(calendario, note.paidCents);
 
     const accrued = accrueInterest({
       balanceCents: lateInterestBase({
@@ -312,7 +344,7 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
         phone: guarantor.phone,
       })),
 
-      series: hermanos,
+      schedule,
 
       debtor: {
         id: note.debtor.id,

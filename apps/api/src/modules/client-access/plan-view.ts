@@ -1,62 +1,90 @@
+import { applyToSchedule } from '@pagares/domain-rules';
 import { isSigned, type NoteStatus } from '../promissory-notes/domain/note-status.js';
 
-/** Lo mínimo de un pagaré para saber si entra en el plan y por cuánto. */
+/** Una cuota tal como está guardada. */
+export interface PlanInstallment {
+  index: number;
+  dueOn: Date;
+  amountCents: bigint;
+  interestCents: bigint;
+  principalCents: bigint;
+}
+
+/** Lo mínimo de un pagaré para saber si tiene plan y cómo va. */
 export interface PlanMember {
   status: NoteStatus;
   amountCents: bigint;
   paidCents: bigint;
-  seriesId: string | null;
-  seriesSize: number | null;
   planModel: string | null;
+  planPrincipalCents: bigint | null;
+  planInterestCents: bigint | null;
+  installments: PlanInstallment[];
 }
 
 export interface PlanView {
-  seriesId: string;
-  /** Las cuotas que se pactaron, estén firmadas o no. */
+  /** Cuántas cuotas se pactaron. */
   size: number;
-  /** Cuántas de ellas ha firmado ya el deudor: sólo ésas forman el plan. */
-  signedCount: number;
+  /** Cuántas están saldadas al céntimo. */
   paidCount: number;
   model: string;
+  /** Lo que el título exige: capital más el interés ordinario pactado. */
   totalCents: bigint;
+  /** Lo prestado. */
+  principalCents: bigint;
+  /** El precio del préstamo. */
+  interestCents: bigint;
   paidCents: bigint;
   pendingCents: bigint;
+  /** La cuota que toca ahora, o nulo si ya están todas cubiertas. */
+  nextDueOn: string | null;
+  nextAmountCents: bigint | null;
 }
 
 /**
- * El plan de pagos tal como se le enseña al deudor (§12).
+ * El plan de pagos tal como se le enseña al deudor (§12, ADR 0022).
  *
- * Regla del negocio: **el plan es por folio y sólo con el folio firmado**.
- * Mientras el deudor no ha firmado una cuota, esa cuota no es deuda suya: es
- * una petición. Agruparla dentro del plan sería enseñarle como aceptado algo
- * que todavía puede rechazar, y sumarle un saldo que no debe.
+ * Es **un** pagaré con su tabla de amortización, así que el plan existe cuando
+ * el título está firmado y no existe cuando no lo está: mientras el deudor no
+ * firma, lo que hay es una petición, y enseñarle un plan sería darle por
+ * aceptado algo que todavía puede rechazar.
  *
- * Por eso las cifras salen **sólo de lo firmado**, y `size` se manda igual con
- * el tamaño pactado: así la aplicación puede decir «3 de 12 firmados» en vez de
- * fingir que el plan tiene tres cuotas.
+ * Ésta es la simplificación que trajo el pagaré único: antes había que contar
+ * cuántas cuotas de una serie estaban firmadas y enseñar el resto como folios
+ * sueltos. Una firma, un plan.
  *
- * Lo anulado y lo renovado quedan fuera: uno no se debe y el otro se debe en el
- * documento nuevo (§13.7).
+ * Lo anulado y lo renovado no tienen plan: uno no se debe y el otro se debe en
+ * el documento nuevo (§13.7).
  */
-export function planOf(miembros: readonly PlanMember[]): PlanView | null {
-  const primero = miembros[0];
-  if (!primero?.seriesId) return null;
+export function planOf(note: PlanMember): PlanView | null {
+  if (note.installments.length === 0) return null;
+  if (note.status === 'VOID' || note.status === 'RENEWED') return null;
+  if (!isSigned(note.status)) return null;
 
-  const vivos = miembros.filter((n) => n.status !== 'VOID' && n.status !== 'RENEWED');
-  const firmados = vivos.filter((n) => isSigned(n.status));
-  if (firmados.length === 0) return null;
+  const cuotas = applyToSchedule(
+    note.installments.map((cuota) => ({
+      index: cuota.index,
+      dueOn: cuota.dueOn.toISOString().slice(0, 10),
+      amountCents: cuota.amountCents,
+      interestCents: cuota.interestCents,
+      principalCents: cuota.principalCents,
+    })),
+    note.paidCents,
+  );
 
-  const totalCents = firmados.reduce((suma, n) => suma + n.amountCents, 0n);
-  const paidCents = firmados.reduce((suma, n) => suma + n.paidCents, 0n);
+  const siguiente = cuotas.find((cuota) => cuota.status !== 'PAID') ?? null;
 
   return {
-    seriesId: primero.seriesId,
-    size: primero.seriesSize ?? vivos.length,
-    signedCount: firmados.length,
-    paidCount: firmados.filter((n) => n.status === 'PAID').length,
-    model: primero.planModel ?? 'NONE',
-    totalCents,
-    paidCents,
-    pendingCents: totalCents - paidCents,
+    size: cuotas.length,
+    paidCount: cuotas.filter((cuota) => cuota.status === 'PAID').length,
+    model: note.planModel ?? 'NONE',
+    totalCents: note.amountCents,
+    principalCents: note.planPrincipalCents ?? note.amountCents,
+    interestCents: note.planInterestCents ?? 0n,
+    paidCents: note.paidCents,
+    pendingCents: note.amountCents - note.paidCents,
+    nextDueOn: siguiente?.dueOn ?? null,
+    // Lo que falta de la cuota en curso, no su importe entero: si ya lleva la
+    // mitad abonada, decirle que debe el total sería cobrarle dos veces.
+    nextAmountCents: siguiente?.balanceCents ?? null,
   };
 }

@@ -432,16 +432,16 @@ describe('§17.1 · los documentos del deudor', () => {
 });
 
 /**
- * El plan de pagos que ve el deudor (§12).
+ * El plan de pagos que ve el deudor (§12, ADR 0022).
  *
- * Regla del negocio: **el plan es por folio y sólo con el folio firmado**. Lo
- * que todavía no ha firmado no es deuda suya, así que agruparlo dentro del plan
- * sería enseñarle como aceptado algo que aún puede rechazar, y sumarle un saldo
- * que no debe. Una serie a medio firmar se ve partida a propósito.
+ * Es **un** pagaré con su tabla de amortización, y el plan sólo existe si el
+ * título está firmado: lo que todavía no ha firmado no es deuda suya, y
+ * enseñárselo como plan sería darle por aceptado algo que aún puede rechazar.
  */
-describe('§12 · el plan sólo con el folio firmado', () => {
+describe('§12 · el plan, sólo con el pagaré firmado', () => {
   let cuotas: Record<string, unknown>[] = [];
-  let primera = '';
+  let firmado = '';
+  let sinFirmar = '';
 
   beforeAll(async () => {
     const perfil = await call('/me/profile', { token: clienteToken });
@@ -466,37 +466,80 @@ describe('§12 · el plan sólo con el folio firmado', () => {
       },
     });
     expect(emitido.status).toBe(201);
-    cuotas = (emitido.body['series'] as { notes: Record<string, unknown>[] }).notes;
-    primera = String(cuotas[0]?.['id']);
+    firmado = String(emitido.body['id']);
+    cuotas = (emitido.body['schedule'] as { installments: Record<string, unknown>[] }).installments;
 
-    // Firma sólo la primera: es el caso que importa, la serie a medio firmar.
-    await firmar(primera, clienteToken);
+    await firmar(firmado, clienteToken);
+
+    // Y uno más sin firmar, para el caso contrario. No puede convivir con otro
+    // pendiente (ADR 0019), así que se emite después de firmar el primero.
+    const pendiente = await call('/admin/notes', {
+      method: 'POST',
+      token: adminToken,
+      idempotencyKey: randomUUID(),
+      body: {
+        debtor: { fullName: 'Cliente de contrato', address: 'Calle de prueba 1', phone, email },
+        issuePlace: 'Morelia, Michoacán',
+        issueDate: futureDate(-2),
+        paymentPlace: 'Morelia, Michoacán',
+        dueDate: futureDate(45),
+        creditorName: 'Créditos Morelia S.A. de C.V.',
+        amountCents: '3000000',
+        interestRate: { value: 3, period: 'MONTHLY' },
+        installments: 3,
+        plan: { model: 'INSOLUTOS', rate: { value: 3, period: 'MONTHLY' } },
+      },
+    });
+    expect(pendiente.status).toBe(201);
+    sinFirmar = String(pendiente.body['id']);
   });
 
-  it('la cuota firmada trae el plan, con el tamaño pactado', async () => {
+  it('el pagaré firmado trae su plan entero', async () => {
     const suyos = await call('/me/notes', { token: clienteToken });
     const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
-      (n) => n['id'] === primera,
+      (n) => n['id'] === firmado,
     );
     const plan = fila?.['plan'] as Record<string, unknown>;
 
-    expect(plan, 'la cuota firmada trae plan').toBeTruthy();
-    // Tres cuotas pactadas, una firmada: la app puede decir «1 de 3 firmados»
-    // en vez de fingir que el plan tiene una sola cuota.
+    expect(plan, 'el pagaré firmado trae plan').toBeTruthy();
     expect(plan['size']).toBe(3);
-    expect(plan['signedCount']).toBe(1);
     expect(plan['paidCount']).toBe(0);
     expect(plan['model']).toBe('INSOLUTOS');
     esDinero(plan['total'], 'plan.total');
+    esDinero(plan['principal'], 'plan.principal');
+    esDinero(plan['interest'], 'plan.interest');
     esDinero(plan['paid'], 'plan.paid');
     esDinero(plan['pending'], 'plan.pending');
   });
 
-  it('el total del plan es el de lo firmado, no el de la deuda entera', async () => {
-    // Sumar las tres cuotas le enseñaría un saldo que todavía no aceptó.
+  it('el plan desglosa lo prestado y el precio del préstamo', async () => {
+    // Las dos cifras que el deudor pregunta y que antes tenía que deducir.
+    const detalle = await call(`/me/notes/${firmado}`, { token: clienteToken });
+    const plan = detalle.body['plan'] as Record<string, Record<string, string>>;
+
+    expect(plan['principal']?.['cents']).toBe('6000000');
+    expect(BigInt(plan['interest']?.['cents'] ?? '0')).toBeGreaterThan(0n);
+    expect(
+      BigInt(plan['principal']?.['cents'] ?? '0') + BigInt(plan['interest']?.['cents'] ?? '0'),
+    ).toBe(BigInt(plan['total']?.['cents'] ?? '0'));
+  });
+
+  it('dice qué cuota toca ahora y por cuánto', async () => {
+    // Es la única pregunta con la que se abre la pantalla.
+    const detalle = await call(`/me/notes/${firmado}`, { token: clienteToken });
+    const plan = detalle.body['plan'] as Record<string, unknown>;
+
+    expect(plan['nextDueOn']).toBe(cuotas[0]?.['dueOn']);
+    esDinero(plan['nextAmount'], 'plan.nextAmount');
+    expect((plan['nextAmount'] as Record<string, string>)['cents']).toBe(
+      String(cuotas[0]?.['amountCents']),
+    );
+  });
+
+  it('el total del plan es lo que dice el título, capital más interés', async () => {
     const suyos = await call('/me/notes', { token: clienteToken });
     const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
-      (n) => n['id'] === primera,
+      (n) => n['id'] === firmado,
     );
     const plan = fila?.['plan'] as Record<string, Record<string, string>>;
     const importe = (fila?.['amount'] as Record<string, string>)['cents'];
@@ -505,40 +548,28 @@ describe('§12 · el plan sólo con el folio firmado', () => {
     expect(plan['pending']?.['cents']).toBe(importe);
   });
 
-  it('las cuotas sin firmar son folios sueltos, sin plan', async () => {
+  it('sin firmar no hay plan: es una petición', async () => {
     const suyos = await call('/me/notes', { token: clienteToken });
-    const filas = suyos.body as unknown as Record<string, unknown>[];
+    const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
+      (n) => n['id'] === sinFirmar,
+    );
 
-    for (const cuota of cuotas.slice(1)) {
-      const fila = filas.find((n) => n['id'] === cuota['id']);
-      expect(fila?.['plan'], 'sin firma no hay plan').toBeNull();
-      // Pero siguen sabiendo de qué serie son: es «Pago 2 de 3» pendiente de firma.
-      expect(fila?.['installment']).toBeTruthy();
-    }
+    expect(fila?.['plan'], 'sin firma no hay plan').toBeNull();
   });
 
-  it('el detalle de la cuota firmada trae el mismo plan', async () => {
-    const detalle = await call(`/me/notes/${primera}`, { token: clienteToken });
-    const plan = detalle.body['plan'] as Record<string, unknown>;
-
-    expect(plan['signedCount']).toBe(1);
-    expect(plan['size']).toBe(3);
-  });
-
-  it('liquidar por anticipado contesta sólo por lo firmado', async () => {
+  it('liquidar por anticipado contesta por el pagaré entero', async () => {
     /*
-     * La pregunta que hoy sólo se contesta llamando al prestamista. Con una
-     * cuota firmada de tres, la cifra es la de esa cuota: cobrarle las otras dos
-     * sería cobrarle por lo que aún no aceptó (ADR 0017).
+     * La pregunta que hoy sólo se contesta llamando al prestamista. Es un solo
+     * título, así que la cifra es la de toda su deuda (ADR 0017).
      */
-    const respuesta = await call(`/me/notes/${primera}/early-payoff`, { token: clienteToken });
+    const respuesta = await call(`/me/notes/${firmado}/early-payoff`, { token: clienteToken });
     expect(respuesta.status).toBe(200);
-    expect(respuesta.body['pendingCount']).toBe(1);
+    expect(respuesta.body['pendingCount']).toBe(3);
     expect(respuesta.body['planModel']).toBe('INSOLUTOS');
 
     const suyos = await call('/me/notes', { token: clienteToken });
     const fila = (suyos.body as unknown as Record<string, unknown>[]).find(
-      (n) => n['id'] === primera,
+      (n) => n['id'] === firmado,
     );
     const saldo = BigInt((fila?.['balance'] as Record<string, string>)['cents'] ?? '0');
     const ahorro = BigInt((respuesta.body['saved'] as Record<string, string>)['cents'] ?? '0');
@@ -551,6 +582,13 @@ describe('§12 · el plan sólo con el folio firmado', () => {
      */
     expect(ahorro).toBeGreaterThan(0n);
     expect(total + ahorro).toBe(saldo);
+  });
+
+  it('el pagaré sin firmar no se liquida', async () => {
+    // No es deuda suya todavía: contestarle una cifra sería darla por aceptada.
+    const respuesta = await call(`/me/notes/${sinFirmar}/early-payoff`, { token: clienteToken });
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body['pendingCount']).toBe(0);
   });
 
   it('el pagaré de otro no se liquida', async () => {
@@ -601,15 +639,15 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
   let firmadas: string[] = [];
 
   beforeAll(async () => {
-    // Lo que quedó sin firmar de la serie anterior impide emitir otra (ADR 0019).
+    // Lo que quedó sin firmar antes impide emitir otro pagaré (ADR 0019).
     await firmarPendientes(clienteToken);
 
     const perfil = await call('/me/profile', { token: clienteToken });
     const phone = String((perfil.body as Record<string, unknown>)['phone']);
     const email = String((perfil.body as Record<string, unknown>)['email']);
 
-    // Una serie con la primera cuota ya vencida y las siguientes por vencer:
-    // el caso mezclado, que es donde las dos cifras se separan.
+    // Un plan con la primera cuota ya vencida y las siguientes por vencer: el
+    // caso mezclado, que es donde las dos cifras se separan.
     const emitido = await call('/admin/notes', {
       method: 'POST',
       token: adminToken,
@@ -628,14 +666,14 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
       },
     });
     expect(emitido.status).toBe(201);
-    const notas = (emitido.body['series'] as { notes: Record<string, unknown>[] }).notes;
 
-    // Firma la vencida y la siguiente: con las dos, la identidad usa sus dos
-    // términos —el moratorio de una y el interés perdonado de la otra—.
-    for (const nota of notas.slice(0, 2)) {
-      await firmar(String(nota['id']), clienteToken);
-      firmadas.push(String(nota['id']));
-    }
+    /*
+     * Un solo título y una sola firma. Su calendario mezcla lo vencido con lo
+     * que falta, que es donde la identidad usa sus dos términos: el moratorio
+     * de la cuota vencida y el interés perdonado de las que no llegaron.
+     */
+    await firmar(String(emitido.body['id']), clienteToken);
+    firmadas.push(String(emitido.body['id']));
   });
 
   it('con una cuota vencida, las dos cifras cuadran por la regla', async () => {
@@ -651,7 +689,7 @@ describe('§12 · el plan y la liquidación no se contradicen', () => {
     // Hay de las dos: una cuota vencida que devenga mora y una futura cuyo
     // interés no llegará a correr.
     expect(liquidar.body['dueCount']).toBe(1);
-    expect(liquidar.body['pendingCount']).toBe(2);
+    expect(liquidar.body['pendingCount']).toBe(3);
     expect(mora).toBeGreaterThan(0n);
     expect(ahorro).toBeGreaterThan(0n);
 

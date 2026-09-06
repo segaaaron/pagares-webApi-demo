@@ -16,7 +16,7 @@ const updateSchema = z
     defaultTermDays: z.number().int().min(1).max(3650),
     defaultInterestRateAnnualPct: z.number().min(0).max(100).nullable(),
     // Cómo se pacta en esta casa: mensual o anual (§12.3).
-    defaultInterestPeriod: z.enum(['MONTHLY', 'ANNUAL']),
+    defaultInterestPeriod: z.enum(['MONTHLY', 'BIWEEKLY', 'ANNUAL']),
     interestBasis: z.union([z.literal(360), z.literal(365)]),
     // Umbral que dispara la advertencia de tasa: avisa, no impide (§25.14).
     interestWarningThresholdPct: z.number().min(0).max(1000),

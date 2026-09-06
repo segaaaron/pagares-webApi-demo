@@ -34,33 +34,53 @@ export const createNoteRequestSchema = z
     paymentPlace: z.string().trim().min(2).max(120),
     dueDate: civilDateSchema,
     creditorName: z.string().trim().min(3).max(160),
+    /**
+     * Lo que se presta: el capital, sin el interés ordinario del plan.
+     *
+     * Lo que acaba diciendo el título es capital más ese interés, y lo calcula
+     * el servidor (§4). Pedirle al administrador que teclee la suma sería
+     * pedirle que haga a mano una cuenta que aquí ya está probada.
+     */
     amountCents: centsSchema,
     currency: currencySchema.default('MXN'),
     /**
      * Tasa moratoria tal y como se firma. En México se pacta indistintamente
-     * por mes o por año, y lo habitual en pagarés entre particulares es
-     * mensual. El servidor la normaliza a anual para calcular (§12.3).
+     * por quincena, por mes o por año —lo habitual en pagarés entre particulares
+     * es mensual, y el anual es lo que manda la ley a falta de pacto: 6 % (art.
+     * 362 C.Com. vía art. 174 LGTOC)—. El servidor la normaliza a anual para
+     * calcular (§12.3), pero el documento dice lo que se firmó.
      */
     interestRate: z
       .object({
         value: z.number().min(0).max(100),
-        period: z.enum(['MONTHLY', 'ANNUAL']),
+        period: z.enum(['MONTHLY', 'BIWEEKLY', 'ANNUAL']),
       })
       .strict()
       .nullable()
       .default(null),
     observations: z.string().trim().max(1000).optional(),
     /**
-     * En cuántos pagos se documenta la deuda (§12).
+     * En cuántas cuotas se paga la deuda (ADR 0022).
      *
-     * Un pagaré es de pago único, así que doce mensualidades son **doce
-     * pagarés** firmados el mismo día, numerados «3 de 12» y con vencimientos
-     * mes a mes desde `dueDate`. Uno es el caso normal y no crea serie.
+     * **Un** pagaré, siempre: doce mensualidades son un título por el total con
+     * su tabla de amortización, no doce títulos. Los arts. 17 y 130 LGTOC
+     * contemplan el pago en abonos sobre un mismo documento, y es lo que hacen
+     * aquí las financieras: un contrato, un pagaré y su tabla.
      *
-     * `amountCents` sigue siendo el total de la deuda: el servidor lo reparte,
-     * porque dejar que el cliente mande las cuotas invita a que no sumen.
+     * Las cuotas se cuentan mes a mes desde `dueDate`, que es la **primera**;
+     * el título vence el día de la última. El servidor las reparte, porque
+     * dejar que el cliente mande las cuotas invita a que no sumen.
      */
     installments: z.number().int().min(1).max(24).default(1),
+    /**
+     * Cada cuánto se paga (§12).
+     *
+     * Mensual o **quincenal**, que es cada quince días exactos. No es un detalle
+     * de presentación: decide las fechas de las cuotas y el divisor de la tasa
+     * anual —doce o veinticuatro—. Sin él, un plan quincenal cobraría el interés
+     * de un mes entero cada quince días.
+     */
+    paymentFrequency: z.enum(['MONTHLY', 'BIWEEKLY']).default('MONTHLY'),
     /**
      * Cómo se cobra el **interés ordinario** del plan, que es lo que gana quien
      * presta por prestar (§12). No es el moratorio: aquél sanciona el atraso y
@@ -78,7 +98,7 @@ export const createNoteRequestSchema = z
         rate: z
           .object({
             value: z.number().min(0).max(100),
-            period: z.enum(['MONTHLY', 'ANNUAL']),
+            period: z.enum(['MONTHLY', 'BIWEEKLY', 'ANNUAL']),
           })
           .strict()
           .nullable()
@@ -131,13 +151,13 @@ export const createNoteRequestSchema = z
        */
       if (!/^\d+$/.test(v.amountCents) || !Number.isInteger(v.installments)) return true;
       if (v.installments < 1) return true;
-      // Repartir mil pesos en veinticuatro pagos deja cuotas de céntimos; en
+      // Repartir mil pesos en veinticuatro cuotas deja céntimos; en
       // cuanto alguna no llega a un centavo, el reparto no existe.
       return BigInt(v.amountCents) / BigInt(v.installments) > 0n;
     },
     {
       path: ['installments'],
-      message: 'El importe no alcanza para repartirse en tantos pagos',
+      message: 'El importe no alcanza para repartirse en tantas cuotas',
     },
   );
 

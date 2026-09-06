@@ -20,7 +20,12 @@
  * por saldos insolutos y 147 % global. Aquí están las dos porque las dos se
  * usan en la calle, nombradas por lo que son.
  */
-import { MAX_INSTALLMENTS, splitAmount } from './installments.js';
+import {
+  MAX_INSTALLMENTS,
+  periodsPerYear,
+  splitAmount,
+  type PaymentFrequency,
+} from './installments.js';
 
 export const PLAN_MODELS = ['NONE', 'INSOLUTOS', 'GLOBAL'] as const;
 export type PlanModel = (typeof PLAN_MODELS)[number];
@@ -55,6 +60,12 @@ export interface PaymentPlanInput {
   annualRatePct: number | null;
   installments: number;
   model: PlanModel;
+  /**
+   * Cada cuánto se paga. Decide el divisor de la tasa anual: doce si es mensual,
+   * veinticuatro si es quincenal. Sin esto, un plan quincenal cobraría el
+   * interés de un mes entero cada quince días —el doble de lo pactado—.
+   */
+  frequency?: PaymentFrequency;
 }
 
 /** Redondeo a centavo entero con aritmética exacta: nada de coma flotante. */
@@ -71,13 +82,15 @@ export function buildPaymentPlan(input: PaymentPlanInput): PaymentPlan {
   if (principalCents <= 0n) throw new RangeError('principal_not_positive');
 
   const anual = input.annualRatePct ?? 0;
-  // La tasa mensual en diezmilésimas de punto: 3 % → 300. Entero, para que el
-  // interés de cada mes no dependa de cómo redondee la coma flotante.
-  const mensualBps = BigInt(Math.round((anual / 12) * 10_000));
-  const sinInteres = model === 'NONE' || mensualBps === 0n;
+  const veces = periodsPerYear(input.frequency ?? 'MONTHLY');
+  // La tasa del periodo en diezmilésimas de punto porcentual: 3 % → 30 000.
+  // Entero, para que el interés de cada cuota no dependa de cómo redondee la
+  // coma flotante. El divisor de abajo, 1 000 000, es 10 000 × 100.
+  const periodoBps = BigInt(Math.round((anual / veces) * 10_000));
+  const sinInteres = model === 'NONE' || periodoBps === 0n;
 
   const filas: PlanRow[] = [];
-  const veces = BigInt(installments);
+  const cuotas = BigInt(installments);
 
   if (sinInteres) {
     /*
@@ -108,13 +121,13 @@ export function buildPaymentPlan(input: PaymentPlanInput): PaymentPlan {
      * por eso sale más caro con la misma tasa: es el dato que la pantalla tiene
      * que enseñar, no esconder.
      */
-    const interesTotal = redondear(principalCents * mensualBps * veces, 1_000_000n);
+    const interesTotal = redondear(principalCents * periodoBps * cuotas, 1_000_000n);
     const totalAPagar = principalCents + interesTotal;
-    const cuota = totalAPagar / veces;
+    const cuota = totalAPagar / cuotas;
 
     let saldo = principalCents;
     let interesRepartido = 0n;
-    const interesPorCuota = interesTotal / veces;
+    const interesPorCuota = interesTotal / cuotas;
 
     for (let i = 0; i < installments; i += 1) {
       const ultima = i === installments - 1;
@@ -146,14 +159,14 @@ export function buildPaymentPlan(input: PaymentPlanInput): PaymentPlan {
    * fijar la cuota; el resto de la tabla se arma con enteros, así que ningún
    * centavo se pierde por el camino.
    */
-  const i = Number(mensualBps) / 1_000_000;
+  const i = Number(periodoBps) / 1_000_000;
   const factor = (i * (1 + i) ** installments) / ((1 + i) ** installments - 1);
   const cuota = BigInt(Math.round(Number(principalCents) * factor));
 
   let saldo = principalCents;
   for (let k = 0; k < installments; k += 1) {
     const ultima = k === installments - 1;
-    const interes = redondear(saldo * mensualBps, 1_000_000n);
+    const interes = redondear(saldo * periodoBps, 1_000_000n);
     // La última cancela lo que quede: así el saldo cierra en cero aunque la
     // cuota redondeada no encaje al centavo.
     const capital = ultima ? saldo : cuota - interes;

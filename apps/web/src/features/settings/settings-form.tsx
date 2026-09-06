@@ -16,7 +16,7 @@ export interface SettingsValues {
   defaultPaymentPlace: string;
   defaultTermDays: number;
   defaultInterestRateAnnualPct: string | null;
-  defaultInterestPeriod: 'MONTHLY' | 'ANNUAL';
+  defaultInterestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   interestBasis: number;
   interestWarningThresholdPct: string;
   applyPaymentToInterestFirst: boolean;
@@ -154,6 +154,7 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
               className={INPUT}
             >
               <option value="MONTHLY">Mes</option>
+              <option value="BIWEEKLY">Quincena</option>
               <option value="ANNUAL">Año</option>
             </select>
           </Field>

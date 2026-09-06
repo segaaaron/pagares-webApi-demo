@@ -39,7 +39,7 @@ interface Candidate {
   issueDate: string;
   dueDate: string;
   annualRatePct: number | null;
-  period: 'MONTHLY' | 'ANNUAL';
+  period: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   originalFolio: string | null;
 }
 
@@ -185,7 +185,9 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
         issueDate,
         dueDate,
         annualRatePct: rate,
-        period: (row['periodo_tasa'] ?? '').toUpperCase() === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+        // La cartera vieja también pudo pactarse por quincena: colapsarla aquí
+        // importaría la mitad de la tasa que dice el papel (§24.5).
+        period: periodoPactado(row['periodo_tasa']),
         originalFolio: (row['folio_original'] ?? '') || null,
       });
     }
@@ -363,4 +365,12 @@ function normalizeDate(raw: string): string | null {
   const [, day, month, year] = spanish as unknown as [string, string, string, string];
   const padded = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   return Number.isNaN(Date.parse(`${padded}T00:00:00Z`)) ? null : padded;
+}
+
+/** Lo que diga la fila, y mensual si no se reconoce: es lo habitual en papel. */
+function periodoPactado(valor: string | undefined): 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL' {
+  const texto = (valor ?? '').trim().toUpperCase();
+  if (texto === 'ANNUAL') return 'ANNUAL';
+  if (texto === 'BIWEEKLY') return 'BIWEEKLY';
+  return 'MONTHLY';
 }

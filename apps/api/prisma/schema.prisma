@@ -187,8 +187,11 @@ model Debtor {
 // ─────────────────────────────────────────────────────────── pagaré (§11, §14)
 
 /** Cómo se pacta la tasa moratoria: por mes o por año (§12.3). */
+// Cómo se pactó la tasa. Se guarda para el papel: el documento dice «3 %
+// mensual» porque es lo que se firmó; la aritmética usa siempre la anual (§12.3).
 enum InterestPeriod {
   MONTHLY
+  BIWEEKLY
   ANNUAL
 }
 
@@ -260,7 +263,21 @@ model PromissoryNote {
   observations  String?
 
   // Interés moratorio, art. 174. null ≠ 0 (§12.3)
-  interestRateAnnualPct Decimal? @db.Decimal(5, 2)
+  /*
+   * La tasa **anual** equivalente, que es con la que calcula todo (§12.3).
+   *
+   * Cuatro decimales porque es la precisión con la que se hace la cuenta:
+   * `accrueInterest` escala la tasa por 10 000. Con dos, un 3.333 % mensual se
+   * guardaba como 40.00 anual y volvía convertido en 3.3333 %, distinto de lo
+   * que se firmó.
+   *
+   * Y cuatro dígitos enteros porque la pactada se multiplica: 100 % quincenal
+   * son 2 400 % anuales. Con `Decimal(5, 2)` —tope 999.99— cualquier tasa
+   * quincenal por encima de 41.66 % reventaba con un error de base de datos en
+   * vez de un mensaje, y las tasas de usura existen: son justo las que un juez
+   * reduce de oficio, no las que la aplicación puede negarse a registrar.
+   */
+  interestRateAnnualPct Decimal? @db.Decimal(8, 4)
   // Cómo se pactó en el papel. El cálculo usa siempre la anual; esto es para
   // que el documento diga "3% mensual" si eso fue lo que se firmó (§12.3).
   interestPeriod        InterestPeriod @default(ANNUAL)
@@ -304,28 +321,34 @@ model PromissoryNote {
   renewedBy     PromissoryNote?  @relation("Renewal")
 
   /*
-   * Serie de pagarés: una mensualidad, un pagaré (§12).
+   * Desglose de lo que dice el título cuando la deuda se paga en cuotas (ADR 0022).
    *
-   * Un pagaré es de pago único, así que doce mensualidades son doce títulos
-   * firmados el mismo día, numerados «3 de 12». No hay tabla aparte porque la
-   * serie no tiene datos propios: el total y el plazo se leen sumando sus
-   * pagarés, y una tabla con esas cifras sería una segunda verdad.
-   */
-  seriesId    String? @db.Uuid
-  seriesIndex Int? // 1..seriesSize
-  seriesSize  Int?
-
-  /*
-   * Desglose de la cuota cuando el plan lleva interés ordinario (§12).
+   * `amountCents` es lo que el pagaré exige —capital más el interés ordinario
+   * pactado—, y esto explica de qué está hecho: cuánto se prestó y cuánto es el
+   * precio de prestarlo. Se guarda porque es lo que se firmó: recalcularlo
+   * mañana con la tasa de entonces daría otra cifra.
    *
-   * `amountCents` es lo que dice el título —lo que hay que pagar ese mes—, y
-   * esto explica de qué está hecho: cuánto es precio del préstamo y cuánto baja
-   * la deuda. Se guarda porque es lo que se pactó: recalcularlo después con la
-   * tasa de hoy daría otra cifra.
+   * Invariante: `amountCents = planPrincipalCents + planInterestCents`.
    */
   planModel        String? // NONE | INSOLUTOS | GLOBAL
   planInterestCents BigInt?
   planPrincipalCents BigInt?
+
+  /*
+   * Cada cuánto se paga: MONTHLY o BIWEEKLY (§12).
+   *
+   * Se congela al emitir como todo lo demás del título. Decidió las fechas de
+   * las cuotas y el divisor de la tasa, así que leerlo después es la única
+   * manera de explicar por qué el interés de una cuota es el que es.
+   */
+  paymentFrequency String @default("MONTHLY")
+
+  /*
+   * El calendario de pagos del título (ADR 0022). Vacío cuando se paga de una
+   * sola vez; con dos o más cuotas es la tabla de amortización de este pagaré,
+   * no una serie de pagarés distintos.
+   */
+  installments NoteInstallment[]
 
   voidedAt     DateTime?
   voidReason   String?
@@ -352,9 +375,41 @@ model PromissoryNote {
   @@index([ownerId, createdAt])
   @@index([debtorId, status])
   @@index([prescribesOn])
-  // Abrir un pagaré de una serie enseña a sus hermanos: se piden por serie y en
-  // orden, así que el índice los sirve ya ordenados.
-  @@index([seriesId, seriesIndex])
+}
+
+/*
+ * Una cuota del calendario de pagos de un pagaré (ADR 0022).
+ *
+ * Es **lo pactado**, y no cambia: importe, fecha e interés se congelan al
+ * emitir. Lo pagado no se guarda aquí —se deriva del libro de abonos en
+ * cascada, cuota por cuota— porque dos sitios que dicen cuánto se ha pagado
+ * acaban diciendo cosas distintas.
+ *
+ * Ninguna de estas fechas es un vencimiento del título: el pagaré vence una
+ * sola vez, el día de la última cuota. Esto es el calendario de cobranza que
+ * arts. 17 y 130 LGTOC contemplan al obligar al acreedor a recibir abonos.
+ */
+model NoteInstallment {
+  id     String         @id @default(uuid())
+  note   PromissoryNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId String
+
+  /** 1..n, en orden de vencimiento. */
+  index Int
+  /** Cuándo se espera esta cuota. */
+  dueOn DateTime @db.Date
+
+  /** Lo que toca pagar ese día: interés más capital. */
+  amountCents BigInt
+  /** La parte que es precio del préstamo. */
+  interestCents BigInt @default(0)
+  /** La parte que baja la deuda. */
+  principalCents BigInt
+
+  createdAt DateTime @default(now())
+
+  @@unique([noteId, index])
+  @@index([noteId, dueOn])
 }
 
 model NoteExtension {
@@ -722,7 +777,7 @@ model OrganizationSettings {
   currency            String  @db.Char(3) @default("MXN")
   defaultTermDays     Int     @default(30)
 
-  defaultInterestRateAnnualPct Decimal? @db.Decimal(5, 2)
+  defaultInterestRateAnnualPct Decimal? @db.Decimal(8, 4)
   interestBasis                Int      @default(360) // 360 o 365
   defaultInterestPeriod        InterestPeriod @default(MONTHLY) // en México se pacta casi siempre por mes
   interestWarningThresholdPct  Decimal  @db.Decimal(5, 2) @default(60.00) // avisa, no impide (§25.14)

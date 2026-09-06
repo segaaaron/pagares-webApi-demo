@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_INSTALLMENTS, splitAmount, installmentDates } from './installments.js';
+import {
+  MAX_INSTALLMENTS,
+  splitAmount,
+  installmentDates,
+  applyToSchedule,
+  ordinaryInterestIn,
+  periodsPerYear,
+} from './installments.js';
 
 /**
  * Serie de pagarés, uno por mensualidad (§12).
@@ -90,5 +97,131 @@ describe('vencimientos mensuales', () => {
 
   it('rechaza un número de cuotas fuera de rango', () => {
     expect(() => installmentDates('2026-01-15', 0)).toThrow('installments_out_of_range');
+  });
+});
+
+describe('applyToSchedule', () => {
+  const cuotas = [
+    { index: 1, dueOn: '2026-10-05', amountCents: 1_000_000n, interestCents: 0n, principalCents: 1_000_000n },
+    { index: 2, dueOn: '2026-11-05', amountCents: 1_000_000n, interestCents: 0n, principalCents: 1_000_000n },
+    { index: 3, dueOn: '2026-12-05', amountCents: 1_000_000n, interestCents: 0n, principalCents: 1_000_000n },
+  ];
+
+  it('sin abonos, todas pendientes', () => {
+    expect(applyToSchedule(cuotas, 0n).map((c) => c.status)).toEqual([
+      'PENDING',
+      'PENDING',
+      'PENDING',
+    ]);
+  });
+
+  it('salda de la más vieja a la más nueva', () => {
+    const filas = applyToSchedule(cuotas, 1_500_000n);
+    expect(filas.map((c) => c.status)).toEqual(['PAID', 'PARTIAL', 'PENDING']);
+    expect(filas[1]?.paidCents).toBe(500_000n);
+    expect(filas[1]?.balanceCents).toBe(500_000n);
+  });
+
+  it('cubierta al céntimo es PAID, no PARTIAL', () => {
+    expect(applyToSchedule(cuotas, 1_000_000n)[0]?.status).toBe('PAID');
+  });
+
+  it('lo abonado de más no inventa una cuota que no existe', () => {
+    const filas = applyToSchedule(cuotas, 9_000_000n);
+    expect(filas.map((c) => c.status)).toEqual(['PAID', 'PAID', 'PAID']);
+    expect(filas.reduce((s, c) => s + c.paidCents, 0n)).toBe(3_000_000n);
+  });
+
+  it('lo pagado nunca supera lo pactado de cada cuota', () => {
+    for (const fila of applyToSchedule(cuotas, 2_400_000n)) {
+      expect(fila.paidCents).toBeLessThanOrEqual(fila.amountCents);
+      expect(fila.paidCents + fila.balanceCents).toBe(fila.amountCents);
+    }
+  });
+});
+
+describe('ordinaryInterestIn', () => {
+  /** $50,000 a 3 % mensual en 4 cuotas, sobre saldos insolutos. */
+  const cuotas = [
+    { index: 1, dueOn: '2026-10-05', amountCents: 1_345_135n, interestCents: 150_000n, principalCents: 1_195_135n },
+    { index: 2, dueOn: '2026-11-05', amountCents: 1_345_135n, interestCents: 114_146n, principalCents: 1_230_989n },
+    { index: 3, dueOn: '2026-12-05', amountCents: 1_345_135n, interestCents: 77_216n, principalCents: 1_267_919n },
+    { index: 4, dueOn: '2027-01-05', amountCents: 1_345_136n, interestCents: 39_179n, principalCents: 1_305_957n },
+  ];
+
+  it('el primer abono cubre primero el interés de la primera cuota', () => {
+    // Art. 2094 CCF: dentro de la cuota, el interés va antes que el capital.
+    expect(ordinaryInterestIn(cuotas, 0n, 200_000n)).toBe(150_000n);
+  });
+
+  it('un abono más chico que el interés no llega al capital', () => {
+    expect(ordinaryInterestIn(cuotas, 0n, 100_000n)).toBe(100_000n);
+  });
+
+  it('el interés ya cubierto no se vuelve a cobrar', () => {
+    expect(ordinaryInterestIn(cuotas, 200_000n, 200_000n)).toBe(0n);
+  });
+
+  it('no cobra por adelantado el interés de las cuotas que faltan', () => {
+    /*
+     * Lo que se rompería sin esto: con el interés total del plan como
+     * pendiente, el primer abono se llevaría los $380,541 de las cuatro cuotas
+     * y el recibo diría que el deudor no ha bajado un peso de su deuda.
+     */
+    expect(ordinaryInterestIn(cuotas, 0n, 1_000_000n)).toBe(150_000n);
+  });
+
+  it('un abono que cruza cuotas suma el interés de las que toca', () => {
+    // Salda la primera entera y entra en la segunda: su interés también cuenta.
+    expect(ordinaryInterestIn(cuotas, 0n, 1_400_000n)).toBe(150_000n + 54_865n);
+  });
+
+  it('liquidar todo cobra el interés entero del plan, y ni un peso más', () => {
+    const total = cuotas.reduce((s, c) => s + c.amountCents, 0n);
+    const interes = cuotas.reduce((s, c) => s + c.interestCents, 0n);
+    expect(ordinaryInterestIn(cuotas, 0n, total)).toBe(interes);
+  });
+
+  it('un pagaré de pago único es su propia y única cuota', () => {
+    const unica = [
+      { index: 1, dueOn: '2026-10-05', amountCents: 1_030_000n, interestCents: 30_000n, principalCents: 1_000_000n },
+    ];
+    expect(ordinaryInterestIn(unica, 0n, 50_000n)).toBe(30_000n);
+  });
+});
+
+describe('installmentDates quincenal', () => {
+  it('cada quince días exactos', () => {
+    expect(installmentDates('2026-01-05', 4, 'BIWEEKLY')).toEqual([
+      '2026-01-05',
+      '2026-01-20',
+      '2026-02-04',
+      '2026-02-19',
+    ]);
+  });
+
+  it('cruza el fin de mes sin corregir nada', () => {
+    // Quincenal no depende de cuántos días tenga el mes: por eso el deudor
+    // puede contarlos él mismo.
+    expect(installmentDates('2026-01-25', 3, 'BIWEEKLY')).toEqual([
+      '2026-01-25',
+      '2026-02-09',
+      '2026-02-24',
+    ]);
+  });
+
+  it('cruza el año', () => {
+    expect(installmentDates('2026-12-28', 2, 'BIWEEKLY')).toEqual(['2026-12-28', '2027-01-12']);
+  });
+
+  it('por omisión sigue siendo mensual', () => {
+    expect(installmentDates('2026-01-31', 2)).toEqual(['2026-01-31', '2026-02-28']);
+  });
+});
+
+describe('periodsPerYear', () => {
+  it('doce meses, veinticuatro quincenas', () => {
+    expect(periodsPerYear('MONTHLY')).toBe(12);
+    expect(periodsPerYear('BIWEEKLY')).toBe(24);
   });
 });

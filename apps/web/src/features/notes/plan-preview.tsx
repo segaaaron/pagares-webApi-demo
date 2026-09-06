@@ -16,15 +16,17 @@ import { NavIcon } from '@/shared/ui/icons/nav-icons';
 export interface PlanPreviewProps {
   amount: string;
   installments: number;
+  frequency: 'MONTHLY' | 'BIWEEKLY';
   model: PlanModel;
   rate: string;
-  period: 'MONTHLY' | 'ANNUAL';
+  period: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   firstDueDate: string;
 }
 
 export function PlanPreview({
   amount,
   installments,
+  frequency,
   model,
   rate,
   period,
@@ -42,6 +44,7 @@ export function PlanPreview({
       annualRatePct: model === 'NONE' ? null : anual,
       installments,
       model,
+      frequency,
     });
   } catch {
     // Importe que no da ni un centavo por cuota, plazo fuera de rango: el
@@ -49,7 +52,7 @@ export function PlanPreview({
     return null;
   }
 
-  const fechas = installmentDates(firstDueDate, installments);
+  const fechas = installmentDates(firstDueDate, installments, frequency);
   const conInteres = plan.totalInterestCents > 0n;
 
   return (
@@ -88,7 +91,9 @@ export function PlanPreview({
       <div className="max-h-72 overflow-y-auto">
         <table className="w-full text-sm">
           <caption className="sr-only">
-            Calendario de pagos: {installments} cuotas mensuales desde {shortDate(firstDueDate)}
+            Calendario de pagos: {installments} cuotas{' '}
+            {frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'} desde{' '}
+            {shortDate(firstDueDate)}
           </caption>
           <thead className="sticky top-0 bg-surface-2 text-left">
             <tr className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
@@ -146,8 +151,9 @@ export function PlanPreview({
       </div>
 
       <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
-        Se emitirán <strong className="text-ink">{installments} pagarés</strong>, uno por cuota, con
-        estas fechas e importes. El interés moratorio de arriba es aparte: sólo corre sobre la cuota
+        Se emitirá <strong className="text-ink">un pagaré</strong> por el total, pagadero en estas{' '}
+        {installments} cuotas {frequency === 'BIWEEKLY' ? 'quincenales' : 'mensuales'}. El título
+        vence con la última; el interés moratorio de arriba es aparte y sólo corre sobre la cuota
         que se pague tarde.
       </p>
     </section>

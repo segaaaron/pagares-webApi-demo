@@ -31,7 +31,7 @@ export interface Plantilla {
 
 interface Defaults {
   creditorName: string;
-  interestPeriod: 'MONTHLY' | 'ANNUAL';
+  interestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   interestWarningThresholdPct: number;
   issuePlace: string;
   paymentPlace: string;
@@ -119,12 +119,18 @@ export function IssueForm({
    */
   const [avales, setAvales] = useState(plantilla?.guarantors ?? []);
   const [rate, setRate] = useState(defaults.interestRate);
-  const [period, setPeriod] = useState<'MONTHLY' | 'ANNUAL'>(defaults.interestPeriod);
+  /*
+   * Una sola periodicidad para todo el pagaré: decide las fechas de las cuotas
+   * y cómo se leen las dos tasas. Tres selectores para lo mismo sólo servían
+   * para que no coincidieran.
+   */
+  const [period, setPeriod] = useState<'MONTHLY' | 'BIWEEKLY'>('MONTHLY');
   const [pagos, setPagos] = useState(1);
-  const [modeloPlan, setModeloPlan] = useState<'NONE' | 'INSOLUTOS' | 'GLOBAL'>('NONE');
-  const [tasaPlan, setTasaPlan] = useState('');
+
+
+
   const [vencimiento, setVencimiento] = useState(defaults.defaultDueDate);
-  const [periodoPlan, setPeriodoPlan] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
+
   const [importe, setImporte] = useState(plantilla?.amount ?? '');
   const annual = rate === '' ? null : toAnnualRatePct(Number(rate), period);
   const aboveThreshold = annual !== null && annual > defaults.interestWarningThresholdPct;
@@ -145,31 +151,30 @@ export function IssueForm({
           </Field>
           <div>
             <label htmlFor="interestRate" className="mb-1 block text-xs font-medium text-ink-2">
-              Interés moratorio
+              Interés
             </label>
             <div className="flex">
               <input
                 id="interestRate"
                 name="interestRate"
                 inputMode="decimal"
+                required
                 placeholder="0.00"
                 value={rate}
                 onChange={(event) => setRate(event.target.value)}
                 className={`${INPUT} tnum rounded-r-none text-right`}
               />
-              {/* En México se pacta casi siempre por mes ("3% mensual"); la
-                  anual también se usa. El documento dirá lo que elijas aquí y
-                  el sistema calcula con su equivalente anual simple (§12.3). */}
-              <select
-                name="interestPeriod"
-                aria-label="Periodicidad del interés moratorio"
-                value={period}
-                onChange={(event) => setPeriod(event.target.value === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY')}
-                className="input w-32 rounded-l-none border-l-0"
-              >
-                <option value="MONTHLY">% mensual</option>
-                <option value="ANNUAL">% anual</option>
-              </select>
+              {/*
+                * La periodicidad se elige **una vez**, abajo, y el interés la
+                * hereda: si los pagos son quincenales, «3» es 3 % quincenal.
+                * Preguntarla dos veces era invitar a pactar una tasa mensual
+                * sobre un calendario quincenal, que es la mitad de lo que el
+                * acreedor cree que está cobrando.
+                */}
+              <input type="hidden" name="interestPeriod" value={period} />
+              <span className="input w-32 rounded-l-none border-l-0 text-muted">
+                % {period === 'BIWEEKLY' ? 'quincenal' : 'mensual'}
+              </span>
             </div>
             {aboveThreshold ? (
               <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-warn-soft px-2.5 py-2 text-xs text-warn">
@@ -188,8 +193,8 @@ export function IssueForm({
               <p className="mt-1 text-xs text-crit">{state.fieldErrors['interestRate.value']}</p>
             ) : (
               <p className="mt-1 text-xs text-muted">
-                Vacío = sin intereses pactados; entonces aplica el legal, 6% anual (art. 362
-                Cód. Comercio). Cero = pactados en cero.
+                Lo que cobras por prestar, en cada cuota, sobre el monto prestado. Es también el
+                que corre si se atrasa. Obligatorio: escribe 0 si no cobras interés.
               </p>
             )}
           </div>
@@ -205,9 +210,10 @@ export function IssueForm({
                        min={defaults.today} />
           </Field>
           {/*
-            * Pagos: un pagaré es de pago único, así que doce mensualidades son
-            * doce pagarés firmados hoy con vencimientos mes a mes. Se dice en
-            * la ayuda porque quien lo elige tiene que saber qué va a firmar.
+            * Cuotas: un pagaré por el total con su tabla de amortización, que
+            * es lo que hacen las financieras y lo que contemplan los arts. 17 y
+            * 130 LGTOC al obligar a recibir abonos (ADR 0022). La fecha de
+            * arriba es la primera cuota; el título vence con la última.
             */}
           <Field id="installments" label="Número de pagos" error={state.fieldErrors?.installments}>
             <select
@@ -220,82 +226,57 @@ export function IssueForm({
               <option value={1}>Un solo pago</option>
               {[2, 3, 4, 6, 9, 12, 18, 24].map((n) => (
                 <option key={n} value={n}>
-                  {n} pagos mensuales
+                  {n} pagos
                 </option>
               ))}
             </select>
           </Field>
           {/*
-            * El plan sólo aparece si hay más de un pago: enseñar cinco campos
-            * de amortización a quien emite un pagaré suelto es ruido.
+            * Cada cuánto. No es presentación: decide las fechas de las cuotas y
+            * el divisor de la tasa —doce o veinticuatro—, así que se pregunta
+            * antes de enseñar ninguna cifra (§12).
             */}
+          <Field
+            id="paymentFrequency"
+            label="Cada cuánto se paga"
+            error={state.fieldErrors?.paymentFrequency}
+            hint="También es cómo se lee el interés de arriba. Quincenal son quince días exactos."
+          >
+            <select
+              id="paymentFrequency"
+              name="paymentFrequency"
+              className={INPUT}
+              value={period}
+              onChange={(event) => setPeriod(event.target.value as 'MONTHLY' | 'BIWEEKLY')}
+            >
+              <option value="MONTHLY">Mensual</option>
+              <option value="BIWEEKLY">Quincenal</option>
+            </select>
+          </Field>
+          {/*
+            * Un interés para todo el préstamo: el de arriba. Se calcula sobre
+            * el monto prestado —el 3 % de $50,000 son $1,500 en todas las
+            * cuotas— y es también el que corre si el deudor se atrasa.
+            */}
+          {/*
+            * Sin interés o con un solo pago no hay nada que repartir entre
+            * cuotas, y el plan es `NONE`: es lo que significa, no un caso raro.
+            */}
+          <input
+            type="hidden"
+            name="planModel"
+            value={pagos > 1 && Number(rate) > 0 ? 'GLOBAL' : 'NONE'}
+          />
+          <input type="hidden" name="planRate" value={rate} />
           {pagos > 1 ? (
-            <div className="sm:col-span-2 rounded-lg border border-line bg-surface-2/40 p-3">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="planModel" className="mb-1 block text-xs font-medium text-ink-2">
-                    Interés del préstamo
-                  </label>
-                  <select
-                    id="planModel"
-                    name="planModel"
-                    className={INPUT}
-                    value={modeloPlan}
-                    onChange={(event) =>
-                      setModeloPlan(event.target.value as 'NONE' | 'INSOLUTOS' | 'GLOBAL')
-                    }
-                  >
-                    <option value="NONE">Sin interés: sólo reparte el préstamo</option>
-                    <option value="INSOLUTOS">Sobre saldos insolutos (recomendado)</option>
-                    <option value="GLOBAL">Sobre saldo global</option>
-                  </select>
-                  <p className="mt-1 text-xs text-muted">
-                    Lo que ganas por prestar, repartido en las cuotas. Es distinto del interés
-                    moratorio, que sólo castiga el atraso.
-                  </p>
-                </div>
-
-                {modeloPlan !== 'NONE' ? (
-                  <div>
-                    <label htmlFor="planRate" className="mb-1 block text-xs font-medium text-ink-2">
-                      Tasa del préstamo
-                    </label>
-                    <div className="flex">
-                      <input
-                        id="planRate"
-                        name="planRate"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={tasaPlan}
-                        onChange={(event) => setTasaPlan(event.target.value)}
-                        className={`${INPUT} tnum rounded-r-none text-right`}
-                      />
-                      <select
-                        name="planPeriod"
-                        aria-label="Periodicidad del interés del préstamo"
-                        value={periodoPlan}
-                        onChange={(event) =>
-                          setPeriodoPlan(event.target.value === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY')
-                        }
-                        className="input w-32 rounded-l-none border-l-0"
-                      >
-                        <option value="MONTHLY">% mensual</option>
-                        <option value="ANNUAL">% anual</option>
-                      </select>
-                    </div>
-                    {state.fieldErrors?.['plan.rate'] ? (
-                      <p className="mt-1 text-xs text-crit">{state.fieldErrors['plan.rate']}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
+            <div className="sm:col-span-2">
               <PlanPreview
                 amount={importe}
                 installments={pagos}
-                model={modeloPlan}
-                rate={tasaPlan}
-                period={periodoPlan}
+                model={Number(rate) > 0 ? 'GLOBAL' : 'NONE'}
+                rate={rate}
+                period={period}
+                frequency={period}
                 firstDueDate={vencimiento}
               />
             </div>

@@ -21,7 +21,7 @@ type NoteData = Extract<CreateArg, { debtorId: string }>;
  * llama: si la regla de la firma pendiente aplica, y en qué estado nace.
  */
 export type NoteOrigin =
-  /** Emisión normal, incluida la serie de un plan. Nace por firmar. */
+  /** Emisión normal, con o sin calendario de cuotas. Nace por firmar. */
   | 'issue'
   /** Renovación: sustituye a otro título. Nace por firmar. */
   | 'renewal'
@@ -46,17 +46,32 @@ export interface NoteDraft {
   currency?: string;
   /** Anual, ya convertida: es la que usa la aritmética (§12.3). */
   interestRateAnnualPct: Exclude<NoteData['interestRateAnnualPct'], undefined>;
-  interestPeriod: 'MONTHLY' | 'ANNUAL';
+  interestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
+  /** Cada cuánto se paga. Decidió las fechas y el divisor de la tasa (§12). */
+  paymentFrequency?: 'MONTHLY' | 'BIWEEKLY';
   negotiable: boolean;
   observations?: string | null;
   /** Cuántos avales exige el título: 0, 1 o 2 (§25.15). */
   requiresGuarantors?: number;
   guarantors?: { position: number; fullName: string; address: string; phone: string }[];
 
-  /** La serie a la que pertenece, cuando la deuda va a plazos (§12). */
-  series?: { id: string; index: number; size: number };
-  /** De qué está hecha la cuota, tal como se pactó (§12). */
+  /** De qué está hecho el importe del título, tal como se pactó (§12). */
   plan?: { model: string; interestCents: bigint; principalCents: bigint };
+  /**
+   * El calendario de pagos, cuando la deuda se paga en cuotas (ADR 0022).
+   *
+   * Nace en la misma escritura que el pagaré: una tabla de amortización que
+   * llegara después dejaría, aunque fuera un instante, un título que dice
+   * pagarse a plazos sin decir cuáles.
+   */
+  schedule?: {
+    index: number;
+    /** Fecha civil `YYYY-MM-DD`. */
+    dueOn: string;
+    amountCents: bigint;
+    interestCents: bigint;
+    principalCents: bigint;
+  }[];
 
   /** Sólo en la renovación: a qué título sustituye. */
   renewedFromId?: string;
@@ -117,14 +132,7 @@ export class NoteFactory {
      * pagaré que se renueva no cuenta contra sí mismo, porque renovar no suma,
      * cambia uno por otro.
      */
-    /*
-     * La comprobación es por **acto**, no por título: las cuotas de una serie
-     * nacen juntas y se firman juntas, así que sólo la primera pregunta. Si
-     * preguntara cada una, la segunda se toparía con la primera y no habría
-     * planes de pago.
-     */
-    const primeraDeLaSerie = !draft.series || draft.series.index === 1;
-    if (origin !== 'import' && primeraDeLaSerie) {
+    if (origin !== 'import') {
       await assertNothingUnsigned(tx, draft.debtorPhone, draft.renewedFromId);
     }
 
@@ -154,6 +162,7 @@ export class NoteFactory {
       amountInWords: amountToWords(draft.amountCents),
       interestRateAnnualPct: draft.interestRateAnnualPct,
       interestPeriod: draft.interestPeriod,
+      paymentFrequency: draft.paymentFrequency ?? 'MONTHLY',
       observations: draft.observations ?? null,
       debtorId: draft.debtorId,
       ownerId: draft.ownerId,
@@ -162,12 +171,6 @@ export class NoteFactory {
 
     if (draft.requiresGuarantors !== undefined) data.requiresGuarantors = draft.requiresGuarantors;
     if (draft.renewedFromId) data.renewedFromId = draft.renewedFromId;
-
-    if (draft.series) {
-      data.seriesId = draft.series.id;
-      data.seriesIndex = draft.series.index;
-      data.seriesSize = draft.series.size;
-    }
 
     if (draft.plan) {
       data.planModel = draft.plan.model;
@@ -187,6 +190,18 @@ export class NoteFactory {
 
     if (draft.guarantors && draft.guarantors.length > 0) {
       data.guarantors = { create: draft.guarantors };
+    }
+
+    if (draft.schedule && draft.schedule.length > 0) {
+      data.installments = {
+        create: draft.schedule.map((cuota) => ({
+          index: cuota.index,
+          dueOn: new Date(`${cuota.dueOn}T00:00:00Z`),
+          amountCents: cuota.amountCents,
+          interestCents: cuota.interestCents,
+          principalCents: cuota.principalCents,
+        })),
+      };
     }
 
     const note = await tx.promissoryNote.create({

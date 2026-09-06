@@ -266,11 +266,20 @@ export class RenderStatementUseCase extends BaseUseCase<{ debtorId: string }, Bu
   }
 }
 
+/*
+ * Las fechas civiles se guardan a medianoche **UTC** (`@db.Date`), así que se
+ * formatean en UTC. Con la zona de México, medianoche UTC cae el día anterior a
+ * las 18:00 y el documento imprimía un día menos: un pagaré que vence el 9 decía
+ * que vencía el 8, y de esa fecha cuelgan la mora y la prescripción (§12.3, regla 6).
+ *
+ * Los instantes —cuándo se firmó, cuándo se envió— sí van en hora local: son
+ * momentos, no días del calendario.
+ */
 const SHORT_DATE = new Intl.DateTimeFormat('es-MX', {
   day: '2-digit',
   month: '2-digit',
   year: '2-digit',
-  timeZone: 'America/Mexico_City',
+  timeZone: 'UTC',
 });
 
 const DATE_TIME = new Intl.DateTimeFormat('es-MX', {

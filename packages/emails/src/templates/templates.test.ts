@@ -156,7 +156,7 @@ describe('plantillas del ciclo de vida', () => {
   });
 });
 
-describe('un aviso para toda la serie (§12)', () => {
+describe('un aviso, un pagaré (ADR 0022)', () => {
   const noteToSignAsync = async () => (await import('./note-lifecycle.js')).noteToSign;
   const base = {
     organizationName: 'Créditos Morelia S.A. de C.V.',
@@ -181,22 +181,28 @@ describe('un aviso para toda la serie (§12)', () => {
     expect(mail.text).toContain('emitió un pagaré');
   });
 
-  it('una serie dice cuántos son, y no manda un correo por cada uno', async () => {
-    // Doce avisos por una misma operación son doce oportunidades de que el
-    // deudor deje de leerlos.
+  it('a plazos dice en cuántos pagos, y sigue siendo un solo correo', async () => {
+    // Un pagaré, una firma, un correo (ADR 0022): lo que el aviso tiene que
+    // decir no es cuántos documentos hay sino en cuántos pagos se salda.
     const noteToSign = await noteToSignAsync();
     const mail = noteToSign({ ...base, installments: 12 });
-    expect(mail.subject).toBe('Tienes 12 pagarés por firmar');
-    expect(mail.text).toContain('12 pagarés');
-    expect(mail.html).toContain('12 pagarés');
+    expect(mail.subject).toBe('Tienes un pagaré por firmar · PAG-2026-000001');
+    expect(mail.text).toContain('12 pagos mensuales');
+    expect(mail.html).toContain('12 pagos mensuales');
   });
 
-  it('explica que el de la tarjeta es el primero y dónde están los demás', async () => {
-    // Sin esto, el deudor ve un pagaré de $5,000 cuando su deuda es de $60,000
-    // y concluye lo que no es.
+  it('dice el total y el precio del préstamo, no sólo la cuota', async () => {
+    // Sin esto el deudor ve el importe y tiene que multiplicar para saber a
+    // cuánto se compromete.
     const noteToSign = await noteToSignAsync();
-    const mail = noteToSign({ ...base, installments: 12 });
-    expect(mail.html).toContain('los otros 11');
+    const mail = noteToSign({
+      ...base,
+      installments: 12,
+      plan: { totalFormatted: '$53,805.41', interestFormatted: '$3,805.41' },
+    });
+    expect(mail.html).toContain('$53,805.41');
+    expect(mail.html).toContain('$3,805.41');
+    expect(mail.text).toContain('$53,805.41');
   });
 });
 

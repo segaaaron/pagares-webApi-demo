@@ -56,7 +56,7 @@ export interface NoteDetail {
       balance: { cents: string; formatted: string };
     }[];
   } | null;
-  interestPeriod: 'MONTHLY' | 'ANNUAL';
+  interestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   amountInWords: string;
   observations: string | null;
   debtor: { id: string; fullName: string; address: string; phone: string; email: string | null };

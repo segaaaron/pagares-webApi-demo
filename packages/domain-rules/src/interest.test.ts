@@ -136,3 +136,55 @@ describe('base del moratorio', () => {
     ).toBe(0n);
   });
 });
+
+describe('la tasa con decimales', () => {
+  it('3 es 3.0, y 12.5 es 12.5', () => {
+    // No hay redondeo a entero en ningún punto: lo que se teclea es lo que se
+    // pacta, y el documento lo imprime igual.
+    expect(toAnnualRatePct(3, 'MONTHLY')).toBe(36);
+    expect(toAnnualRatePct(12.5, 'MONTHLY')).toBe(150);
+    expect(describeRate(150, 'MONTHLY')).toBe('12.5% mensual');
+  });
+
+  it('la quincenal vale el doble que la mensual del mismo número', () => {
+    expect(toAnnualRatePct(1.5, 'BIWEEKLY')).toBe(36);
+    expect(toAnnualRatePct(3, 'BIWEEKLY')).toBe(72);
+    expect(describeRate(36, 'BIWEEKLY')).toBe('1.5% quincenal');
+  });
+
+  it('ida y vuelta: lo que se pactó es lo que se lee', () => {
+    for (const period of ['MONTHLY', 'BIWEEKLY', 'ANNUAL'] as const) {
+      for (const valor of [3, 3.5, 12.5, 0.75, 1.125]) {
+        expect(fromAnnualRatePct(toAnnualRatePct(valor, period), period)).toBeCloseTo(valor, 10);
+      }
+    }
+  });
+
+  it('cuatro decimales de punto porcentual llegan al cálculo', () => {
+    /*
+     * `accrueInterest` escala la tasa por 10 000, así que 0.0001 puntos son
+     * significativos. Es la precisión que la columna tiene que guardar: con dos
+     * decimales, una tasa así volvía convertida en otra.
+     */
+    const conDecimales = accrueInterest({
+      balanceCents: 100_000_000n,
+      annualRatePct: 36.0001,
+      daysOverdue: 360,
+      basis: 360,
+    });
+    const redonda = accrueInterest({
+      balanceCents: 100_000_000n,
+      annualRatePct: 36,
+      daysOverdue: 360,
+      basis: 360,
+    });
+    expect(conDecimales).toBeGreaterThan(redonda);
+  });
+
+  it('una tasa quincenal alta cabe en la columna', () => {
+    // 100 % quincenal son 2 400 % anuales. Es usura y un juez la reduce de
+    // oficio, pero registrarla no puede reventar: Decimal(8,4) llega a 9 999.9999.
+    expect(toAnnualRatePct(100, 'BIWEEKLY')).toBe(2400);
+    expect(2400).toBeLessThan(9999.9999);
+  });
+});

@@ -63,7 +63,14 @@ export function accrueInterest({
  * sola unidad. Por eso se guarda la forma pactada para el papel y la anual para
  * la aritmética.
  */
-export type InterestPeriod = 'MONTHLY' | 'ANNUAL';
+export type InterestPeriod = 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
+
+/** Cuántas veces cabe el periodo pactado en un año. */
+const VECES_AL_AÑO: Record<InterestPeriod, number> = {
+  MONTHLY: 12,
+  BIWEEKLY: 24,
+  ANNUAL: 1,
+};
 
 /** Tasa legal supletoria: 6% anual (art. 362 Cód. Comercio, vía art. 174 LGTOC). */
 export const LEGAL_ANNUAL_RATE_PCT = 6;
@@ -76,11 +83,11 @@ export const LEGAL_ANNUAL_RATE_PCT = 6;
  * deuda respecto de lo que dice el documento.
  */
 export function toAnnualRatePct(value: number, period: InterestPeriod): number {
-  return period === 'MONTHLY' ? value * 12 : value;
+  return value * VECES_AL_AÑO[period];
 }
 
 export function fromAnnualRatePct(annualPct: number, period: InterestPeriod): number {
-  return period === 'MONTHLY' ? annualPct / 12 : annualPct;
+  return annualPct / VECES_AL_AÑO[period];
 }
 
 const trimRate = (value: number): string => String(Number(value.toFixed(4)));
@@ -95,13 +102,16 @@ const trimRate = (value: number): string => String(Number(value.toFixed(4)));
  * mes un 3 % mensual sale 42.58 % al año. Dos cifras distintas para lo mismo en
  * un papel que se lleva a un juzgado no ayudan a nadie.
  */
+const NOMBRE_DEL_PERIODO: Record<InterestPeriod, string> = {
+  MONTHLY: 'mensual',
+  BIWEEKLY: 'quincenal',
+  ANNUAL: 'anual',
+};
+
 export function describeRate(annualPct: number | null, period: InterestPeriod): string {
   if (annualPct === null) return 'Sin intereses pactados';
   if (annualPct === 0) return 'Intereses pactados en cero';
-  const pacted = fromAnnualRatePct(annualPct, period);
-  return period === 'MONTHLY'
-    ? `${trimRate(pacted)}% mensual`
-    : `${trimRate(annualPct)}% anual`;
+  return `${trimRate(fromAnnualRatePct(annualPct, period))}% ${NOMBRE_DEL_PERIODO[period]}`;
 }
 
 /**
@@ -117,7 +127,5 @@ export function describeRateWithAnnual(
 ): string {
   if (annualPct === null || annualPct === 0) return describeRate(annualPct, period);
   if (period === 'ANNUAL') return `${trimRate(annualPct)}% anual`;
-  return `${trimRate(fromAnnualRatePct(annualPct, period))}% mensual · ${trimRate(
-    annualPct,
-  )}% anual simple`;
+  return `${describeRate(annualPct, period)} · ${trimRate(annualPct)}% anual simple`;
 }

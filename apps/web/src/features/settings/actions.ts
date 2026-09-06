@@ -51,7 +51,7 @@ export async function saveSettingsAction(
         defaultTermDays: num(formData, 'defaultTermDays'),
         defaultInterestRateAnnualPct: rate === '' ? null : Number(rate),
         defaultInterestPeriod:
-          str(formData, 'defaultInterestPeriod') === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+          periodoPactado(str(formData, 'defaultInterestPeriod')),
         interestBasis: num(formData, 'interestBasis'),
         interestWarningThresholdPct: num(formData, 'interestWarningThresholdPct'),
         applyPaymentToInterestFirst: formData.get('applyPaymentToInterestFirst') === 'on',
@@ -79,4 +79,11 @@ export async function saveSettingsAction(
     }
     throw error;
   }
+}
+
+/** La periodicidad tal y como se eligió. Colapsarla cambia la tasa en silencio. */
+function periodoPactado(valor: string): 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL' {
+  if (valor === 'ANNUAL') return 'ANNUAL';
+  if (valor === 'BIWEEKLY') return 'BIWEEKLY';
+  return 'MONTHLY';
 }

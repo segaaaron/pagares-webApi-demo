@@ -7,7 +7,7 @@ export interface OrganizationSettings {
   defaultPaymentPlace: string;
   defaultTermDays: number;
   defaultInterestRateAnnualPct: string | null;
-  defaultInterestPeriod: 'MONTHLY' | 'ANNUAL';
+  defaultInterestPeriod: 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
   interestBasis: number;
   interestWarningThresholdPct: string;
   prescriptionYears: number;
