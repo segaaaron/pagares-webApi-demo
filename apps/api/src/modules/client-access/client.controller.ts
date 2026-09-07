@@ -615,15 +615,21 @@ export class ClientController {
        * Sin este dato, la aplicación sólo puede escribir una frase ambigua.
        */
       applyPaymentToInterestFirst: settings?.applyPaymentToInterestFirst ?? true,
-      // Datos para pagar, desde Ajustes (§25.12).
-      paymentInstructions: settings
-        ? {
-            bankName: settings.bankName,
-            bankAccount: settings.bankAccount,
-            bankClabe: settings.bankClabe,
-            reference: settings.paymentReference,
-          }
-        : null,
+      /*
+       * Dónde pagar, desde Ajustes (§25.12). Nulo mientras el administrador no
+       * lo haya llenado: antes viajaba el objeto con las cuatro claves vacías y
+       * la aplicación pintaba una tarjeta «Cómo pagar» sin datos dentro. Si no
+       * hay cuenta que dar, lo honesto es no abrir esa sección.
+       */
+      paymentInstructions:
+        settings?.bankName || settings?.bankAccount || settings?.bankClabe
+          ? {
+              bankName: settings.bankName,
+              bankAccount: settings.bankAccount,
+              bankClabe: settings.bankClabe,
+              reference: settings.paymentReference,
+            }
+          : null,
     };
   }
 }

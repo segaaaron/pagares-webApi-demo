@@ -57,14 +57,19 @@ async function main(): Promise<void> {
       email: 'contacto@creditosmorelia.mx',
       defaultIssuePlace: 'Morelia, Michoacán',
       defaultPaymentPlace: 'Morelia, Michoacán',
-      bankName: 'BBVA',
-      bankAccount: '0123456789',
-      // CLABE de demostración con su dígito de control correcto: la de antes
-      // terminaba en 0 y ningún banco la habría aceptado. La API la valida al
-      // guardarla desde Ajustes (§25.4), pero el seed escribe en la base y se
-      // saltaba esa puerta: sembraba un dato que la propia aplicación rechaza.
-      bankClabe: '012470001234567897',
-      paymentReference: 'Usa tu folio como referencia',
+      /*
+       * Sin datos bancarios. A propósito.
+       *
+       * Aquí había un banco, una cuenta y una CLABE inventados —y la CLABE ni
+       * siquiera pasaba su dígito de control—. Eso viajaba hasta la pantalla
+       * «Cómo pagar» del deudor, que es donde alguien teclea dieciocho dígitos
+       * para transferir dinero de verdad. Una cuenta falsa ahí no es un dato de
+       * relleno: es una transferencia que rebota, o que entra donde no debe.
+       *
+       * La cuenta la pone el administrador en Ajustes, que es de donde la lee
+       * la API, y hasta entonces la aplicación no enseña instrucciones de pago
+       * —callar es cierto; inventar una cuenta, no—.
+       */
     },
     update: {},
   });
