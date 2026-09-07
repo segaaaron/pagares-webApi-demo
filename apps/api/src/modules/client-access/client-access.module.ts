@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClientController } from './client.controller.js';
 import { PublicNotesController } from './public.controller.js';
+import { PublicOrganizationController } from './public-organization.controller.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { SimulateEarlyPayoffUseCase } from '../promissory-notes/application/simulate-early-payoff.use-case.js';
 
@@ -10,7 +11,7 @@ import { SimulateEarlyPayoffUseCase } from '../promissory-notes/application/simu
  */
 @Module({
   imports: [DocumentsModule],
-  controllers: [ClientController, PublicNotesController],
+  controllers: [ClientController, PublicNotesController, PublicOrganizationController],
   // La liquidación anticipada la contesta el mismo caso de uso que el panel: la
   // cifra tiene que ser la misma cuando el deudor pregunta por la app y cuando
   // el administrador la mira en pantalla. Se provee aquí, sin importar el

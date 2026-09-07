@@ -26,6 +26,12 @@ interface RequestOptions {
   idempotencyKey?: string;
   /** El listado se revalida al registrar un abono; el detalle no se cachea. */
   tags?: string[];
+  /**
+   * Segundos de caché para lo que no cambia entre peticiones —el rótulo de la
+   * casa, por ejemplo—. Sin esto todo va con `no-store`, que es lo correcto
+   * para dinero y estados, y una exageración para un nombre.
+   */
+  revalidate?: number;
   /** Para lo que legítimamente tarda: un PDF grande, un reporte, un zip. */
   timeoutMs?: number;
 }
@@ -62,9 +68,16 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       method: options.method ?? 'GET',
       headers,
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-      cache: 'no-store',
+      ...(options.revalidate === undefined ? { cache: 'no-store' as const } : {}),
       signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
-      ...(options.tags ? { next: { tags: options.tags } } : {}),
+      ...(options.tags || options.revalidate !== undefined
+        ? {
+            next: {
+              ...(options.tags ? { tags: options.tags } : {}),
+              ...(options.revalidate !== undefined ? { revalidate: options.revalidate } : {}),
+            },
+          }
+        : {}),
     });
   } catch (error) {
     /*

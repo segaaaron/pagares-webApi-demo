@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { PagareFacsimile } from '@/shared/ui/pagare-facsimile';
+import { organizationIdentity } from './identity';
 
 /**
  * Marco de las pantallas sin sesión: acceso, cambio obligatorio y recuperación.
@@ -8,7 +9,7 @@ import { PagareFacsimile } from '@/shared/ui/pagare-facsimile';
  * usa; tenerlo copiado tres veces es cómo el panel de marca acaba diciendo cosas
  * distintas según por dónde entres.
  */
-export function AuthShell({
+export async function AuthShell({
   title,
   description,
   children,
@@ -19,6 +20,10 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  // Quién presta sale de Ajustes, no del código: antes estaba escrito a mano y
+  // cambiar la razón social lo cambiaba todo menos la puerta de entrada.
+  const { legalName, place } = await organizationIdentity();
+
   return (
     <main className="grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
       {/* Panel de marca. Decorativo, así que se oculta al lector de pantalla:
@@ -37,7 +42,7 @@ export function AuthShell({
         />
         <div className="relative">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/70">
-            Créditos Morelia
+            {legalName}
           </p>
           <p className="mt-2 font-serif text-3xl font-semibold">Pagarés</p>
         </div>
@@ -57,16 +62,18 @@ export function AuthShell({
           </ul>
         </div>
 
-        <p className="relative font-mono text-[11px] uppercase tracking-[0.16em] text-white/50">
-          Morelia, Michoacán · México
-        </p>
+        {place ? (
+          <p className="relative font-mono text-[11px] uppercase tracking-[0.16em] text-white/50">
+            {place}
+          </p>
+        ) : null}
       </section>
 
       <section className="flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-6">
             <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-ink lg:hidden">
-              Créditos Morelia
+              {legalName}
             </p>
             <h1 className="mt-1 text-ink">{title}</h1>
             <p className="mt-1.5 text-sm text-muted">{description}</p>

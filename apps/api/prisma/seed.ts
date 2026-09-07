@@ -59,7 +59,11 @@ async function main(): Promise<void> {
       defaultPaymentPlace: 'Morelia, Michoacán',
       bankName: 'BBVA',
       bankAccount: '0123456789',
-      bankClabe: '012470001234567890',
+      // CLABE de demostración con su dígito de control correcto: la de antes
+      // terminaba en 0 y ningún banco la habría aceptado. La API la valida al
+      // guardarla desde Ajustes (§25.4), pero el seed escribe en la base y se
+      // saltaba esa puerta: sembraba un dato que la propia aplicación rechaza.
+      bankClabe: '012470001234567897',
       paymentReference: 'Usa tu folio como referencia',
     },
     update: {},
