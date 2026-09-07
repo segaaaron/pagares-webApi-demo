@@ -16,6 +16,13 @@ import {
  * Nótese lo que NO está: `folio`, `status`, `amountInWords` ni `publicToken`.
  * Los calcula el servidor; aceptarlos del cliente sería confiar en quien no manda.
  */
+/**
+ * El valor de una tasa, suelto y exportado: lo usa la emisión y lo usa la
+ * importación de cartera, que antes llevaba su propio «entre 0 y 100» escrito
+ * a mano y podía quedarse atrás el día que ese tope cambiara.
+ */
+export const interestRateValueSchema = z.number().min(0).max(100);
+
 export const createNoteRequestSchema = z
   .object({
     /**

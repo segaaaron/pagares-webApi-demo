@@ -18,6 +18,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomInt } from 'node:crypto';
+import { emailSchema } from '@pagares/contracts';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 const TEMP_PASSWORD_HOURS = 72;
@@ -48,7 +49,9 @@ async function main(): Promise<void> {
       'Falta el correo. Uso: pnpm admin:create --email tu@correo.com --name "Tu Nombre"',
     );
   }
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+  // Con el schema del sistema, no con un regex propio: era la cuarta copia de
+  // la misma regla, y la que nadie iba a acordarse de actualizar.
+  if (!emailSchema.safeParse(email).success) {
     throw new Error(`"${email}" no parece un correo válido`);
   }
 

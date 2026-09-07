@@ -1,5 +1,6 @@
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { DebtorHasUnsignedNoteError } from '../domain/note.errors.js';
+import { normalizePhone } from '@pagares/contracts';
 
 /**
  * Llave del cerrojo que serializa la emisión por deudor.
@@ -10,10 +11,14 @@ import { DebtorHasUnsignedNoteError } from '../domain/note.errors.js';
  */
 const ISSUE_LOCK = 776_2;
 
-/** El teléfono es la identidad del deudor a efectos de esta regla. */
-export function normalizePhone(phone: string): string {
-  return phone.replace(/[\s()-]/g, '');
-}
+/**
+ * El teléfono normalizado, con la regla de `contracts` y no con otra copia.
+ *
+ * Aquí vivía un `replace` propio que no quitaba los puntos, así que
+ * «443.111.2233» se guardaba distinto según por dónde entrara y el cerrojo de
+ * abajo dejaba de reconocer a la misma persona.
+ */
+export { normalizePhone };
 
 /**
  * Nada nuevo mientras quede algo sin firmar (ADR 0019).

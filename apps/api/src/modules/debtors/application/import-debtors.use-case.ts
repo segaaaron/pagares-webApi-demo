@@ -7,7 +7,7 @@ import {
   type ExecutionContext,
   type UnitOfWork,
 } from '@pagares/api-core';
-import type { ImportIssue, ImportResult } from '@pagares/contracts';
+import { createDebtorRequestSchema, type ImportIssue, type ImportResult } from '@pagares/contracts';
 import { PrismaService } from '../../../shared/persistence/prisma.service.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
@@ -29,6 +29,19 @@ interface Candidate {
 }
 
 const REQUIRED = ['nombre', 'domicilio', 'telefono'] as const;
+
+/**
+ * Del campo del schema a la columna del archivo, que es lo que ve quien importa.
+ * Decirle «fullName» a quien subió un CSV con la cabecera «nombre» es hacerle
+ * traducir nuestro código.
+ */
+const CAMPO_DEL_CSV: Record<string, string> = {
+  fullName: 'nombre',
+  address: 'domicilio',
+  phone: 'telefono',
+  email: 'correo',
+  notes: 'notas',
+};
 
 /**
  * Importación de deudores desde CSV (§24.5).
@@ -77,32 +90,41 @@ export class ImportDebtorsUseCase extends BaseUseCase<ImportDebtorsInput, Import
     for (const [index, row] of table.rows.entries()) {
       // +2: la cabecera es la fila 1 y el índice empieza en cero.
       const number = index + 2;
-      const fullName = row['nombre'] ?? '';
-      const address = row['domicilio'] ?? '';
-      const phone = (row['telefono'] ?? '').replace(/[\s()-]/g, '');
-      const email = (row['correo'] ?? '').toLowerCase() || null;
+      /*
+       * La fila se valida con **el mismo schema que el alta manual**.
+       *
+       * Aquí había una copia a mano de esas reglas y ya había divergido: no
+       * miraba longitudes máximas, quitaba unos caracteres distintos del
+       * teléfono y aceptaba correos que la otra puerta rechazaba. La misma
+       * persona entraba o no según por dónde llegara, y el teléfono acababa
+       * guardado de dos formas —que es justo el dato con el que este sistema
+       * reconoce a alguien (ADR 0019)—.
+       */
+      const parsed = createDebtorRequestSchema.safeParse({
+        fullName: row['nombre'] ?? '',
+        address: row['domicilio'] ?? '',
+        phone: row['telefono'] ?? '',
+        // Vacío es «no tiene», no cadena vacía: el correo es opcional.
+        email: (row['correo'] ?? '').trim() || null,
+        notes: (row['notas'] ?? '').trim() || null,
+      });
 
-      if (fullName.length < 3) {
-        issues.push({ row: number, field: 'nombre', message: 'El nombre es demasiado corto', severity: 'error' });
-        continue;
-      }
-      if (address.length < 3) {
-        issues.push({ row: number, field: 'domicilio', message: 'El domicilio es obligatorio', severity: 'error' });
-        continue;
-      }
-      if (!/^\+?\d{7,15}$/.test(phone)) {
+      if (!parsed.success) {
+        // El mensaje sale del propio schema: si mañana cambia la regla, cambia
+        // aquí sin que nadie tenga que acordarse de este archivo.
+        const primero = parsed.error.issues[0];
         issues.push({
           row: number,
-          field: 'telefono',
-          message: 'El teléfono debe tener entre 7 y 15 dígitos',
+          field: CAMPO_DEL_CSV[String(primero?.path[0] ?? '')] ?? 'archivo',
+          message: primero?.message ?? 'La fila no es válida',
           severity: 'error',
         });
         continue;
       }
-      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        issues.push({ row: number, field: 'correo', message: 'El correo no es válido', severity: 'error' });
-        continue;
-      }
+
+      const { fullName, address, phone } = parsed.data;
+      const email = parsed.data.email ?? null;
+
       if (seenPhones.has(phone)) {
         issues.push({
           row: number,
@@ -119,7 +141,7 @@ export class ImportDebtorsUseCase extends BaseUseCase<ImportDebtorsInput, Import
         address,
         phone,
         email,
-        notes: (row['notas'] ?? '') || null,
+        notes: parsed.data.notes ?? null,
         row: number,
       });
     }

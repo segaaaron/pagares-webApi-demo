@@ -1,12 +1,11 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { BaseUseCase, UNIT_OF_WORK, type ExecutionContext, type UnitOfWork } from '@pagares/api-core';
 import { Inject } from '@nestjs/common';
-import type { CreateDebtorRequest } from '@pagares/contracts';
+import { normalizePhone, type CreateDebtorRequest } from '@pagares/contracts';
 import { isValidCurp, normalizeCurp } from '@pagares/domain-rules';
 import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.js';
 import { AuditService } from '../../../shared/persistence/audit.service.js';
 import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-logger.js';
-import { normalizePhone } from '../../promissory-notes/application/assert-nothing-unsigned.js';
 
 export interface CreateDebtorOutput {
   id: string;

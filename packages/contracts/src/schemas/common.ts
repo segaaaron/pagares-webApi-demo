@@ -26,15 +26,34 @@ export const civilDateSchema = z
  * Se limpian los separadores y se valida lo que queda. El `+` se conserva
  * porque distingue un número internacional de uno local.
  */
+/**
+ * El teléfono, en la única forma en que se guarda.
+ *
+ * Vive aquí y se importa: hubo tres copias de esta línea —el schema, el
+ * importador de cartera y la regla de la firma pendiente— y no quitaban los
+ * mismos caracteres. Una escribía «443.111.2233» tal cual y otra lo dejaba en
+ * «4431112233», así que el mismo número entraba dos veces y la deduplicación
+ * por teléfono, que es con la que este sistema reconoce a una persona (ADR
+ * 0019), dejaba de reconocerla.
+ */
+export function normalizePhone(value: string): string {
+  return value.trim().replace(/[\s().-]/g, '');
+}
+
+/** Con lada y entre 7 y 15 dígitos, ya normalizado. */
+export function isValidPhone(value: string): boolean {
+  return /^\+?\d{7,15}$/.test(normalizePhone(value));
+}
+
 export const phoneSchema = z
   .string()
   .trim()
-  .transform((valor) => valor.replace(/[\s().-]/g, ''))
-  .refine((valor) => /^\+?\d{7,15}$/.test(valor), {
+  .transform(normalizePhone)
+  .refine(isValidPhone, {
     message: 'Escribe el número con lada, por ejemplo +52 443 111 2233',
   });
 
-export const emailSchema = z.string().trim().toLowerCase().email();
+export const emailSchema = z.string().trim().toLowerCase().email('El correo no es válido');
 
 export const currencySchema = z.literal('MXN'); // una moneda por instalación (§25.15)
 

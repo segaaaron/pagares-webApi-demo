@@ -7,7 +7,12 @@ import {
   type ExecutionContext,
   type UnitOfWork,
 } from '@pagares/api-core';
-import type { ImportIssue, ImportResult } from '@pagares/contracts';
+import {
+  interestRateValueSchema,
+  normalizePhone,
+  type ImportIssue,
+  type ImportResult,
+} from '@pagares/contracts';
 import {
   businessToday,
   classifyAging,
@@ -95,7 +100,9 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
     const settings = await this.prisma.organizationSettings.findUnique({
       where: { id: 'singleton' },
     });
-    const phones = table.rows.map((row) => (row['telefono_deudor'] ?? '').replace(/[\s()-]/g, ''));
+    // Con la misma normalización que el alta y que el importador de deudores:
+    // tres `replace` distintos hacían que el mismo teléfono no se reconociera.
+    const phones = table.rows.map((row) => normalizePhone(row['telefono_deudor'] ?? ''));
     const debtors = await this.prisma.debtor.findMany({
       where: { phone: { in: phones } },
       select: { id: true, phone: true, userId: true },
@@ -106,7 +113,7 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
 
     for (const [index, row] of table.rows.entries()) {
       const number = index + 2;
-      const phone = (row['telefono_deudor'] ?? '').replace(/[\s()-]/g, '');
+      const phone = normalizePhone(row['telefono_deudor'] ?? '');
       const debtor = byPhone.get(phone);
 
       if (!debtor) {
@@ -166,9 +173,13 @@ export class ImportNotesUseCase extends BaseUseCase<ImportNotesInput, ImportResu
         continue;
       }
 
+      /*
+       * La tasa se valida con el mismo trozo de contrato que la emisión, no con
+       * un `0 && 100` escrito aquí: si mañana cambia el tope, cambia una vez.
+       */
       const rawRate = row['tasa'] ?? '';
       const rate = rawRate === '' ? null : Number(rawRate.replace(',', '.'));
-      if (rate !== null && (Number.isNaN(rate) || rate < 0 || rate > 100)) {
+      if (rate !== null && !interestRateValueSchema.safeParse(rate).success) {
         issues.push({ row: number, field: 'tasa', message: 'La tasa debe ir entre 0 y 100', severity: 'error' });
         continue;
       }

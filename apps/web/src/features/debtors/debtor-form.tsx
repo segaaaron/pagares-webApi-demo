@@ -167,14 +167,14 @@ export function NewDebtorForm({ label }: { label?: string | undefined } = {}) {
                   <Campo
                     id="email"
                     label="Correo"
-                    hint="Por aquí le llega su contraseña para entrar a la aplicación."
+                    opcional
+                    hint="Con correo se le crea la cuenta y firma desde la aplicación; sin él, firmará presencialmente."
                     error={state.fieldErrors?.email}
                   >
                     <input
                       id="email"
                       name="email"
                       type="email"
-                      required
                       placeholder="juana@ejemplo.mx"
                       className={INPUT}
                     />
