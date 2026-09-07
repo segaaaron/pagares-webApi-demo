@@ -73,4 +73,18 @@ describe('plan del deudor', () => {
     expect(planOf(pagare({ status: 'VOID' }))).toBeNull();
     expect(planOf(pagare({ status: 'RENEWED' }))).toBeNull();
   });
+  it('el calendario viaja cuota a cuota, con su fecha y su estado', () => {
+    // Sin esto el deudor sabe cuántas cuotas debe, pero no qué día cae cada una:
+    // con un solo título por deuda, las fechas ya no se ven en otra parte.
+    const plan = planOf(pagare({ status: 'PARTIALLY_PAID', paidCents: 2_000_000n }));
+
+    expect(plan?.rows).toHaveLength(4);
+    expect(plan?.rows.map((cuota) => cuota.index)).toEqual([1, 2, 3, 4]);
+    expect(plan?.rows[0]?.status).toBe('PAID');
+    expect(plan?.rows.at(-1)?.status).toBe('PENDING');
+    // La suma de las cuotas es la deuda entera: si no, el calendario miente.
+    expect(plan?.rows.reduce((suma, cuota) => suma + cuota.amountCents, 0n)).toBe(
+      plan?.totalCents,
+    );
+  });
 });

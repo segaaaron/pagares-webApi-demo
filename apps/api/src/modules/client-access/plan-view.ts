@@ -38,6 +38,26 @@ export interface PlanView {
   /** La cuota que toca ahora, o nulo si ya están todas cubiertas. */
   nextDueOn: string | null;
   nextAmountCents: bigint | null;
+  /**
+   * El calendario cuota a cuota, que es lo que el deudor firmó.
+   *
+   * Se calculaba aquí para saber cuánto queda y se tiraba: la aplicación podía
+   * decir "3 cuotas, 1 pagada" pero no cuándo caen las otras dos ni por cuánto.
+   * Con una cuota por pagaré esas fechas se veían solas —cada título tenía la
+   * suya—; al juntar la deuda en un solo título, esconderlas dejó al deudor sin
+   * saber qué le toca pagar y qué día.
+   */
+  rows: {
+    index: number;
+    dueOn: string;
+    amountCents: bigint;
+    interestCents: bigint;
+    principalCents: bigint;
+    paidCents: bigint;
+    balanceCents: bigint;
+    /** PAID, PARTIAL o PENDING: se deriva de lo abonado, no se teclea. */
+    status: string;
+  }[];
 }
 
 /**
@@ -86,5 +106,15 @@ export function planOf(note: PlanMember): PlanView | null {
     // Lo que falta de la cuota en curso, no su importe entero: si ya lleva la
     // mitad abonada, decirle que debe el total sería cobrarle dos veces.
     nextAmountCents: siguiente?.balanceCents ?? null,
+    rows: cuotas.map((cuota) => ({
+      index: cuota.index,
+      dueOn: cuota.dueOn,
+      amountCents: cuota.amountCents,
+      interestCents: cuota.interestCents,
+      principalCents: cuota.principalCents,
+      paidCents: cuota.paidCents,
+      balanceCents: cuota.balanceCents,
+      status: cuota.status,
+    })),
   };
 }

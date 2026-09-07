@@ -646,5 +646,16 @@ function presentPlan(plan: PlanView | null) {
     /** Qué toca ahora y por cuánto: es la única pregunta que abre la pantalla. */
     nextDueOn: plan.nextDueOn,
     nextAmount: plan.nextAmountCents === null ? null : money(plan.nextAmountCents),
+    /** Las cuotas con su fecha y su estado: el calendario que se firmó. */
+    installments: plan.rows.map((cuota) => ({
+      index: cuota.index,
+      dueOn: cuota.dueOn,
+      status: cuota.status,
+      amount: money(cuota.amountCents),
+      interest: money(cuota.interestCents),
+      principal: money(cuota.principalCents),
+      paid: money(cuota.paidCents),
+      balance: money(cuota.balanceCents),
+    })),
   };
 }
