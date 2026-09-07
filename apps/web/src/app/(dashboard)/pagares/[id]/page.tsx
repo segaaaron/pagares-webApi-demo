@@ -427,6 +427,12 @@ export default async function NoteDetailPage({
                 // para comparar cartera, y en el título sería un número que
                 // nadie firmó.
                 ['Tasa moratoria', note.interestRateOperationalLabel, 'text-ink-2'],
+                // El precio de prestar, cuando lo hubo. Va debajo de la
+                // moratoria y con su propio nombre: son dos pactos distintos y
+                // durante un tiempo se enseñó el mismo número para los dos.
+                ...(note.breakdown?.rateLabel
+                  ? [['Tasa del préstamo', note.breakdown.rateLabel, 'text-ink-2'] as const]
+                  : []),
                 ['Saldo', note.balance.formatted, 'font-semibold'],
               ].map(([label, value, cls]) => (
                 <div key={label} className="flex justify-between">

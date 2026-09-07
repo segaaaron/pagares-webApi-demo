@@ -344,6 +344,19 @@ model PromissoryNote {
   planPrincipalCents BigInt?
 
   /*
+   * La tasa **ordinaria** del plan, tal y como se pactó: el precio de prestar.
+   *
+   * Se pactaba y se usaba para armar la tabla, pero no se guardaba: al leer el
+   * pagaré nadie sabía a qué tasa se había hecho, así que las pantallas caían
+   * en `interestRateAnnualPct` —que es la **moratoria**, la sanción del art.
+   * 174— y enseñaban las dos filas con el mismo número. Son dos pactos
+   * distintos y ahora se guardan como tales. Nulo con `planModel` NONE: sin
+   * precio por prestar no hay tasa que decir.
+   */
+  planRateAnnualPct Decimal? @db.Decimal(8, 4)
+  planRatePeriod    InterestPeriod?
+
+  /*
    * Cada cuánto se paga: MONTHLY o BIWEEKLY (§12).
    *
    * Se congela al emitir como todo lo demás del título. Decidió las fechas de

@@ -15,6 +15,7 @@ import {
   businessToday,
   daysOverdue,
   describeRate,
+  fromAnnualRatePct,
   formatMxn,
   lateInterestBase,
   money,
@@ -497,24 +498,29 @@ export class ClientController {
         }),
       ),
       /**
-       * Las tasas pactadas, separadas y con su base (§12.3, ADR 0016).
+       * Las tasas **como se pactaron**, separadas y nada más (§12.3, ADR 0016).
        *
-       * El deudor no podía comprobar lo que le cobran contra lo que firmó: la
-       * respuesta traía un número anual suelto, sin decir si era el precio del
-       * préstamo o la sanción por atraso, ni sobre cuántos días se calcula. Una
-       * tasa sin su base no se puede recalcular: 3 % mensual sobre 360 días no
-       * da lo mismo que sobre 365.
+       * Al deudor se le dice el número que firmó —"3% mensual"— y ni uno más.
+       * La respuesta traía además la equivalencia anual y la base de cálculo, y
+       * la aplicación las pintaba juntas: "3% mensual · 36% anual · base 360
+       * días". Quien lo leía entendía que le cobraban un 36% aparte, cuando es
+       * la misma tasa dicha en otra unidad —y encima una que se lee mal, porque
+       * el 36 es el equivalente simple y capitalizando saldría 42.58%—. Esa es
+       * la misma razón por la que la equivalencia anual nunca ha entrado en el
+       * documento; el deudor merece la misma claridad. Las pantallas de
+       * operación sí la enseñan: ahí quien mira sabe lo que está comparando.
        */
       rates: {
         /** El precio del préstamo. Sólo existe cuando el pagaré es cuota de un plan. */
         ordinary:
-          note.planModel && note.planModel !== 'NONE' && note.interestRateAnnualPct !== null
+          note.planModel && note.planModel !== 'NONE' && note.planRateAnnualPct !== null
             ? {
-                value: Number(note.interestRateAnnualPct),
-                annualPct: Number(note.interestRateAnnualPct),
-                period: note.interestPeriod,
-                basisDays: settings?.interestBasis ?? 360,
-                label: describeRate(Number(note.interestRateAnnualPct), note.interestPeriod),
+                value: fromAnnualRatePct(
+                  Number(note.planRateAnnualPct),
+                  note.planRatePeriod ?? 'ANNUAL',
+                ),
+                period: note.planRatePeriod ?? 'ANNUAL',
+                label: describeRate(Number(note.planRateAnnualPct), note.planRatePeriod ?? 'ANNUAL'),
                 model: note.planModel,
               }
             : null,
@@ -523,10 +529,8 @@ export class ClientController {
           note.interestRateAnnualPct === null
             ? null
             : {
-                value: Number(note.interestRateAnnualPct),
-                annualPct: Number(note.interestRateAnnualPct),
+                value: fromAnnualRatePct(Number(note.interestRateAnnualPct), note.interestPeriod),
                 period: note.interestPeriod,
-                basisDays: settings?.interestBasis ?? 360,
                 label: describeRate(Number(note.interestRateAnnualPct), note.interestPeriod),
               },
       },

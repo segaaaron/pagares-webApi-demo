@@ -5,7 +5,7 @@ import type { TxClient } from '../../../shared/persistence/prisma-unit-of-work.j
 import { NumberingService } from '../../numbering/numbering.service.js';
 import { assertNothingUnsigned } from './assert-nothing-unsigned.js';
 import type { NoteStatus } from '../domain/note-status.js';
-import type { AgingBucket, PortfolioClass } from '@pagares/domain-rules';
+import type { AgingBucket, InterestPeriod, PortfolioClass } from '@pagares/domain-rules';
 
 /*
  * La forma del `create` se toma del propio cliente de la transacción, no de
@@ -56,7 +56,14 @@ export interface NoteDraft {
   guarantors?: { position: number; fullName: string; address: string; phone: string }[];
 
   /** De qué está hecho el importe del título, tal como se pactó (§12). */
-  plan?: { model: string; interestCents: bigint; principalCents: bigint };
+  plan?: {
+    model: string;
+    interestCents: bigint;
+    principalCents: bigint;
+    /** La tasa ordinaria pactada, anualizada, y su periodo. Nula sin plan. */
+    rateAnnualPct: number | null;
+    ratePeriod: InterestPeriod | null;
+  };
   /**
    * El calendario de pagos, cuando la deuda se paga en cuotas (ADR 0022).
    *
@@ -176,6 +183,8 @@ export class NoteFactory {
       data.planModel = draft.plan.model;
       data.planInterestCents = draft.plan.interestCents;
       data.planPrincipalCents = draft.plan.principalCents;
+      data.planRateAnnualPct = draft.plan.rateAnnualPct;
+      data.planRatePeriod = draft.plan.ratePeriod;
     }
 
     if (draft.imported) {

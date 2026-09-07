@@ -51,6 +51,8 @@ export interface NoteDetail {
     principal: { cents: string; formatted: string };
     /** Del interés de la cuota, lo que queda por cubrir. */
     interestPending: { cents: string; formatted: string };
+    /** La tasa **ordinaria** pactada. Nula en los pagarés anteriores a guardarla. */
+    rateLabel: string | null;
   } | null;
   interestRateAnnualPct: number | null;
   /** Cómo se firmó: "3% mensual (36% anual)". Es lo que va en el documento. */
@@ -320,6 +322,19 @@ export class GetNoteDetailUseCase extends BaseUseCase<{ id: string }, NoteDetail
               interest: dinero(ordinarioDeLaCuota),
               principal: dinero(note.planPrincipalCents ?? note.amountCents - ordinarioDeLaCuota),
               interestPending: dinero(ordinarioPendiente),
+              /*
+               * A qué precio se prestó, con todas las letras. Es la tasa
+               * **ordinaria**, distinta de la moratoria de arriba: enseñar sólo
+               * aquélla obligaba a suponer que eran la misma, y no lo son.
+               * Los pagarés emitidos antes de guardarla no la tienen.
+               */
+              rateLabel:
+                note.planRateAnnualPct === null
+                  ? null
+                  : describeRateWithAnnual(
+                      Number(note.planRateAnnualPct),
+                      note.planRatePeriod ?? 'ANNUAL',
+                    ),
             }
           : null,
       interestRateAnnualPct:

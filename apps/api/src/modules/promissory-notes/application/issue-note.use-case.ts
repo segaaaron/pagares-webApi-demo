@@ -199,6 +199,19 @@ export class IssueNoteUseCase extends BaseUseCase<CreateNoteRequest, IssueNoteOu
             model: input.plan.model,
             interestCents: plan.totalInterestCents,
             principalCents: plan.principalCents,
+            /*
+             * La tasa del plan se guarda, no sólo se usa para armar la tabla.
+             * Sin ella, leer el pagaré mañana no decía a qué precio se prestó y
+             * las pantallas acababan enseñando la moratoria en su lugar.
+             */
+            rateAnnualPct:
+              input.plan.model === 'NONE' || input.plan.rate === null
+                ? null
+                : toAnnualRatePct(input.plan.rate.value, input.plan.rate.period),
+            ratePeriod:
+              input.plan.model === 'NONE' || input.plan.rate === null
+                ? null
+                : input.plan.rate.period,
           },
           /*
            * La tabla de amortización sólo existe cuando hay más de una cuota:

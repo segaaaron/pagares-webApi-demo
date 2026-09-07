@@ -40,6 +40,8 @@ export interface NoteDetail {
     interest: { cents: string; formatted: string };
     principal: { cents: string; formatted: string };
     interestPending: { cents: string; formatted: string };
+    /** La tasa **ordinaria** pactada. Nula en los pagarés anteriores a guardarla. */
+    rateLabel: string | null;
   } | null;
   /** El calendario de pagos, cuando la deuda se paga en cuotas (ADR 0022). */
   schedule: {
