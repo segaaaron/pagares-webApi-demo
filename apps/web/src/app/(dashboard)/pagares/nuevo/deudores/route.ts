@@ -27,9 +27,6 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const q = new URL(request.url).searchParams.get('q')?.trim() ?? '';
-  // Menos de dos letras devolvería medio directorio y ninguna respuesta útil.
-  if (q.length < 2) return NextResponse.json({ results: [] });
-
   try {
     const rows = await api<DebtorRow[]>(`/admin/debtors?q=${encodeURIComponent(q)}`);
     return NextResponse.json({ results: rows.slice(0, 8) });

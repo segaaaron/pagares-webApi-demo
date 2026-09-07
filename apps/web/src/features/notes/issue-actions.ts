@@ -47,6 +47,12 @@ export async function issueNoteAction(_prev: IssueState, formData: FormData): Pr
   const period = periodoPactado(formData.get('interestPeriod'));
   const installments = Math.max(1, Number(formData.get('installments') ?? 1) || 1);
 
+  // Sin ficha elegida no hay a quién emitirle: el contrato sólo acepta un id.
+  const debtorId = String(formData.get('debtorId') ?? '').trim();
+  if (!debtorId) {
+    return { fieldErrors: { 'debtor.id': 'Elige al deudor de la lista antes de emitir.' } };
+  }
+
   // Hasta dos avales, como el formulario impreso (§25.15). Se manda sólo lo
   // capturado: un aval a medias no es un aval.
   const guarantors = [1, 2]
@@ -64,18 +70,9 @@ export async function issueNoteAction(_prev: IssueState, formData: FormData): Pr
       method: 'POST',
       idempotencyKey: randomUUID(),
       body: {
-        debtor: {
-          // Con id, la API reutiliza al deudor y no crea un duplicado (§19.6).
-          ...(String(formData.get('debtorId') ?? '').trim()
-            ? { id: String(formData.get('debtorId')).trim() }
-            : {}),
-          fullName: String(formData.get('debtorName') ?? '').trim(),
-          address: String(formData.get('debtorAddress') ?? '').trim(),
-          phone: String(formData.get('debtorPhone') ?? '').trim(),
-          ...(String(formData.get('debtorEmail') ?? '').trim()
-            ? { email: String(formData.get('debtorEmail')).trim() }
-            : {}),
-        },
+        // La ficha ya existe: aquí sólo se elige. Mandar además nombre,
+        // domicilio o teléfono lo rechaza el contrato (`debtor` es estricto).
+        debtor: { id: debtorId },
         issuePlace: String(formData.get('issuePlace') ?? '').trim(),
         issueDate: String(formData.get('issueDate') ?? ''),
         paymentPlace: String(formData.get('paymentPlace') ?? '').trim(),
