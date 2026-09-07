@@ -20,3 +20,19 @@ export class SignatureReusedError extends BaseDomainError {
     );
   }
 }
+
+/**
+ * El pagaré ya está firmado, y con otro trazo distinto del que acaba de llegar.
+ *
+ * Contestaba `INVALID_STATUS_TRANSITION`, cuyo mensaje —"no se permite pasar de
+ * ISSUED a ISSUED"— es la máquina de estados hablando de sí misma: el deudor
+ * leía que su firma había fallado cuando en realidad ya estaba guardada, y
+ * volvía a intentarlo. Lo que hay que decir es lo que pasó.
+ */
+export class NoteAlreadySignedError extends BaseDomainError {
+  readonly code: ErrorCode = ERROR_CODES.NOTE_ALREADY_SIGNED;
+  readonly httpStatus = 409;
+  constructor() {
+    super('Este pagaré ya está firmado: no hace falta volver a firmarlo');
+  }
+}

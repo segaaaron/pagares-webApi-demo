@@ -16,7 +16,7 @@ import { NestUseCaseLogger } from '../../../shared/application/nest-use-case-log
 import { OBJECT_STORAGE, type ObjectStorage } from '../../media/domain/ports/object-storage.js';
 import { IMAGE_COMPRESSOR, type ImageCompressor } from '../../media/domain/ports/image-compressor.js';
 import { deriveState } from '../../promissory-notes/domain/note-status.js';
-import { SignatureReusedError } from '../domain/signature.errors.js';
+import { NoteAlreadySignedError, SignatureReusedError } from '../domain/signature.errors.js';
 import { InvalidStatusTransitionError } from '../../promissory-notes/domain/note.errors.js';
 
 export interface SignNoteInput {
@@ -84,11 +84,39 @@ export class SignNoteUseCase extends BaseUseCase<SignNoteInput, SignNoteOutput> 
       where: { id: input.noteId },
       include: { signature: true },
     });
-    if (note.status !== 'PENDING_SIGNATURE' || note.signature) {
+    // Sin firma y fuera de «por firmar» es un anulado o un renovado: ahí no se
+    // firma nada y no hace falta ni mirar la imagen.
+    if (!note.signature && note.status !== 'PENDING_SIGNATURE') {
       throw new InvalidStatusTransitionError(note.status, 'ISSUED');
     }
 
     const image = await this.compressor.compress(input.signaturePng, 'signature');
+
+    /*
+     * Reenviar el mismo trazo al mismo pagaré es un **reintento**, no una
+     * segunda firma, y se contesta con el resultado de la primera.
+     *
+     * Pasó en producción: la firma se guardó, la respuesta no llegó a la
+     * pantalla, el deudor volvió a tocar «Firmar» ochenta segundos después y el
+     * servidor le dijo que no se permitía pasar de ISSUED a ISSUED. Su firma
+     * estaba guardada y él leyó que había fallado. Una red que se cae entre el
+     * COMMIT y el teléfono no puede convertirse en un error para quien firmó.
+     *
+     * La huella distingue los dos casos sin ambigüedad: el mismo trazo al byte
+     * es el reintento; otro trazo sobre un pagaré ya firmado es lo que sí hay
+     * que rechazar, y por su nombre.
+     */
+    if (note.signature) {
+      if (note.signature.sha256 === image.sha256) {
+        return {
+          noteId: note.id,
+          status: note.status,
+          sha256: note.signature.sha256,
+          byteSize: note.signature.byteSize,
+        };
+      }
+      throw new NoteAlreadySignedError();
+    }
 
     /*
      * La misma firma no se repite en ningún pagaré (ADR 0021).

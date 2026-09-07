@@ -23,6 +23,8 @@ export const ERROR_CODES = {
   SIGNATURE_PROCESSING_FAILED: 'signature_processing_failed',
   /** La misma firma no vale para dos pagarés (§8, ADR 0021). */
   SIGNATURE_REUSED: 'signature_reused',
+  /** Ya está firmado: reenviar otro trazo no lo firma dos veces (§8). */
+  NOTE_ALREADY_SIGNED: 'note_already_signed',
 
   // Abonos
   PAYMENT_EXCEEDS_BALANCE: 'payment_exceeds_balance',
