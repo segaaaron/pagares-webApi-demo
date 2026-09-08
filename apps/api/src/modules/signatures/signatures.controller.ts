@@ -63,7 +63,14 @@ export class SignaturesController {
     @CurrentActor() actor: Actor,
     @Req() request: Request & { traceId?: string },
   ) {
-    const png = files.signature?.[0];
+    /*
+     * `files` llega vacío cuando la petición no es multipart —un cliente que
+     * manda JSON por error, o un reintento mal armado—. Sin esta comprobación,
+     * leer `files.signature` reventaba con un 500 y un identificador de soporte:
+     * el deudor veía «ocurrió un error inesperado» donde lo que pasa es que
+     * falta el trazo, que sí se puede explicar y sí se puede corregir.
+     */
+    const png = files?.signature?.[0];
     if (!png) throw new BadRequestException('Falta la imagen de la firma');
 
     const vector = files.signatureVector?.[0];
