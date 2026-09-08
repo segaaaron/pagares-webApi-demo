@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PagareFacsimile } from '@/shared/ui/pagare-facsimile';
 import { organizationIdentity } from './identity';
 
 /**
@@ -47,6 +48,9 @@ export async function AuthShell({
         </div>
 
         <div className="relative max-w-lg">
+          {/* El documento del que trata todo esto, para no tener que explicarlo. */}
+          <PagareFacsimile className="mb-9 w-full max-w-md -rotate-2" />
+
           <p className="font-serif text-2xl leading-snug">
             Cada pagaré, su saldo y su fecha. En un solo lugar y con nombre y apellido de quién
             tocó qué.
